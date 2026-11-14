@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>AVENTURAS POR EL MUNDO</title>
+  <link rel="stylesheet" href="styles/main.css" />
+</head>
+<body>
+  <div id="game-wrapper">
+    <!-- Área Superior: Escenario 16:9 escalable manteniendo relación de aspecto -->
+    <div id="canvas-viewport">
+      <div id="canvas-container">
+        <!-- Resolución interna Full HD 1920x1080 (DPR 2x / 64-128 Bit HD Pipeline) -->
+        <canvas id="game-canvas" width="1920" height="1080"></canvas>
+
+        <!-- Botón discreto y siempre visible de Mute Global (Tecla M) -->
+        <button id="global-mute-btn" class="floating-mute-btn" type="button" aria-label="Silenciar o reactivar audio (Tecla M)" title="Silenciar / Activar Audio [M]">🔊</button>
+
+        <!-- Modal de Configuración: Mezclador de Audio, Controles y Jukebox Desbloqueable -->
+        <div id="settings-modal" class="settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+          <div class="settings-panel">
+            <div class="settings-header">
+              <h2 id="settings-title">⚙ CONFIGURACIÓN DE AUDIO Y JUKEBOX</h2>
+              <button id="btn-settings-close" class="settings-close-btn" type="button">◀ VOLVER [ESC]</button>
+            </div>
+
+            <div class="settings-body">
+              <div id="settings-main-view" class="settings-main-view">
+                <!-- Sección A: Control de Volúmenes Independientes -->
+                <section class="settings-section" aria-label="Control de Volúmenes">
+                  <h3 class="settings-section-title">🎚 SECCIÓN A · MEZCLADOR DE VOLUMEN</h3>
+                  <div class="volume-row" data-nav-item="slider-bgm">
+                    <label for="slider-bgm" class="volume-label">🎵 Volumen de Música (BGM)</label>
+                    <div class="volume-control">
+                      <input id="slider-bgm" class="volume-slider" type="range" min="0" max="100" step="1" value="100" />
+                      <span id="val-bgm" class="volume-value">100%</span>
+                    </div>
+                  </div>
+                  <div class="volume-row" data-nav-item="slider-sfx">
+                    <label for="slider-sfx" class="volume-label">🔊 Volumen de Efectos y Voces (SFX)</label>
+                    <div class="volume-control">
+                      <input id="slider-sfx" class="volume-slider" type="range" min="0" max="100" step="1" value="100" />
+                      <span id="val-sfx" class="volume-value">100%</span>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- Sección Controles: Acceso directo al Submenú CONTROLES -->
+                <section class="settings-section" aria-label="Configuración de Controles">
+                  <div id="row-open-controls" class="settings-nav-row" data-nav-item="open-controls">
+                    <div class="settings-nav-info">
+                      <span class="volume-label">🎮 CONTROLES</span>
+                      <span id="settings-controls-profile-badge" class="controls-profile-pill">PRESET A (Clásico)</span>
+                    </div>
+                    <button id="btn-open-controls" class="settings-action-btn" type="button">REASIGNAR TECLAS ▶</button>
+                  </div>
+                </section>
+
+                <!-- Sección B: Sala de Música / Jukebox -->
+                <section class="settings-section jukebox-section" aria-label="Sala de Música Jukebox">
+                  <div class="jukebox-header-row">
+                    <h3 class="settings-section-title">💿 SECCIÓN B · SALA DE MÚSICA / JUKEBOX</h3>
+                    <span id="jukebox-progress-badge" class="jukebox-badge">0/53 desbloqueadas</span>
+                  </div>
+                  <div id="jukebox-list" class="jukebox-list"></div>
+                </section>
+              </div>
+
+              <!-- Submenú CONTROLES -->
+              <div id="settings-controls-view" class="settings-controls-view hidden" aria-label="Submenú de Controles Personalizados">
+                <section class="settings-section" aria-label="Perfiles de Controles">
+                  <div class="controls-header-row">
+                    <h3 class="settings-section-title">🎮 PERFILES DE CONTROLES</h3>
+                    <span class="controls-nav-hint">▲/▼ Elegir · ENTER Reasignar · ESC Volver</span>
+                  </div>
+                  <div class="controls-presets-bar">
+                    <button id="btn-preset-a" class="preset-btn active" type="button" data-preset="preset_a">[PRESET A] (Clásico)</button>
+                    <button id="btn-preset-b" class="preset-btn" type="button" data-preset="preset_b">[PRESET B] (Alternativo)</button>
+                    <button id="btn-preset-custom" class="preset-btn" type="button" data-preset="custom">[PERSONALIZADO]</button>
+                  </div>
+                  <div id="controls-status-bar" class="controls-status-bar">
+                    Selecciona una acción y presiona ENTER o haz clic para asignar otra tecla.
+                  </div>
+                </section>
+
+                <section class="settings-section controls-list-section" aria-label="Acciones Mapeables">
+                  <h3 class="settings-section-title">⌨ ACCIONES DE JUEGO</h3>
+                  <div id="controls-actions-list" class="controls-actions-list"></div>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Franja Negra Sólida Inferior Obligatoria: Controles Virtuales Multitouch (Layout Dividido) -->
+    <div id="touch-controls" aria-label="Franja de Controles Virtuales">
+      <!-- IZQUIERDA: Joystick Analógico Virtual (Base Circular Translúcida + Palanca Central Thumbstick) -->
+      <div class="touch-group joystick-zone" id="joystick-zone" aria-label="Joystick Analógico Virtual">
+        <div class="joystick-base" id="joystick-base">
+          <div class="joystick-crosshair" aria-hidden="true"></div>
+          <div class="joystick-stick" id="joystick-stick">
+            <span class="stick-cap"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTRO: Leyenda Ergonómica Desktop + Controles Rápidos de Sistema -->
+      <div class="control-strip-center">
+        <div id="desktop-keys-legend" class="desktop-keys-legend">
+          <span><b>◀ ▲ ▼ ▶</b> Mover y Saltar (↑)</span>
+          <span><b>[SHIFT]</b> Reserva</span>
+          <span><b>[C]</b> Especial</span>
+          <span><b>[X]</b> La Tina</span>
+          <span><b>[Z]</b> Planta</span>
+        </div>
+        <div class="system-mini-btns">
+          <button id="btn-tina" class="mini-sys-btn" aria-label="Ladrido Doble de la Tina (Tecla X)">🐾 TINA [X]</button>
+          <button id="btn-pause-touch" class="mini-sys-btn" aria-label="Pausar Juego (Tecla ESC)">⏸ PAUSA [ESC]</button>
+          <button id="btn-mute" class="mini-sys-btn" aria-label="Silenciar Audio (Tecla M)">🔊</button>
+        </div>
+      </div>
+
+      <!-- DERECHA: Botones de Acción en Forma de Rombo Separados (Estilo SNES / PlayStation) -->
+      <div class="touch-group action-group diamond-cluster" id="diamond-cluster">
+        <!-- Botón Superior (Norte / △): Intercambiar Power-Up / Reserva (Tecla Shift) -->
+        <button id="btn-reserve" class="touch-btn diamond-btn diamond-top" aria-label="Intercambiar Caja de Reserva (Tecla Shift)">
+          <span class="btn-icon">📦</span>
+          <span class="btn-sub">RESERVA [SHIFT]</span>
+        </button>
+
+        <!-- Botón Izquierdo (Oeste / □): Disparo de Planta (Tecla Z) -->
+        <button id="btn-shoot" class="touch-btn diamond-btn diamond-left" aria-label="Disparo de Planta (Tecla Z)">
+          <span class="btn-icon">🌺</span>
+          <span class="btn-sub">PLANTA [Z]</span>
+        </button>
+
+        <!-- Botón Derecho (Este / ○): Habilidad Especial Líder [C] / La Tina [X] -->
+        <button id="btn-skill" class="touch-btn skill-btn diamond-btn diamond-right" aria-label="Habilidad Especial Líder [C] / La Tina [X]">
+          <span class="btn-icon">🐾⚡</span>
+          <span class="btn-sub">ESP [C/X]</span>
+        </button>
+
+        <!-- Botón Inferior (Sur / ✕): Salto (Flecha Arriba) -->
+        <button id="btn-jump" class="touch-btn jump-btn diamond-btn diamond-bottom" aria-label="Saltar (Flecha Arriba)">
+          <span class="btn-icon">⬆</span>
+          <span class="btn-sub">SALTAR [↑]</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Módulos del Juego HD -->
+  <script src="src/audio.js"></script>
+  <script src="src/sprites.js"></script>
+  <script src="src/entities.js"></script>
+  <script src="src/levels.js"></script>
+  <script src="src/worldmap.js"></script>
+  <script src="src/input.js"></script>
+  <script src="src/game.js"></script>
+</body>
+</html>
