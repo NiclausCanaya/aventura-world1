@@ -107,6 +107,107 @@ canvas#game-canvas {
 }
 
 /* ==========================================================================
+   PANTALLA DE BIENVENIDA / PORTADA INICIAL DE UN TOQUE
+   ========================================================================== */
+
+.splash-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 36;
+  container-type: inline-size;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 4% clamp(10px, 2.8%, 26px);
+  background: #090d16;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.26s ease, transform 0.26s ease;
+  touch-action: manipulation;
+  outline: none;
+}
+
+.splash-overlay.is-leaving {
+  opacity: 0;
+  transform: scale(1.02);
+  pointer-events: none;
+}
+
+.splash-overlay.hidden {
+  display: none !important;
+}
+
+.splash-bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.splash-prompt-wrap {
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 92%;
+  background: rgba(10, 15, 30, 0.78);
+  padding: 10px 24px;
+  border: 2px solid #ffd54f;
+  border-radius: 8px;
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.85),
+    0 0 18px rgba(255, 213, 79, 0.28);
+  animation: splashPromptBlink 1.3s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.splash-prompt {
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  font-size: clamp(10px, 1.55vw, 19px);
+  font-size: clamp(10px, 1.58cqw, 20px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #ffd54f;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 2px #000000;
+  text-shadow:
+    -2px -2px 0 #000000,
+    2px -2px 0 #000000,
+    -2px 2px 0 #000000,
+    2px 2px 0 #000000,
+    0 3px 0 #000000,
+    0 4px 10px rgba(0, 0, 0, 0.95);
+}
+
+@keyframes splashPromptBlink {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow:
+      0 6px 20px rgba(0, 0, 0, 0.85),
+      0 0 20px rgba(255, 213, 79, 0.36);
+  }
+  50% {
+    opacity: 0.48;
+    transform: scale(0.985);
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.65),
+      0 0 8px rgba(255, 213, 79, 0.14);
+  }
+}
+
+/* ==========================================================================
    FRANJA NEGRA SÓLIDA INFERIOR OBLIGATORIA (LAYOUT DIVIDIDO MULTITOUCH)
    ========================================================================== */
 

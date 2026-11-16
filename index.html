@@ -14,6 +14,14 @@
         <!-- Resolución interna Full HD 1920x1080 (DPR 2x / 64-128 Bit HD Pipeline) -->
         <canvas id="game-canvas" width="1920" height="1080"></canvas>
 
+        <!-- Portada Inicial de Un Toque (logo integrado en portada_inicio.jpg + aviso inferior arcade) -->
+        <div id="splash-overlay" class="splash-overlay" role="button" tabindex="0" aria-label="Portada inicial de Aventura World 1. Presioná Enter o hacé clic para jugar.">
+          <img src="portada_inicio.jpg" alt="Aventura World 1 - Nico, Andrea y La Tina" class="splash-bg-img" draggable="false" />
+          <div class="splash-prompt-wrap">
+            <span class="splash-prompt">PRESIONÁ ENTER O HACÉ CLIC PARA JUGAR</span>
+          </div>
+        </div>
+
         <!-- Botón discreto y siempre visible de Mute Global (Tecla M) -->
         <button id="global-mute-btn" class="floating-mute-btn" type="button" aria-label="Silenciar o reactivar audio (Tecla M)" title="Silenciar / Activar Audio [M]">🔊</button>
 
@@ -51,7 +59,7 @@
                   <div id="row-open-controls" class="settings-nav-row" data-nav-item="open-controls">
                     <div class="settings-nav-info">
                       <span class="volume-label">🎮 CONTROLES</span>
-                      <span id="settings-controls-profile-badge" class="controls-profile-pill">PRESET A (Clásico)</span>
+                      <span id="settings-controls-profile-badge" class="controls-profile-pill">PRESET B (Alternativo)</span>
                     </div>
                     <button id="btn-open-controls" class="settings-action-btn" type="button">REASIGNAR TECLAS ▶</button>
                   </div>
@@ -75,8 +83,8 @@
                     <span class="controls-nav-hint">▲/▼ Elegir · ENTER Reasignar · ESC Volver</span>
                   </div>
                   <div class="controls-presets-bar">
-                    <button id="btn-preset-a" class="preset-btn active" type="button" data-preset="preset_a">[PRESET A] (Clásico)</button>
-                    <button id="btn-preset-b" class="preset-btn" type="button" data-preset="preset_b">[PRESET B] (Alternativo)</button>
+                    <button id="btn-preset-a" class="preset-btn" type="button" data-preset="preset_a">[PRESET A] (Clásico)</button>
+                    <button id="btn-preset-b" class="preset-btn active" type="button" data-preset="preset_b">[PRESET B] (Alternativo)</button>
                     <button id="btn-preset-custom" class="preset-btn" type="button" data-preset="custom">[PERSONALIZADO]</button>
                   </div>
                   <div id="controls-status-bar" class="controls-status-bar">

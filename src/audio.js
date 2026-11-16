@@ -146,7 +146,7 @@
       1: 'megafonia/cordoba_z1_carlos_paz.mp3',
       2: 'megafonia/cordoba_z2_gral_belgrano.mp3',
       3: 'megafonia/cordoba_z3_uritorco.mp3',
-      4: null
+      4: 'megafonia/cordoba_z4_Usuhaia.mp3'
     },
     ushuaia: {
       1: 'megafonia/ushuaia_z1_tren_fin_mundo.mp3',
@@ -1141,7 +1141,7 @@
       });
     }
 
-    // --- Cheat 'ethome': Rayo Abductor y Hiperespacio del OVNI del Cerro Uritorco ---
+    // --- Truco secreto OVNI: Rayo Abductor y Hiperespacio del OVNI del Cerro Uritorco ---
     playUfoAbductionSfx() {
       if (this.muted) return;
       this.init();
@@ -1260,6 +1260,15 @@
       this.playTone(740, 'triangle', 0.16, 0.2, 260, 0);
       this.playTone(520, 'sawtooth', 0.22, 0.18, 140, 0.06);
       this.playNoise(0.22, 0.18, 1900, 0);
+    }
+
+    // --- Impacto metálico y rebote en escudo frontal (Clank!) ---
+    shieldClang() {
+      if (this.muted) return;
+      this.playTone(1180, 'triangle', 0.14, 0.22, 920, 0);
+      this.playTone(1760, 'sine', 0.16, 0.18, 1520, 0.01);
+      this.playTone(620, 'square', 0.07, 0.12, 410, 0);
+      this.playNoise(0.08, 0.16, 3600, 0);
     }
 
     // --- Púas del Erizo Urbano (Nivel 2+) ---
@@ -1551,9 +1560,6 @@
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '');
-      if (cityKey === 'cordoba' && (Number(zoneNum) === 4 || normDest.includes('ushuaia'))) {
-        return null;
-      }
       if (cityKey === 'chile_pascua' && (Number(zoneNum) === 1 || normDest.includes('raraku'))) {
         return null;
       }
@@ -1597,6 +1603,7 @@
         if (normDest.includes('carlos paz')) return cityMap[1];
         if (normDest.includes('belgrano')) return cityMap[2];
         if (normDest.includes('uritorco') || normDest.includes('capilla')) return cityMap[3];
+        if (normDest.includes('ushuaia')) return cityMap[4];
         return null;
       } else if (cityKey === 'ushuaia') {
         if (normDest.includes('tren')) return cityMap[1];

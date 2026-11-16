@@ -60,9 +60,14 @@
     }
   };
 
-  function clonePreset(presetId) {
-    const src = presetId === 'preset_b' ? CONTROL_PRESETS.preset_b : CONTROL_PRESETS.preset_a;
-    return Object.assign({}, src);
+  const DEFAULT_CONTROL_PRESET = 'preset_b';
+
+  function clonePreset(presetId = DEFAULT_CONTROL_PRESET) {
+    const key =
+      presetId === 'preset_a' || presetId === 'preset_b'
+        ? presetId
+        : DEFAULT_CONTROL_PRESET;
+    return Object.assign({}, CONTROL_PRESETS[key]);
   }
 
   function formatKeyCode(code, compact = false) {
@@ -120,18 +125,24 @@
         skillPressed: false,
         tinaPressed: false,
         shootPressed: false,
-        reservePressed: false
+        reservePressed: false,
+        shiftHeld: false
       };
     }
 
     loadControlScheme() {
-      const base = clonePreset('preset_a');
+      const base = clonePreset(DEFAULT_CONTROL_PRESET);
       try {
         const raw = localStorage.getItem(CONTROL_STORAGE_KEY);
         if (!raw) return base;
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return base;
-        const prof = parsed.profile === 'preset_b' || parsed.profile === 'custom' ? parsed.profile : 'preset_a';
+        const prof =
+          parsed.profile === 'preset_a' ||
+          parsed.profile === 'preset_b' ||
+          parsed.profile === 'custom'
+            ? parsed.profile
+            : DEFAULT_CONTROL_PRESET;
         if (prof === 'preset_b') {
           const pb = clonePreset('preset_b');
           if (parsed.shoot !== pb.shoot || parsed.skill !== pb.skill || parsed.tina !== pb.tina) {
@@ -143,7 +154,7 @@
         }
         if (prof === 'preset_a') return clonePreset('preset_a');
 
-        const custom = clonePreset('preset_a');
+        const custom = clonePreset(DEFAULT_CONTROL_PRESET);
         custom.profile = 'custom';
         const used = new Set();
         for (let i = 0; i < MAPPABLE_ACTIONS.length; i++) {
@@ -232,7 +243,7 @@
     }
 
     isActionDown(actionKey) {
-      const scheme = this.controlScheme || CONTROL_PRESETS.preset_a;
+      const scheme = this.controlScheme || CONTROL_PRESETS[DEFAULT_CONTROL_PRESET];
       const code = scheme[actionKey];
       const kbDown = Boolean(code && this.heldCodes.has(code));
       if (actionKey === 'jump') return kbDown || !!this.touchState.jumpHeld;
@@ -244,7 +255,7 @@
 
     isCodeBoundInControlScheme(code) {
       if (!code) return false;
-      const scheme = this.controlScheme || CONTROL_PRESETS.preset_a;
+      const scheme = this.controlScheme || CONTROL_PRESETS[DEFAULT_CONTROL_PRESET];
       for (let i = 0; i < MAPPABLE_ACTIONS.length; i++) {
         if (scheme[MAPPABLE_ACTIONS[i].key] === code) return true;
       }
@@ -291,6 +302,7 @@
       s.tinaPressed = false;
       s.shootPressed = false;
       s.reservePressed = false;
+      s.shiftHeld = false;
     }
 
     setJumpKeyState(keySlot, isDown, isRepeat = false) {
@@ -431,7 +443,7 @@
           e.preventDefault();
         }
 
-        // Silencio rápido de sistema [M] (excepto al escribir iniciales Arcade, si KeyM está reasignada o si completa cheat 'ethome')
+        // Silencio rápido de sistema [M] (excepto al escribir iniciales Arcade, si KeyM está reasignada o si completa el truco OVNI)
         const typingArcadeInitials =
           game.state === 'gameover' && game.gameOverPhase === 'initials';
         const mBoundInGameplay =
@@ -440,14 +452,54 @@
           game.state === 'playing' &&
           !game.isAbductedByCheat &&
           typeof game.etHomeBuffer === 'string' &&
-          game.etHomeBuffer.endsWith('etho');
-        if (code === 'KeyM' && !e.repeat && !typingArcadeInitials && !mBoundInGameplay && !mCompletingEtHomeCheat) {
+          game.etHomeBuffer.length >= 4 &&
+          game.etHomeBuffer.charCodeAt(game.etHomeBuffer.length - 4) === 101 &&
+          game.etHomeBuffer.charCodeAt(game.etHomeBuffer.length - 3) === 116 &&
+          game.etHomeBuffer.charCodeAt(game.etHomeBuffer.length - 2) === 104 &&
+          game.etHomeBuffer.charCodeAt(game.etHomeBuffer.length - 1) === 111;
+        const mTypingGhostCheat =
+          (game.state === 'playing' || game.state === 'paused') &&
+          typeof game.ghostBuffer === 'string' &&
+          game.ghostBuffer.length >= 2 &&
+          game.ghostBuffer.charCodeAt(game.ghostBuffer.length - 2) === 105 &&
+          game.ghostBuffer.charCodeAt(game.ghostBuffer.length - 1) === 110;
+        if (
+          code === 'KeyM' &&
+          !e.repeat &&
+          !typingArcadeInitials &&
+          !mBoundInGameplay &&
+          !mCompletingEtHomeCheat &&
+          !mTypingGhostCheat
+        ) {
           game.sound.toggleMute();
           return;
         }
 
         const isConfirm = code === 'Enter' || code === 'Space';
         const isBackOrQuit = code === 'Backspace' || code === 'KeyQ';
+
+        // 0. Portada Inicial de Un Toque (desbloquea audio + jingle + música del Menú Principal)
+        if (game.state === 'splash') {
+          const isModifierKey =
+            code === 'ShiftLeft' ||
+            code === 'ShiftRight' ||
+            code === 'ControlLeft' ||
+            code === 'ControlRight' ||
+            code === 'AltLeft' ||
+            code === 'AltRight' ||
+            code === 'MetaLeft' ||
+            code === 'MetaRight' ||
+            code === 'CapsLock' ||
+            code === 'NumLock' ||
+            code === 'ScrollLock';
+          if (isConfirm || code === 'Escape') {
+            e.preventDefault();
+          }
+          if (!isModifierKey && !e.repeat && typeof game.enterMenuFromSplash === 'function') {
+            game.enterMenuFromSplash();
+          }
+          return;
+        }
 
         // 1. Menú Principal
         if (game.state === 'menu') {
@@ -631,6 +683,15 @@
         // 5. Pausa
         if (game.state === 'paused') {
           if (e.repeat) return;
+          if (
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            typeof game.handleGhostCheatKey === 'function' &&
+            game.handleGhostCheatKey(e.key, code)
+          ) {
+            return;
+          }
           if (code === 'KeyP' || code === 'Escape' || isConfirm) {
             if (typeof game.resumeGame === 'function') game.resumeGame();
             else {
@@ -782,11 +843,31 @@
               this.clearTransient();
               return;
             }
+            if (!e.repeat && typeof game.handlePwingCheatKey === 'function' && game.handlePwingCheatKey(e.key, code)) {
+              this.clearTransient();
+              return;
+            }
+            if (
+              !e.repeat &&
+              typeof game.handleBiplaneTourCheatKey === 'function' &&
+              game.handleBiplaneTourCheatKey(e.key, code)
+            ) {
+              this.clearTransient();
+              return;
+            }
+            if (
+              !e.repeat &&
+              typeof game.handleGhostCheatKey === 'function' &&
+              game.handleGhostCheatKey(e.key, code)
+            ) {
+              this.clearTransient();
+              return;
+            }
           }
 
           const pauseBlockedByCustomBind =
             code !== 'Escape' && this.isCodeBoundInControlScheme(code);
-          if ((code === 'KeyP' || code === 'Escape' || isBackOrQuit) && !pauseBlockedByCustomBind && !e.repeat) {
+          if ((code === 'Escape' || isBackOrQuit) && !pauseBlockedByCustomBind && !e.repeat) {
             if (typeof game.pauseGame === 'function') {
               game.pauseGame();
             } else {
@@ -801,6 +882,9 @@
           const wasDownHeld = this.isActionDown('down');
           if (code) this.heldCodes.add(code);
           this.syncGameplayInputFromHeld();
+          this.state.shiftHeld = Boolean(
+            e.shiftKey || this.heldCodes.has('ShiftLeft') || this.heldCodes.has('ShiftRight')
+          );
 
           const isSpaceKey = code === 'Space' || e.key === ' ';
           const jumpCode = scheme.jump || 'Space';
@@ -812,7 +896,7 @@
             this.state.downPressed = true;
           }
 
-          if (!e.repeat) {
+          if (!e.repeat && !game.isBiplaneFlightCheat) {
             if (code === scheme.reserve) {
               this.state.reservePressed = true;
             } else if (code === scheme.skill) {
@@ -843,6 +927,9 @@
             this.setJumpKeyState(jumpCode === 'Space' ? 'Space' : code, false);
           }
           this.syncGameplayInputFromHeld();
+          this.state.shiftHeld = Boolean(
+            e.shiftKey || this.heldCodes.has('ShiftLeft') || this.heldCodes.has('ShiftRight')
+          );
           return;
         }
 
@@ -1223,7 +1310,7 @@
     },
     getControlScheme() {
       const inst = InputManager.activeInstance;
-      return inst ? inst.getControlScheme() : clonePreset('preset_a');
+      return inst ? inst.getControlScheme() : clonePreset(DEFAULT_CONTROL_PRESET);
     },
     getControlActions() {
       return MAPPABLE_ACTIONS.slice();
@@ -1240,7 +1327,9 @@
     },
     rebindAction(actionKey, code) {
       const inst = InputManager.activeInstance;
-      return inst ? inst.rebindAction(actionKey, code) : { scheme: clonePreset('preset_a'), clearedAction: null };
+      return inst
+        ? inst.rebindAction(actionKey, code)
+        : { scheme: clonePreset(DEFAULT_CONTROL_PRESET), clearedAction: null };
     },
     isCodeBound(code) {
       const inst = InputManager.activeInstance;
