@@ -1,0 +1,36 @@
+name: Reconstruir binarios desde base64 (uso puntual)
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  binarios:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruir y verificar sha256
+        run: |
+          python3 - <<'PY'
+          import os, base64, hashlib
+          ok = 0
+          for line in open("migracion/b64/manifest.tsv", encoding="utf-8"):
+              line = line.rstrip("\r\n")
+              if not line: continue
+              tgt, parts, sha = line.split("\t")
+              data = b"".join(base64.b64decode("".join(open("migracion/b64/" + p).read().split())) for p in parts.split(","))
+              h = hashlib.sha256(data).hexdigest()
+              if h != sha: raise SystemExit("FALLO checksum " + tgt + " " + h)
+              d = os.path.dirname(tgt)
+              if d: os.makedirs(d, exist_ok=True)
+              open(tgt, "wb").write(data); ok += 1
+              print("OK", tgt, len(data), h)
+          print("OK", ok, "binarios verificados")
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898699+github-actions[bot]@users.noreply.github.com"
+          git rm -r -q migracion/b64
+          git add -A -- assets portada_inicio.jpg
+          git commit -m "v3.9: binarios reconstruidos desde base64 (sha256 verificado)"
+          git push
