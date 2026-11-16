@@ -34,6 +34,27 @@
   const ABILITY_COOLDOWN_MAX = 5.0;
   const TINA_COOLDOWN_MAX = 30.0;
   const ELECTRIC_FIELD_RADIUS = 68;
+  // Offset vertical (y) al colgarse para que las manos alzadas (localY = -32) sujeten el cable sobre la cabeza
+  const HANG_ANCHOR_OFFSET = 10;
+
+  function isActorHanging(actor) {
+    return Boolean(
+      actor && (actor.hangingRope || actor.isHanging || actor.onCable || actor.onZipline || actor.onVine)
+    );
+  }
+
+  function clearActorHangingState(actor) {
+    if (!actor) return;
+    actor.hangingRope = null;
+    actor.isHanging = false;
+    actor.onCable = false;
+    actor.onZipline = false;
+    actor.onVine = false;
+  }
+
+  function resolveHangingAnimState(actor) {
+    return Math.abs((actor && actor.vx) || 0) > 10 ? 'hang_move' : 'hang';
+  }
 
   function aabbOverlap(a, b) {
     return (
@@ -171,7 +192,10 @@
       this.hearts = 3;
       this.maxHearts = 3;
       this.invincibleTimer = 0;
+      this.stompGraceTimer = 0;
       this.hurtTimer = 0;
+      this.prevY = y;
+      this.prevBottom = y + this.h;
 
       // Power-ups Mutuamente Excluyentes (Estilo Super Mario World):
       // 'angel_wings' (Triple Salto) O 'calamares' (Disparo Parabólico con Tecla F)
@@ -192,18 +216,24 @@
       this.abilityCooldown = 0;
       this.abilityMaxCooldown = ABILITY_COOLDOWN_MAX;
       this.isGroundPounding = false;
+      this.justLandedGroundPoundThisFrame = false;
       this.poseTimer = 0;
 
       this.animTimer = 0;
       this.animState = 'idle';
       this.state = 'active'; // 'active' | 'entering_metro'
       this.hiddenInMetro = false;
+      this.ghostMode = false;
       this.standingPlatform = null;
       this.platformVx = 0;
       this.platformVy = 0;
       this.airPlatformVx = 0;
       this.hangingRope = null;
       this.ropeCooldown = 0;
+      this.isHanging = false;
+      this.onCable = false;
+      this.onZipline = false;
+      this.onVine = false;
     }
 
     getActiveHitbox() {
@@ -285,6 +315,7 @@
     }
 
     applySlow(sec = 2.0) {
+      if (this.ghostMode) return;
       this.slowTimer = Math.max(this.slowTimer, sec);
     }
 
@@ -384,6 +415,7 @@
       this.invincibleTimer = 1.5;
       this.hurtTimer = 0;
       this.isGroundPounding = false;
+      this.justLandedGroundPoundThisFrame = false;
       this.poseTimer = 0;
       this.jumpsUsed = 0;
       this.state = 'active';
@@ -397,7 +429,10 @@
      * conservando intacto cualquier ítem guardado en la Caja de Reserva [W].
      */
     takeDamage(sourceX, sound, particles, isSwarm = false, reserveCallbacks = null) {
-      if (this.invincibleTimer > 0 || this.isGroundPounding) {
+      if (this.ghostMode || this.invincibleTimer > 0 || this.isGroundPounding) {
+        return { damaged: false, lostHeart: false, brokeShield: false };
+      }
+      if (this.stompGraceTimer > 0) {
         return { damaged: false, lostHeart: false, brokeShield: false };
       }
 
@@ -471,15 +506,19 @@
       input.down = downActive;
       input.jump = jumpActive;
 
+      this.prevY = this.y;
+      this.prevBottom = this.y + this.h;
       if (this.invincibleTimer > 0) this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
+      if (this.stompGraceTimer > 0) this.stompGraceTimer = Math.max(0, this.stompGraceTimer - dt);
       if (this.hurtTimer > 0) this.hurtTimer = Math.max(0, this.hurtTimer - dt);
+      this.justLandedGroundPoundThisFrame = false;
       if (this.abilityCooldown > 0) this.abilityCooldown = Math.max(0, this.abilityCooldown - dt);
       if (this.poseTimer > 0) this.poseTimer = Math.max(0, this.poseTimer - dt);
       if (this.wingFlapTimer > 0) this.wingFlapTimer = Math.max(0, this.wingFlapTimer - dt);
       if (this.shootCooldown > 0) this.shootCooldown = Math.max(0, this.shootCooldown - dt);
       if (this.ropeCooldown > 0) this.ropeCooldown = Math.max(0, this.ropeCooldown - dt);
 
-      // Desplazamiento horizontal colgado de soga de ropa (Caminito - Zona 1 BA)
+      // Desplazamiento horizontal colgado de soga de ropa, cable, zipline o liana
       if (this.hangingRope) {
         const rope = this.hangingRope;
         let ropeDir = 0;
@@ -493,27 +532,31 @@
         this.x += this.vx * dt;
         if (ropeDir !== 0) this.facing = ropeDir > 0 ? 'right' : 'left';
         const cx = this.x + this.w * 0.5;
-        this.y = rope.getYAt(cx) + 4;
+        this.y = rope.getYAt(cx) + HANG_ANCHOR_OFFSET;
         this.vy = 0;
         this.onGround = false;
+        this.isHanging = true;
         this.jumpsUsed = 0;
 
         const jumpNow = jumpActive && !this.wasJumpDown;
         this.wasJumpDown = jumpActive;
         if (jumpNow || input.jumpPressed) {
           this.vy = JUMP_FORCE * 0.94;
-          this.hangingRope = null;
+          clearActorHangingState(this);
           this.ropeCooldown = 0.28;
           this.jumpsUsed = 1;
           this.jumpHeld = true;
+          this.animState = 'jump';
           if (sound) sound.jump(1);
           if (particles) particles.Dust(this.x + this.w * 0.5, this.y + this.h);
         } else if (input.downPressed || cx < rope.x1 - 4 || cx > rope.x2 + 4) {
-          this.hangingRope = null;
+          clearActorHangingState(this);
           this.ropeCooldown = 0.28;
+          this.animState = 'fall';
+        } else {
+          this.animState = resolveHangingAnimState(this);
         }
         this.animTimer += dt;
-        this.animState = Math.abs(this.vx) > 10 ? 'run' : 'idle';
         return;
       }
 
@@ -644,7 +687,12 @@
         }
 
         const isSandGround = !!(physicsModifiers && physicsModifiers.sandMode && this.onGround);
-        const isIceGround = !!(physicsModifiers && physicsModifiers.iceMode && this.onGround && !isSandGround);
+        const isIceGround = !!(
+          physicsModifiers &&
+          (physicsModifiers.isIceLevel || physicsModifiers.iceMode) &&
+          this.onGround &&
+          !isSandGround
+        );
         const isSaltGround = !!(
           this.onGround &&
           !isSandGround &&
@@ -652,7 +700,72 @@
           ((physicsModifiers && physicsModifiers.saltMode) ||
             (this.standingPlatform && this.standingPlatform.style === 'salt'))
         );
-        if (this.isCrouching && this.onGround) {
+
+        if (isIceGround) {
+          // Física unificada de hielo en Ushuaia: gobierna de pie, agachado, arranque y contrafrenado
+          // Fricción mínima idéntica (~0.965 por frame a 60 Hz) tanto de pie como agachado
+          const iceFriction = Math.pow(0.965, dt * 60);
+          const inputX =
+            this.isCrouching || Math.abs(dir) <= 0.05 ? 0 : Math.max(-1, Math.min(1, dir));
+          const maxIceVx = moveSpeed * 1.05;
+          const iceAccel = moveSpeed * 1.75;        // Tracción gradual sobre hielo (~420 px/s^2)
+          const iceCounterBrake = moveSpeed * 4.25; // Contrafrenado ~2.5x-3x respecto a fricción pasiva promedio
+
+          if (inputX === 0) {
+            this.vx *= iceFriction;
+            if (Math.abs(this.vx) < 0.05) {
+              this.vx *= 0.5;
+            }
+            if (
+              particles &&
+              Math.abs(this.vx) > 28 &&
+              Math.random() < (this.isCrouching ? 0.72 : 0.42)
+            ) {
+              const trailX = this.vx > 0 ? this.x + 5 : this.x + this.w - 5;
+              particles.Sparkle(
+                trailX,
+                this.y + this.h - 2,
+                Math.random() < 0.65 ? '#ffffff' : '#e0f2fe'
+              );
+            }
+            if (this.isCrouching && Math.abs(dir) > 0.05) {
+              this.facing = dir > 0 ? 'right' : 'left';
+            }
+          } else if (Math.sign(inputX) !== Math.sign(this.vx) && Math.abs(this.vx) > 0.2) {
+            // Contrafrenado progresivo con nieve/escarcha hasta frenar antes de invertir marcha
+            const deltaBrake = inputX * iceCounterBrake * dt;
+            if (Math.abs(deltaBrake) >= Math.abs(this.vx)) {
+              const fracUsed = Math.abs(this.vx) / Math.abs(deltaBrake);
+              this.vx = inputX * iceAccel * dt * (1 - fracUsed);
+            } else {
+              this.vx += deltaBrake;
+            }
+            this.facing = inputX > 0 ? 'right' : 'left';
+            if (particles) {
+              for (let sp = 0; sp < 2; sp++) {
+                particles.Sparkle(
+                  this.x + this.w * 0.5 + (Math.random() - 0.5) * 14,
+                  this.y + this.h - 2,
+                  Math.random() < 0.78 ? '#ffffff' : '#e0f2fe'
+                );
+              }
+            }
+          } else {
+            // Tracción gradual en la dirección pulsada hasta velocidad máxima
+            this.vx += inputX * iceAccel * dt;
+            if (Math.abs(this.vx) > maxIceVx) {
+              this.vx = Math.sign(this.vx) * maxIceVx;
+            }
+            this.facing = inputX > 0 ? 'right' : 'left';
+            if (particles && Math.random() < 0.34) {
+              particles.Sparkle(
+                this.x + (inputX > 0 ? 4 : this.w - 4),
+                this.y + this.h - 2,
+                Math.random() < 0.45 ? '#ffffff' : '#bae6fd'
+              );
+            }
+          }
+        } else if (this.isCrouching && this.onGround) {
           this.vx = 0;
           if (Math.abs(dir) > 0.05) {
             this.facing = dir > 0 ? 'right' : 'left';
@@ -667,18 +780,6 @@
                 this.x + (dir > 0 ? 4 : this.w - 4),
                 this.y + this.h - 2,
                 '#fbbf24'
-              );
-            }
-          } else if (isIceGround) {
-            // Superficie helada de Ushuaia: mayor inercia (+0.25 de deslizamiento) y patinaje controlado
-            const targetVx = dir * moveSpeed * 1.06;
-            const iceAccel = 1 - Math.exp(-dt * 3.15);
-            this.vx += (targetVx - this.vx) * iceAccel;
-            if (particles && Math.random() < 0.28) {
-              particles.Sparkle(
-                this.x + (dir > 0 ? 4 : this.w - 4),
-                this.y + this.h - 2,
-                '#bae6fd'
               );
             }
           } else if (isSaltGround) {
@@ -698,9 +799,7 @@
           }
           this.facing = dir > 0 ? 'right' : 'left';
         } else {
-          if (isIceGround) {
-            this.vx *= Math.pow(0.43, dt);
-          } else if (isSaltGround) {
+          if (isSaltGround) {
             this.vx *= Math.pow(0.16, dt);
           } else if (isSandGround) {
             this.vx *= Math.pow(0.045, dt);
@@ -921,11 +1020,12 @@
             const ry = r.getYAt(cx);
             if (Math.abs((this.y + 8) - ry) <= 18) {
               this.hangingRope = r;
-              this.y = ry + 4;
+              this.isHanging = true;
+              this.y = ry + HANG_ANCHOR_OFFSET;
               this.vy = 0;
               this.vx = 0;
               this.jumpsUsed = 0;
-              this.animState = 'idle';
+              this.animState = 'hang';
               if (sound) sound.menuSelect();
               return;
             }
@@ -936,6 +1036,7 @@
       // Impacto sísmico del Terremoto de Nico
       if (wasGroundPounding && this.onGround) {
         this.isGroundPounding = false;
+        this.justLandedGroundPoundThisFrame = true;
         this.abilityCooldown = this.abilityMaxCooldown;
         if (sound) sound.earthquakeImpact();
         if (callbacks && callbacks.onEarthquake) {
@@ -943,6 +1044,8 @@
         }
       }
 
+      const hangingActive = isActorHanging(this);
+      this.isHanging = hangingActive;
       this.animTimer += dt;
       if (this.isGroundPounding) {
         this.animState = 'groundPound';
@@ -950,6 +1053,8 @@
         this.animState = 'pose';
       } else if (this.hurtTimer > 0) {
         this.animState = 'hurt';
+      } else if (hangingActive && !this.onGround) {
+        this.animState = resolveHangingAnimState(this);
       } else if (!this.onGround) {
         this.animState = this.vy < 0 ? 'jump' : 'fall';
       } else if (this.isCrouching) {
@@ -975,6 +1080,11 @@
       const screenY = this.y;
       const cx = screenX + this.w * 0.5;
       const cy = screenY + this.h * 0.5;
+      const applyGhostAlpha = Boolean(this.ghostMode && !this.dead);
+      if (applyGhostAlpha) {
+        ctx.save();
+        ctx.globalAlpha *= 0.65;
+      }
 
       // Iluminación radial de Escudo / Power-Ups activos
       if (this.hasAnyPowerUp()) {
@@ -1000,6 +1110,12 @@
         ctx.restore();
       }
 
+      const drawAnimState = this.dead
+        ? 'dead'
+        : isActorHanging(this) && !this.onGround && !this.isGroundPounding && this.hurtTimer <= 0
+          ? resolveHangingAnimState(this)
+          : this.animState;
+
       // Dibujar personaje HD con articulación fluida
       sprites.drawCharacterHD(
         ctx,
@@ -1007,7 +1123,7 @@
         screenX,
         screenY,
         this.facing,
-        this.dead ? 'dead' : this.animState,
+        drawAnimState,
         this.animTimer,
         this.dead ? false : this.hasAngelWings(),
         this.wingFlapTimer
@@ -1063,6 +1179,10 @@
         }
         ctx.restore();
       }
+
+      if (applyGhostAlpha) {
+        ctx.restore();
+      }
     }
 
     drawElectricFieldArcs(ctx, cx, cy) {
@@ -1095,6 +1215,218 @@
     }
   }
 
+  /**
+   * Encuentra la superficie continua de apoyo debajo de un actor (suelo o plataforma activa),
+   * uniendo tramos estáticos contiguos al mismo nivel Y para detectar sus bordes reales.
+   */
+  function findSupportingSurfaceSpan(actor, allPlatforms) {
+    if (!actor || !allPlatforms || allPlatforms.length === 0) return null;
+
+    const actorBottom = actor.y + actor.h;
+    const footLeft = actor.x + 3;
+    const footRight = actor.x + actor.w - 3;
+
+    const isUsable = (p) =>
+      Boolean(p && p.state !== 'respawning' && !p.isBroken && !p.isCeiling);
+
+    let basePlat = null;
+    if (
+      actor.standingPlatform &&
+      isUsable(actor.standingPlatform) &&
+      footRight > actor.standingPlatform.x &&
+      footLeft < actor.standingPlatform.x + actor.standingPlatform.w &&
+      Math.abs(actorBottom - actor.standingPlatform.y) <= 10
+    ) {
+      basePlat = actor.standingPlatform;
+    }
+
+    if (!basePlat) {
+      let bestDy = 10;
+      for (let i = 0; i < allPlatforms.length; i++) {
+        const p = allPlatforms[i];
+        if (!isUsable(p)) continue;
+        if (footRight <= p.x || footLeft >= p.x + p.w) continue;
+        const dy = Math.abs(actorBottom - p.y);
+        if (dy <= bestDy) {
+          bestDy = dy;
+          basePlat = p;
+        }
+      }
+    }
+
+    if (!basePlat) return null;
+
+    let left = basePlat.x;
+    let right = basePlat.x + basePlat.w;
+    const y = basePlat.y;
+
+    // Las plataformas móviles o que caen conservan su ancho real sin fusionarse con suelo cercano
+    if (!basePlat.isMoving && !basePlat.isFallingPlatform) {
+      let expanded = true;
+      while (expanded) {
+        expanded = false;
+        for (let i = 0; i < allPlatforms.length; i++) {
+          const q = allPlatforms[i];
+          if (!isUsable(q) || q.isMoving || q.isFallingPlatform) continue;
+          if (Math.abs(q.y - y) > 2) continue;
+          const qLeft = q.x;
+          const qRight = q.x + q.w;
+          if (qRight >= left - 2 && qLeft <= right + 2) {
+            if (qLeft < left) {
+              left = qLeft;
+              expanded = true;
+            }
+            if (qRight > right) {
+              right = qRight;
+              expanded = true;
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      plat: basePlat,
+      left,
+      right,
+      width: right - left,
+      y,
+      isMoving: Boolean(basePlat.isMoving),
+      isFallingPlatform: Boolean(basePlat.isFallingPlatform),
+    };
+  }
+
+  /**
+   * Calcula el rango horizontal seguro [minX, maxX] sobre una superficie,
+   * garantizando un margen de seguridad mínimo respecto a ambos bordes.
+   */
+  function getActorSafeBoundsOnSpan(span, actorW, edgeMargin = 7) {
+    if (!span) return null;
+    const slack = span.width - actorW;
+    if (slack <= 0) {
+      const centeredX = span.left + slack * 0.5;
+      return { minX: centeredX, maxX: centeredX };
+    }
+    const margin = Math.min(edgeMargin, slack * 0.5);
+    return {
+      minX: span.left + margin,
+      maxX: span.right - actorW - margin,
+    };
+  }
+
+  function surfaceSpansMatch(a, b) {
+    if (!a || !b) return false;
+    if (Math.abs(a.y - b.y) > 4) return false;
+    return a.right >= b.left - 4 && b.right >= a.left - 4;
+  }
+
+  /**
+   * Calcula posiciones objetivo de formación (Acompañante + La Tina) detrás del Líder
+   * con compresión dinámica proporcional en vigas angostas, plataformas chicas o bordes.
+   */
+  function computeCompanionFormationTargets(
+    leader,
+    allPlatforms,
+    partnerW = 24,
+    tinaW = 34,
+    edgeMargin = 7
+  ) {
+    const facingRight = !leader || leader.facing !== 'left';
+    const nomPartnerDx = facingRight ? -36 : 36;
+    const nomTinaDx = facingRight ? -68 : 62;
+
+    let leaderSpan = findSupportingSurfaceSpan(leader, allPlatforms);
+    if (leaderSpan && leader) {
+      leader._lastSurfaceSpan = leaderSpan;
+    } else if (
+      leader &&
+      leader._lastSurfaceSpan &&
+      (!allPlatforms ||
+        !leader._lastSurfaceSpan.plat ||
+        allPlatforms.indexOf(leader._lastSurfaceSpan.plat) !== -1) &&
+      leader.x + leader.w > leader._lastSurfaceSpan.left - 24 &&
+      leader.x < leader._lastSurfaceSpan.right + 24 &&
+      leader.y + leader.h <= leader._lastSurfaceSpan.y + 18 &&
+      (!leader._lastSurfaceSpan.plat ||
+        leader._lastSurfaceSpan.plat.state !== 'respawning')
+    ) {
+      leaderSpan = leader._lastSurfaceSpan;
+    }
+
+    if (!leaderSpan) {
+      return {
+        targetPartnerX: (leader ? leader.x : 0) + nomPartnerDx,
+        targetTinaX: (leader ? leader.x : 0) + nomTinaDx,
+        leaderSpan: null,
+        partnerSafeRange: null,
+        tinaSafeRange: null,
+        availableBehind: Infinity,
+        scale: 1,
+        compressed: false,
+      };
+    }
+
+    const partnerSafe = getActorSafeBoundsOnSpan(leaderSpan, partnerW, edgeMargin);
+    const tinaSafe = getActorSafeBoundsOnSpan(leaderSpan, tinaW, edgeMargin);
+    const clampVal = (v, minV, maxV) => Math.max(minV, Math.min(maxV, v));
+
+    const nominalRearDist = Math.abs(nomTinaDx);
+    const availableBehind = facingRight
+      ? Math.max(0, leader.x - tinaSafe.minX)
+      : Math.max(0, tinaSafe.maxX - leader.x);
+    const scale = Math.max(0, Math.min(1, availableBehind / nominalRearDist));
+
+    const targetPartnerX = clampVal(
+      leader.x + nomPartnerDx * scale,
+      partnerSafe.minX,
+      partnerSafe.maxX
+    );
+    const targetTinaX = clampVal(
+      leader.x + nomTinaDx * scale,
+      tinaSafe.minX,
+      tinaSafe.maxX
+    );
+
+    return {
+      targetPartnerX,
+      targetTinaX,
+      leaderSpan,
+      partnerSafeRange: partnerSafe,
+      tinaSafeRange: tinaSafe,
+      availableBehind,
+      scale,
+      compressed: scale < 0.999,
+    };
+  }
+
+  /**
+   * Mantiene a los acompañantes apoyados dentro de [safeMinX, safeMaxX] cuando comparten superficie
+   * con el Líder o se acomodan sobre su plataforma actual, evitando caídas por inercia en vigas.
+   */
+  function applyCompanionFollowEdgeGuard(actor, allPlatforms, formation, leader, targetX) {
+    if (!actor || !actor.isGrounded) return;
+    const compSpan = findSupportingSurfaceSpan(actor, allPlatforms);
+    const compSafe = compSpan ? getActorSafeBoundsOnSpan(compSpan, actor.w, 7) : null;
+    if (!compSafe) return;
+
+    const sameSurfaceAsLeader = Boolean(
+      formation.leaderSpan && surfaceSpansMatch(compSpan, formation.leaderSpan)
+    );
+    const leaderDroppedBelow = Boolean(leader && leader.y > actor.y + 28);
+    const targetOnOwnSpan =
+      targetX >= compSpan.left - 6 && targetX <= compSpan.right - actor.w + 6;
+
+    if (sameSurfaceAsLeader || (!leaderDroppedBelow && targetOnOwnSpan)) {
+      if (actor.x < compSafe.minX) {
+        actor.x = compSafe.minX;
+        if (actor.vx < 0) actor.vx = 0;
+      } else if (actor.x > compSafe.maxX) {
+        actor.x = compSafe.maxX;
+        if (actor.vx > 0) actor.vx = 0;
+      }
+    }
+  }
+
   // ==========================================================================
   // ACOMPAÑANTE HUMANO (ANDREA O NICO)
   // ==========================================================================
@@ -1121,6 +1453,10 @@
       this.airPlatformVx = 0;
       this.hangingRope = null;
       this.ropeCooldown = 0;
+      this.isHanging = false;
+      this.onCable = false;
+      this.onZipline = false;
+      this.onVine = false;
     }
 
     getActiveHitbox() {
@@ -1145,13 +1481,21 @@
       this.jumpQueue = [0.08];
     }
 
-    resetNear(leader) {
-      this.x = leader.x - 34;
-      this.y = leader.y;
+    resetNear(leader, solids = null, movingPlatforms = null) {
+      const allPlatforms = solids ? solids.concat(movingPlatforms || []) : null;
+      const formation = allPlatforms
+        ? computeCompanionFormationTargets(leader, allPlatforms, this.w, 34, 7)
+        : null;
+      this.x = formation ? formation.targetPartnerX : leader.x - 34;
+      this.y =
+        formation && formation.leaderSpan
+          ? formation.leaderSpan.y - this.h
+          : leader.y;
       this.vx = 0;
       this.vy = 0;
       this.onGround = false;
       this.isGrounded = false;
+      this.standingPlatform = null;
       this.state = 'active';
       this.hiddenInMetro = false;
       this.dropThroughTimer = 0;
@@ -1176,8 +1520,15 @@
         }
       }
 
-      const offset = leader.facing === 'right' ? -36 : 36;
-      const targetX = leader.x + offset;
+      const allPlatforms = solids.concat(movingPlatforms);
+      const formation = computeCompanionFormationTargets(
+        leader,
+        allPlatforms,
+        this.w,
+        34,
+        7
+      );
+      const targetX = formation.targetPartnerX;
       const diffX = targetX - this.x;
 
       if (Math.abs(diffX) > 5) {
@@ -1196,6 +1547,7 @@
 
       applyAirPlatformInertia(this, dt);
       this.x += this.vx * dt;
+      applyCompanionFollowEdgeGuard(this, allPlatforms, formation, leader, targetX);
       // La gravedad siempre aplica hasta que toque una superficie sólida
       this.vy = Math.min(MAX_FALL_SPEED, this.vy + GRAVITY * dt);
 
@@ -1205,7 +1557,6 @@
       this.isGrounded = false;
       this.standingPlatform = null;
 
-      const allPlatforms = solids.concat(movingPlatforms);
       for (let i = 0; i < allPlatforms.length; i++) {
         const p = allPlatforms[i];
         if (p.state === 'respawning') continue;
@@ -1230,8 +1581,12 @@
       }
 
       if (Math.abs(this.x - leader.x) > 340 || this.y > 620) {
-        this.x = leader.x + offset;
-        this.y = leader.y - 4;
+        this.x = targetX;
+        this.y =
+          formation.leaderSpan
+            ? formation.leaderSpan.y - this.h - 2
+            : leader.y - 4;
+        this.vx = 0;
         this.vy = 0;
         this.onGround = false;
         this.isGrounded = false;
@@ -1247,13 +1602,15 @@
       const animState =
         this.state === 'entering_metro'
           ? 'entering_metro'
-          : !this.onGround
-            ? this.vy < 0
-              ? 'jump'
-              : 'fall'
-            : Math.abs(this.vx) > 18
-              ? 'run'
-              : 'idle';
+          : isActorHanging(this) && !this.onGround
+            ? resolveHangingAnimState(this)
+            : !this.onGround
+              ? this.vy < 0
+                ? 'jump'
+                : 'fall'
+              : Math.abs(this.vx) > 18
+                ? 'run'
+                : 'idle';
 
       sprites.drawCharacterHD(
         ctx,
@@ -1309,6 +1666,7 @@
       // Cooldown de 30s para el Gruñido Feroz (Tecla G)
       this.growlCooldown = 0;
       this.growlMaxCooldown = TINA_COOLDOWN_MAX;
+      this.goldenBoostTimer = 0;
 
       // IA de búsqueda de proximidad (120-150px), Doble Salto y Pathfinding anti-atascos
       this.detectionRadius = 142;
@@ -1380,13 +1738,21 @@
       return true;
     }
 
-    resetNear(leader) {
-      this.x = leader.x - 68;
-      this.y = leader.y + 18;
+    resetNear(leader, solids = null, movingPlatforms = null) {
+      const allPlatforms = solids ? solids.concat(movingPlatforms || []) : null;
+      const formation = allPlatforms
+        ? computeCompanionFormationTargets(leader, allPlatforms, 24, this.w, 7)
+        : null;
+      this.x = formation ? formation.targetTinaX : leader.x - 68;
+      this.y =
+        formation && formation.leaderSpan
+          ? formation.leaderSpan.y - this.h
+          : leader.y + 18;
       this.vx = 0;
       this.vy = 0;
       this.onGround = false;
       this.isGrounded = false;
+      this.standingPlatform = null;
       this.jumpQueue = [];
       this.targetItem = null;
       this.ledgeState = null;
@@ -1566,7 +1932,11 @@
       this.animTimer += dt;
       if (this.dropThroughTimer > 0) this.dropThroughTimer = Math.max(0, this.dropThroughTimer - dt);
       if (this.growlTimer > 0) this.growlTimer = Math.max(0, this.growlTimer - dt);
-      if (this.growlCooldown > 0) this.growlCooldown = Math.max(0, this.growlCooldown - dt);
+      if (this.goldenBoostTimer > 0) this.goldenBoostTimer = Math.max(0, this.goldenBoostTimer - dt);
+      if (this.growlCooldown > 0) {
+        const cooldownScale = this.goldenBoostTimer > 0 ? 2.0 : 1.0;
+        this.growlCooldown = Math.max(0, this.growlCooldown - dt * cooldownScale);
+      }
       if (this.ledgeCooldown > 0) this.ledgeCooldown = Math.max(0, this.ledgeCooldown - dt);
 
       const allPlatforms = solids.concat(movingPlatforms || []);
@@ -1635,6 +2005,14 @@
           }
         }
       }
+
+      const formation = computeCompanionFormationTargets(
+        leader,
+        allPlatforms,
+        24,
+        this.w,
+        7
+      );
 
       // --- IA AUTÓNOMA DE RESCATE ILIMITADO [SHIFT] Y POWER-UPS EN PANTALLA ---
       const isPowerUpCollectible = (item) =>
@@ -1724,10 +2102,13 @@
             this.headBonkCount = 0;
             this.jumpedForElevated = false;
             if (distToLeader > 250) {
-              const offsetBack = leader.facing === 'right' ? -68 : 62;
-              this.x = leader.x + offsetBack;
-              this.y = leader.y - 4;
+              this.x = formation.targetTinaX;
+              this.y =
+                formation.leaderSpan
+                  ? formation.leaderSpan.y - this.h - 2
+                  : leader.y + 14;
               this.vy = 0;
+              this.vx = 0;
               this.onGround = false;
               this.isGrounded = false;
               this.jumpsUsed = 0;
@@ -1744,6 +2125,8 @@
           for (let i = 0; i < collectibles.length; i++) {
             const c = collectibles[i];
             if (c.collected || c.type === 'golden_bone' || c.type === '1up_bone') continue;
+            if ((c.tinaDelayTimer || 0) > 0) continue; // Esperar 1.0s (1000 ms) antes de que La Tina corra a recogerlo
+            if (c.isHighArcDrop && c.vy < 0) continue;
             const blockedUntil = this.ignoredItems.get(c) || 0;
             if (blockedUntil > this.animTimer) continue;
             const d = Math.hypot((c.x + 12) - myCx, (c.y + 12) - myCy);
@@ -1764,9 +2147,8 @@
         this.itemSearchTimer = 0;
       }
 
-      const followOffset = leader.facing === 'right' ? -68 : 62;
       const hasActiveItem = Boolean(this.targetItem && !this.targetItem.collected);
-      const wantedX = hasActiveItem ? this.targetItem.x : leader.x + followOffset;
+      const wantedX = hasActiveItem ? this.targetItem.x : formation.targetTinaX;
       const wantedY = hasActiveItem ? this.targetItem.y : leader.y;
 
       let targetX = wantedX;
@@ -1920,6 +2302,9 @@
 
       applyAirPlatformInertia(this, dt);
       this.x += this.vx * dt;
+      if (!hasActiveItem && !this.detourPlatform) {
+        applyCompanionFollowEdgeGuard(this, allPlatforms, formation, leader, targetX);
+      }
       // La gravedad siempre aplica hasta que la Tina toque el suelo o una plataforma
       this.vy = Math.min(MAX_FALL_SPEED, this.vy + GRAVITY * dt);
 
@@ -2021,10 +2406,13 @@
         this.ledgeState = null;
         this.ledgePlatform = null;
       } else if ((!rescueActive && Math.abs(this.x - leader.x) > 360) || this.y > 630) {
-        const offset = leader.facing === 'right' ? -68 : 62;
-        this.x = leader.x + offset;
-        this.y = leader.y - 4;
+        this.x = formation.targetTinaX;
+        this.y =
+          formation.leaderSpan
+            ? formation.leaderSpan.y - this.h - 2
+            : leader.y + 14;
         this.vy = 0;
+        this.vx = 0;
         this.onGround = false;
         this.isGrounded = false;
         this.jumpsUsed = 0;
@@ -2246,9 +2634,34 @@
       return true;
     }
 
-    update(dt, leader) {
+    update(dt, leader, solids = null) {
       if (this.dead) return;
       this.animTimer += dt;
+
+      if (!this._platformClamped && Array.isArray(solids) && solids.length > 0) {
+        this._platformClamped = true;
+        const footY = this.y + this.h;
+        if (footY < 455) {
+          let support = null;
+          for (let i = 0; i < solids.length; i++) {
+            const s = solids[i];
+            if (!s || Math.abs(s.y - footY) > 4) continue;
+            if (s.x + s.w >= this.minX && s.x <= this.maxX) {
+              support = s;
+              break;
+            }
+          }
+          if (support && support.w > this.w + 4) {
+            this.minX = Math.max(this.minX, support.x + 2);
+            this.maxX = Math.min(this.maxX, support.x + support.w - 2);
+            if (this.minX + this.w > this.maxX) {
+              this.minX = support.x;
+              this.maxX = support.x + support.w;
+            }
+            this.x = Math.max(this.minX, Math.min(this.maxX - this.w, this.x));
+          }
+        }
+      }
 
       if (this.scaredFlying) {
         this.x += this.vx * dt;
@@ -2673,19 +3086,20 @@
   }
 
   // ==========================================================================
-  // MADRID: GATO CALLEJERO (MadridCatEnemy) - REINGENIERÍA DE IA AGRESIVA
-  // - Hitbox horizontal incrementada (34x24) y mayor velocidad de reacción.
-  // - Emboscada en picada hacia abajo (diving) si el jugador pasa por debajo.
-  // - SALTO DEFENSIVO CON ZARPAZO FRONTAL (leaping): si el jugador intenta
-  //   saltar sobre el gato en una plataforma elevada, el gato detecta la
-  //   aproximación aérea y salta hacia arriba interceptando con zarpazo.
+  // MADRID: GATO CALLEJERO (MadridCatEnemy) - FÍSICA REAL Y SALTO PARABÓLICO
+  // - Hitbox horizontal (34x24) con gravedad continua y soporte real sobre vigas/suelo.
+  // - Sin teletransporte al subir a vigas altas: anticipación breve (~150ms) + arco parabólico real.
+  // - Caída libre real por gravedad al saltar fuera de una viga (suelo inferior o muerte en pozo).
   // ==========================================================================
+  const CAT_GRAVITY = 1120;
+
   class MadridCatEnemy {
     constructor(x, y, minX, maxX, speed = 85, levelIndex = 0, isAmbush = false) {
       this.x = x;
       this.y = y - 24;
       this.initialX = x;
       this.initialY = this.y;
+      this.initialPlatformY = y;
       this.w = 34;
       this.h = 24;
       this.minX = minX;
@@ -2695,6 +3109,7 @@
       this.baseSpeed = Math.abs(speed) * getLevelSpeedScale(levelIndex) * 1.2;
       this.vx = this.baseSpeed;
       this.vy = 0;
+      this.onGround = true;
       this.facing = 'right';
       this.dead = false;
       this.scaredFlying = false;
@@ -2703,104 +3118,549 @@
       this.pauseTimer = 0;
       this.animTimer = Math.random() * 4;
       this.isAmbush = isAmbush;
-      this.ambushState = isAmbush ? 'perched' : 'patrol'; // 'perched' | 'diving' | 'leaping' | 'ground' | 'patrol'
+      this.ambushState = isAmbush ? 'perched' : 'patrol'; // 'perched' | 'diving' | 'leaping' | 'attack_crouch' | 'attack_leap' | 'crouch_up' | 'climbing_jump' | 'crouch_down' | 'drop_jump' | 'ground' | 'patrol'
       this.diveTimer = 0;
       this.leapCooldown = 0;
+      this.attackCooldown = 0;
+      this.verticalCooldown = 0;
+      this.groundTimer = 0;
+      this.crouchTimer = 0;
+      this.jumpCooldown = 0;
+      this.jumpTargetPlat = null;
+      this.dropFromPlat = null;
+      this.dropLandingX = 0;
+      this.attackDir = 1;
+      this.jumpFlightVx = 0;
     }
 
     isDisabled() {
       return this.stunTimer > 0 || this.hypnotizedTimer > 0;
     }
 
+    _facingSign() {
+      return this.facing === 'right' ? 1 : -1;
+    }
+
+    _resetTransientJumpState() {
+      if (
+        this.ambushState === 'leaping' ||
+        this.ambushState === 'attack_leap' ||
+        this.ambushState === 'attack_crouch' ||
+        this.ambushState === 'diving' ||
+        this.ambushState === 'crouch_up' ||
+        this.ambushState === 'climbing_jump' ||
+        this.ambushState === 'crouch_down' ||
+        this.ambushState === 'drop_jump'
+      ) {
+        this.ambushState = 'ground';
+        this.crouchTimer = 0;
+        this.jumpTargetPlat = null;
+        this.dropFromPlat = null;
+        this.vx *= 0.25;
+      }
+    }
+
     stun(seconds = 3.0) {
       this.stunTimer = Math.max(this.stunTimer, seconds);
-      if (this.ambushState === 'leaping' || this.ambushState === 'diving') {
-        this.ambushState = 'ground';
-      }
+      this._resetTransientJumpState();
     }
 
     hypnotize(seconds = 3.0) {
       this.hypnotizedTimer = Math.max(this.hypnotizedTimer, seconds);
-      if (this.ambushState === 'leaping' || this.ambushState === 'diving') {
-        this.ambushState = 'ground';
-      }
+      this._resetTransientJumpState();
     }
 
     scareFlyUp() {
       return false; // Los gatos son inmunes al ladrido aéreo
     }
 
-    update(dt, leader) {
+    _hasFloorSupportAt(platforms, probeX, targetY, toleranceY = 12) {
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken) continue;
+        if (probeX >= p.x + 2 && probeX <= p.x + p.w - 2 && Math.abs(p.y - targetY) <= toleranceY) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    _findSupportingPlatform(platforms) {
+      const footLeft = this.x + 4;
+      const footRight = this.x + this.w - 4;
+      const feetY = this.y + this.h;
+      let best = null;
+      let bestDiff = 5;
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken) continue;
+        if (footRight > p.x && footLeft < p.x + p.w) {
+          const diff = Math.abs(feetY - p.y);
+          if (diff <= bestDiff) {
+            bestDiff = diff;
+            best = p;
+          }
+        }
+      }
+      return best;
+    }
+
+    _findClimbableHighPlatform(platforms, preferX = null) {
+      const catCx = this.x + this.w * 0.5;
+      let best = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken) continue;
+        const targetTopY = p.y - this.h;
+        const deltaY = this.y - targetTopY;
+        if (deltaY < 26 || deltaY > 175) continue;
+        // Evitar saltar de cabeza contra bloques sólidos opacos directamente encima
+        const horizontallyOutside = this.x + this.w <= p.x + 4 || this.x >= p.x + p.w - 4;
+        if (!p.oneWay && !horizontallyOutside) continue;
+        const platCx = p.x + p.w * 0.5;
+        const distHoriz = Math.abs(catCx - platCx);
+        if (distHoriz > p.w * 0.5 + 150) continue;
+        const targetBias = preferX !== null ? Math.abs(platCx - preferX) * 0.45 : 0;
+        const origBias = Math.abs(p.y - this.initialPlatformY) <= 10 && this.isAmbush ? -80 : 0;
+        const score = distHoriz + deltaY * 0.35 + targetBias + origBias;
+        if (score < bestScore) {
+          bestScore = score;
+          best = p;
+        }
+      }
+      return best;
+    }
+
+    _findLowerLandingSpot(platforms, currentPlat, preferX = null) {
+      if (!currentPlat) return null;
+      let best = null;
+      let bestScore = Infinity;
+      const desiredX = preferX !== null ? preferX - this.w * 0.5 : this.x;
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken || p === currentPlat) continue;
+        const dropDy = p.y - (this.y + this.h);
+        if (dropDy < 24 || dropDy > 210) continue;
+        const pSafeMin = p.x + 12;
+        const pSafeMax = p.x + p.w - this.w - 12;
+        if (pSafeMax < pSafeMin) continue;
+
+        const candidates = [];
+        if (currentPlat.oneWay) {
+          const reachMin = Math.max(pSafeMin, currentPlat.x - 70);
+          const reachMax = Math.min(pSafeMax, currentPlat.x + currentPlat.w + 70 - this.w);
+          if (reachMin <= reachMax) {
+            candidates.push(Math.max(reachMin, Math.min(reachMax, desiredX)));
+          }
+        } else {
+          const leftOff = currentPlat.x - this.w - 8;
+          const rightOff = currentPlat.x + currentPlat.w + 8;
+          if (leftOff >= pSafeMin && leftOff <= pSafeMax) candidates.push(leftOff);
+          if (rightOff >= pSafeMin && rightOff <= pSafeMax) candidates.push(rightOff);
+        }
+
+        for (let c = 0; c < candidates.length; c++) {
+          const cx = candidates[c];
+          if (
+            !this._hasFloorSupportAt(platforms, cx + 4, p.y, 10) ||
+            !this._hasFloorSupportAt(platforms, cx + this.w - 4, p.y, 10)
+          ) {
+            continue;
+          }
+          const score = Math.abs(cx - this.x) + dropDy * 0.25 + Math.abs(cx - desiredX) * 0.35;
+          if (score < bestScore) {
+            bestScore = score;
+            best = { plat: p, targetX: cx };
+          }
+        }
+      }
+      return best;
+    }
+
+    _applyGravityAndLanding(dt, allPlatforms, ignorePlat = null) {
+      const prevBottom = this.y + this.h;
+      this.vy = Math.min(MAX_FALL_SPEED, this.vy + CAT_GRAVITY * dt);
+      this.y += this.vy * dt;
+      this.onGround = false;
+
+      if (this.dropFromPlat && prevBottom > this.dropFromPlat.y + 16) {
+        this.dropFromPlat = null;
+      }
+
+      if (this.vy >= 0 && allPlatforms.length > 0) {
+        const footLeft = this.x + 4;
+        const footRight = this.x + this.w - 4;
+        let landedPlat = null;
+        let bestY = Infinity;
+        for (let i = 0; i < allPlatforms.length; i++) {
+          const p = allPlatforms[i];
+          if (!p || p.broken) continue;
+          if (ignorePlat && p === ignorePlat && prevBottom <= ignorePlat.y + 16) continue;
+          if (
+            footRight > p.x &&
+            footLeft < p.x + p.w &&
+            prevBottom <= p.y + 12 &&
+            this.y + this.h >= p.y &&
+            this.y + this.h <= p.y + 30
+          ) {
+            if (p.y < bestY) {
+              bestY = p.y;
+              landedPlat = p;
+            }
+          }
+        }
+        if (landedPlat) {
+          this.y = landedPlat.y - this.h;
+          this.vy = 0;
+          this.onGround = true;
+          this.dropFromPlat = null;
+          return landedPlat;
+        }
+      }
+
+      if (this.y > 540) {
+        this.dead = true;
+      }
+      return null;
+    }
+
+    _setVerticalCooldown(seconds = 3.0) {
+      this.verticalCooldown = seconds;
+      this.jumpCooldown = seconds;
+    }
+
+    _startClimbJumpWindup(plat) {
+      const catCx = this.x + this.w * 0.5;
+      this.ambushState = 'crouch_up';
+      this.crouchTimer = 0.15;
+      this.jumpTargetPlat = plat;
+      this.dropFromPlat = null;
+      this.vx = 0;
+      this.facing = plat.x + plat.w * 0.5 >= catCx ? 'right' : 'left';
+    }
+
+    _startDropJumpWindup(dropSpot, currentPlat) {
+      this.ambushState = 'crouch_down';
+      this.crouchTimer = 0.14;
+      this.jumpTargetPlat = dropSpot.plat;
+      this.dropLandingX = dropSpot.targetX;
+      this.dropFromPlat = currentPlat && currentPlat.oneWay ? currentPlat : null;
+      this.vx = 0;
+      this.facing = dropSpot.targetX >= this.x ? 'right' : 'left';
+    }
+
+    _reversePatrol(nextFacing) {
+      this.facing = nextFacing;
+      this.vx = 0;
+      this.pauseTimer = 0.28;
+    }
+
+    update(dt, leader, solids = [], movingPlatforms = []) {
       if (this.dead) return;
       this.animTimer += dt;
       if (this.stunTimer > 0) this.stunTimer = Math.max(0, this.stunTimer - dt);
       if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
       if (this.leapCooldown > 0) this.leapCooldown = Math.max(0, this.leapCooldown - dt);
+      if (this.attackCooldown > 0) this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+      if (this.verticalCooldown > 0) {
+        this.verticalCooldown = Math.max(0, this.verticalCooldown - dt);
+        this.jumpCooldown = this.verticalCooldown;
+      }
 
-      if (this.isDisabled()) return;
+      const allPlatforms =
+        solids.length || movingPlatforms.length
+          ? solids.concat(movingPlatforms)
+          : [];
 
-      // --- IA Reactiva ante la aproximación del jugador ---
+      // Verificar soporte real en pies cuando está apoyado
+      let supportPlat = null;
+      if (allPlatforms.length > 0 && this.onGround) {
+        supportPlat = this._findSupportingPlatform(allPlatforms);
+        if (!supportPlat) {
+          this.onGround = false;
+        }
+      }
+
+      // Incluso estando aturdido o hipnotizado, el gato sigue sometido a gravedad real
+      if (this.isDisabled()) {
+        if (!this.onGround && allPlatforms.length > 0) {
+          this.x += this.vx * 0.25 * dt;
+          const landed = this._applyGravityAndLanding(dt, allPlatforms, this.dropFromPlat);
+          if (landed) {
+            this.vx = 0;
+            this.ambushState =
+              this.isAmbush && Math.abs(landed.y - this.initialPlatformY) <= 10
+                ? 'perched'
+                : 'ground';
+          }
+        }
+        return;
+      }
+
+      // 1A. Anticipación breve agachada antes de ataque frontal hacia el jugador ('attack_crouch')
+      if (this.ambushState === 'attack_crouch') {
+        if (!this.onGround && allPlatforms.length > 0) {
+          const landed = this._applyGravityAndLanding(dt, allPlatforms);
+          if (!landed) return;
+        }
+        this.vx = 0;
+        this.facing = this.attackDir >= 0 ? 'right' : 'left';
+        this.crouchTimer -= dt;
+        if (this.crouchTimer <= 0) {
+          this.vy = -345;
+          this.vx = this.attackDir * 255;
+          this.onGround = false;
+          this.ambushState = 'attack_leap';
+          this.attackCooldown = 2.4;
+        }
+        return;
+      }
+
+      // 1B. Anticipación breve (~150 ms) antes de saltar del suelo hacia una viga alta
+      if (this.ambushState === 'crouch_up') {
+        if (!this.onGround && allPlatforms.length > 0) {
+          const landed = this._applyGravityAndLanding(dt, allPlatforms);
+          if (!landed) return;
+        }
+        this.vx = 0;
+        this.crouchTimer -= dt;
+        const targetPlat = this.jumpTargetPlat;
+        if (targetPlat) {
+          const catCx = this.x + this.w * 0.5;
+          const platCx = targetPlat.x + targetPlat.w * 0.5;
+          this.facing = platCx >= catCx ? 'right' : 'left';
+        }
+        if (this.crouchTimer <= 0) {
+          if (targetPlat && !targetPlat.broken) {
+            const targetTopY = targetPlat.y - this.h;
+            const deltaY = Math.max(24, this.y - targetTopY);
+            const clearance = 28;
+            const peakH = deltaY + clearance;
+            const vy0 = -Math.sqrt(2 * CAT_GRAVITY * peakH);
+            const tUp = -vy0 / CAT_GRAVITY;
+            const tDown = Math.sqrt((2 * clearance) / CAT_GRAVITY);
+            const flightTime = Math.max(0.22, tUp + tDown);
+            const safeMin = targetPlat.x + 14;
+            const safeMax = Math.max(safeMin, targetPlat.x + targetPlat.w - this.w - 14);
+            const targetLandX = Math.max(safeMin, Math.min(safeMax, this.x));
+            const rawVx = (targetLandX - this.x) / flightTime;
+            this.vx = Math.max(-245, Math.min(245, rawVx));
+            this.vy = vy0;
+            this.onGround = false;
+            this.facing = this.vx >= 0 ? 'right' : 'left';
+            this.ambushState = 'climbing_jump';
+            this._setVerticalCooldown(3.0);
+          } else {
+            this.ambushState = 'ground';
+          }
+          this.jumpTargetPlat = null;
+        }
+        return;
+      }
+
+      // 1C. Anticipación breve antes de bajar de una viga alta hacia el suelo inferior ('crouch_down')
+      if (this.ambushState === 'crouch_down') {
+        if (!this.onGround && allPlatforms.length > 0) {
+          const landed = this._applyGravityAndLanding(dt, allPlatforms, this.dropFromPlat);
+          if (!landed) return;
+        }
+        this.vx = 0;
+        this.crouchTimer -= dt;
+        if (this.crouchTimer <= 0) {
+          const targetPlat = this.jumpTargetPlat;
+          if (targetPlat && !targetPlat.broken) {
+            const vy0 = -175;
+            const fallDist = Math.max(20, (targetPlat.y - this.h) - this.y);
+            const tTotal = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * CAT_GRAVITY * fallDist)) / CAT_GRAVITY;
+            const rawVx = (this.dropLandingX - this.x) / Math.max(0.2, tTotal);
+            this.vx = Math.max(-210, Math.min(210, rawVx));
+            this.vy = vy0;
+            this.onGround = false;
+            if (Math.abs(this.vx) > 4) this.facing = this.vx >= 0 ? 'right' : 'left';
+            this.ambushState = 'drop_jump';
+            this._setVerticalCooldown(3.0);
+          } else {
+            this.dropFromPlat = null;
+            this.ambushState = 'perched';
+          }
+          this.jumpTargetPlat = null;
+        }
+        return;
+      }
+
+      // 2. Trayectorias parabólicas en el aire (ataque frontal SIN freno en bordes, subida, bajada o intercepto)
+      if (
+        this.ambushState === 'attack_leap' ||
+        this.ambushState === 'climbing_jump' ||
+        this.ambushState === 'drop_jump' ||
+        this.ambushState === 'leaping'
+      ) {
+        const finishedVertical =
+          this.ambushState === 'climbing_jump' || this.ambushState === 'drop_jump';
+        this.x += this.vx * dt;
+        const landed = this._applyGravityAndLanding(
+          dt,
+          allPlatforms,
+          this.ambushState === 'drop_jump' ? this.dropFromPlat : null
+        );
+        if (this.dead) return;
+        if (landed) {
+          this.vx = 0;
+          const onInitialPerch = this.isAmbush && Math.abs(landed.y - this.initialPlatformY) <= 10;
+          this.ambushState = onInitialPerch ? 'perched' : (this.isAmbush ? 'ground' : 'patrol');
+          this.pauseTimer = this.ambushState === 'perched' ? 0.28 : 0.34;
+          this.groundTimer = onInitialPerch ? 0 : 1.5;
+          if (finishedVertical) {
+            // Regla estricta: 3.0s completos desde que termina la subida/bajada antes del próximo cambio vertical
+            this._setVerticalCooldown(3.0);
+          }
+        }
+        return;
+      }
+
+      // 3. Emboscada en picada vertical hacia abajo ('diving') hasta terreno verificado
+      if (this.ambushState === 'diving') {
+        const landed = this._applyGravityAndLanding(dt, allPlatforms);
+        if (this.dead) return;
+        if (landed) {
+          this.vx = 0;
+          this.ambushState = 'ground';
+          this.diveTimer = 0.45;
+          this.groundTimer = 1.8;
+          this._setVerticalCooldown(3.0);
+        }
+        return;
+      }
+
+      // 4. Caída libre continua si perdió soporte físico real
+      if (!this.onGround && allPlatforms.length > 0) {
+        const landed = this._applyGravityAndLanding(dt, allPlatforms);
+        if (this.dead) return;
+        if (landed) {
+          this.vx = 0;
+          const onInitialPerch = this.isAmbush && Math.abs(landed.y - this.initialPlatformY) <= 10;
+          if (!onInitialPerch && this.ambushState === 'perched') {
+            this.ambushState = 'ground';
+            this.groundTimer = 1.6;
+          }
+          this.pauseTimer = 0.2;
+        }
+        return;
+      }
+
+      // --- IA Reactiva con pies firmes ---
       if (leader && !this.dead) {
         const catCenterX = this.x + this.w * 0.5;
         const leaderCenterX = leader.x + leader.w * 0.5;
         const dx = leaderCenterX - catCenterX;
         const absDx = Math.abs(dx);
         const dy = leader.y - this.y;
+        const catFeetY = this.y + this.h;
+        const leaderFeetY = leader.y + leader.h;
+        const facingSign = this._facingSign();
 
-        // 1. Emboscada en picada vertical hacia abajo si el jugador pasa por debajo
-        if (this.isAmbush && this.ambushState === 'perched' && absDx < 85 && dy > 18) {
-          this.ambushState = 'diving';
-          this.vy = 480;
-          this.facing = dx < 0 ? 'left' : 'right';
+        // A. ATAQUE FRONTAL EN SALTO HACIA ADELANTE (mismo plano vertical + mirando al jugador + cooldown listo)
+        const sameVerticalPlane = Boolean(leader.onGround && Math.abs(leaderFeetY - catFeetY) <= 16);
+        const lookSign = Math.sign(leader.x - this.x) || Math.sign(dx);
+        const facingPlayer = lookSign !== 0 && lookSign === facingSign;
+        if (sameVerticalPlane && facingPlayer && absDx <= 195 && this.attackCooldown <= 0) {
+          this.ambushState = 'attack_crouch';
+          this.crouchTimer = 0.18;
+          this.attackDir = facingSign;
+          this.vx = 0;
+          return;
         }
 
-        // 2. Salto defensivo hacia arriba con zarpazo frontal si el jugador intenta saltarle encima
+        // B. BAJAR DE VIGA ALTA AL SUELO (regido por verticalCooldown === 0 y siempre sobre suelo firme)
+        if (
+          allPlatforms.length > 0 &&
+          supportPlat &&
+          this.y + this.h < 430 &&
+          this.verticalCooldown <= 0 &&
+          leaderFeetY >= catFeetY + 24 &&
+          absDx < 200
+        ) {
+          const dropSpot = this._findLowerLandingSpot(allPlatforms, supportPlat, leaderCenterX);
+          if (dropSpot) {
+            if (
+              this.isAmbush &&
+              this.ambushState === 'perched' &&
+              absDx < 85 &&
+              dy > 18 &&
+              this._hasFloorSupportAt(allPlatforms, catCenterX, dropSpot.plat.y, 12)
+            ) {
+              this.ambushState = 'diving';
+              this.onGround = false;
+              this.vy = 420;
+              this.facing = dx < 0 ? 'left' : 'right';
+              this._setVerticalCooldown(3.0);
+              return;
+            }
+            this._startDropJumpWindup(dropSpot, supportPlat);
+            return;
+          }
+        }
+
+        // C. SUBIR DEL SUELO A UNA VIGA ALTA (regido estrictamente por verticalCooldown === 0)
+        if (
+          allPlatforms.length > 0 &&
+          this.verticalCooldown <= 0 &&
+          leaderFeetY <= this.y - 18 &&
+          leaderFeetY >= this.y - 175 &&
+          absDx < 165
+        ) {
+          const climbPlat = this._findClimbableHighPlatform(allPlatforms, leaderCenterX);
+          if (climbPlat) {
+            this._startClimbJumpWindup(climbPlat);
+            return;
+          }
+        }
+
+        // D. Intercepto aéreo corto si el jugador salta encima (solo si hay suelo firme todo el salto, sin suicidio en pozo)
         if (
           this.leapCooldown <= 0 &&
-          this.ambushState !== 'diving' &&
-          this.ambushState !== 'leaping' &&
-          absDx < 115 &&
-          dy >= -70 &&
-          dy <= 35 &&
-          !leader.onGround
+          absDx < 95 &&
+          dy >= -68 &&
+          dy <= 10 &&
+          !leader.onGround &&
+          (
+            !allPlatforms.length ||
+            (this._hasFloorSupportAt(allPlatforms, catCenterX + (dx >= 0 ? 40 : -40), catFeetY, 14) &&
+              this._hasFloorSupportAt(allPlatforms, catCenterX + (dx >= 0 ? 82 : -82), catFeetY, 14))
+          )
         ) {
           this.ambushState = 'leaping';
-          this.vy = -400; // Salto vertical rápido interceptando el salto del jugador
-          this.vx = (dx < 0 ? -1 : 1) * 160;
+          this.onGround = false;
+          this.vy = -380;
+          this.vx = (dx < 0 ? -1 : 1) * 110;
           this.facing = dx < 0 ? 'left' : 'right';
           this.leapCooldown = 2.2;
+          return;
         }
       }
 
-      // --- Máquina de Estados del Gato ---
-      if (this.ambushState === 'leaping') {
-        this.vy += 1050 * dt;
-        this.y += this.vy * dt;
-        this.x += this.vx * dt;
-        if (this.y >= this.initialY) {
-          this.y = this.initialY;
-          this.vy = 0;
-          this.ambushState = this.isAmbush ? 'perched' : 'patrol';
-          this.pauseTimer = 0.3;
-        }
-        return;
-      }
-
-      if (this.ambushState === 'diving') {
-        this.y += this.vy * dt;
-        const groundY = 460 - this.h;
-        if (this.y >= groundY) {
-          this.y = groundY;
-          this.ambushState = 'ground';
-          this.diveTimer = 0.45;
-        }
-        return;
-      }
-
+      // Retorno controlado de emboscada a su viga original respetando verticalCooldown (3.0s)
       if (this.ambushState === 'ground') {
         if (this.diveTimer > 0) {
           this.diveTimer = Math.max(0, this.diveTimer - dt);
           return;
+        }
+        if (this.groundTimer > 0) {
+          this.groundTimer = Math.max(0, this.groundTimer - dt);
+        }
+        if (
+          this.isAmbush &&
+          allPlatforms.length > 0 &&
+          this.groundTimer <= 0 &&
+          this.verticalCooldown <= 0 &&
+          this.y > this.initialY + 18
+        ) {
+          const homePlat = this._findClimbableHighPlatform(allPlatforms, this.initialX + this.w * 0.5);
+          if (homePlat) {
+            this._startClimbJumpWindup(homePlat);
+            return;
+          }
         }
       }
 
@@ -2809,19 +3669,47 @@
         return;
       }
 
-      // Patrulla horizontal
-      const dir = this.facing === 'right' ? 1 : -1;
-      this.vx = dir * this.baseSpeed;
-      this.x += this.vx * dt;
+      // 5. PATRULLA INTELIGENTE SIN SUICIDIOS EN POZOS
+      const dir = this._facingSign();
+      const stepVx = dir * this.baseSpeed;
+      const nextX = this.x + stepVx * dt;
 
-      if (this.x <= this.minX) {
-        this.x = this.minX;
-        this.facing = 'right';
-        this.pauseTimer = 0.35;
-      } else if (this.x + this.w >= this.maxX) {
-        this.x = this.maxX - this.w;
-        this.facing = 'left';
-        this.pauseTimer = 0.35;
+      if (supportPlat && allPlatforms.length > 0) {
+        const edgeTooClose =
+          dir > 0
+            ? nextX + this.w > supportPlat.x + supportPlat.w - 4
+            : nextX < supportPlat.x + 4;
+        const leadProbeX = dir > 0 ? nextX + this.w + 5 : nextX - 5;
+        const floorAhead = !edgeTooClose || this._hasFloorSupportAt(allPlatforms, leadProbeX, supportPlat.y, 12);
+        if (!floorAhead) {
+          const safeLeft = supportPlat.x + 4;
+          const safeRight = Math.max(safeLeft, supportPlat.x + supportPlat.w - this.w - 4);
+          this.x = Math.max(safeLeft, Math.min(safeRight, this.x));
+          this._reversePatrol(dir > 0 ? 'left' : 'right');
+          return;
+        }
+      }
+
+      this.vx = stepVx;
+      this.x = nextX;
+
+      const onOriginalHeight = Math.abs(this.y + this.h - this.initialPlatformY) <= 10;
+      if (onOriginalHeight) {
+        if (this.x <= this.minX) {
+          this.x = this.minX;
+          this._reversePatrol('right');
+        } else if (this.x + this.w >= this.maxX) {
+          this.x = this.maxX - this.w;
+          this._reversePatrol('left');
+        }
+      } else if (!allPlatforms.length) {
+        if (this.x <= this.minX) {
+          this.x = this.minX;
+          this._reversePatrol('right');
+        } else if (this.x + this.w >= this.maxX) {
+          this.x = this.maxX - this.w;
+          this._reversePatrol('left');
+        }
       }
     }
 
@@ -2840,7 +3728,9 @@
         this.pauseTimer > 0 ? 0 : this.animTimer,
         this.isDisabled(),
         this.isAmbush,
-        this.ambushState
+        this.ambushState,
+        this.vy,
+        this.onGround
       );
       drawEnemyStatusOverlay(
         ctx,
@@ -2985,8 +3875,14 @@
       this.stunTimer = 0;
       this.armorBreakTimer = 0;
       this.hypnotizedTimer = 0;
+      this.turnReactionTimer = 0;
       this.animTimer = Math.random() * 5;
       this.flyingPieces = [];
+    }
+
+    getFacingDir() {
+      if (typeof this.facing === 'number') return Math.sign(this.facing) || -1;
+      return this.facing === 'right' ? 1 : -1;
     }
 
     isDisabled() {
@@ -3051,10 +3947,32 @@
       return true;
     }
 
-    takeHit(particles = null, knockDir = 1, fromArmorBreaker = false, ignoreCooldown = false) {
+    takeHit(particles = null, knockDir = 1, fromArmorBreaker = false, ignoreCooldown = false, projectile = null) {
       if (this.dead) return 'none';
       if (!ignoreCooldown && this.hitCooldown > 0) return 'ignored';
       if (this.hasArmor) {
+        if (projectile) {
+          const rawVx =
+            Number.isFinite(projectile.vx) && projectile.vx !== 0
+              ? projectile.vx
+              : (projectile.dirX || knockDir || 0);
+          const projDir = Math.sign(rawVx);
+          const guardDir = Math.sign(this.getFacingDir());
+          // Defensa frontal real: proyectil de Planta en dirección opuesta a donde mira el policía rebota en el escudo
+          if (projDir !== 0 && projDir !== guardDir) {
+            if (particles) {
+              const frontX = this.x + this.w * 0.5 + guardDir * (this.w * 0.45);
+              const hitY = Number.isFinite(projectile.y)
+                ? projectile.y + (projectile.h || 20) * 0.5
+                : this.y + this.h * 0.45;
+              particles.Burst(frontX, hitY, '#f8fafc', 8);
+              particles.Burst(frontX, hitY, '#fbbf24', 10);
+              particles.Sparkle(frontX + guardDir * 3, hitY - 4, '#fef08a');
+              particles.Sparkle(frontX - guardDir * 2, hitY + 4, '#38bdf8');
+            }
+            return 'blocked_front';
+          }
+        }
         if (!fromArmorBreaker) return 'blocked';
         this.breakArmor(particles, knockDir);
         return 'armor_broken';
@@ -3090,9 +4008,22 @@
       if (this.hasArmor && leader && !leader.dead) {
         const dx = leader.x + leader.w * 0.5 - (this.x + this.w * 0.5);
         const dy = Math.abs(leader.y - this.y);
-        if (Math.abs(dx) < 175 && Math.abs(dx) > 16 && dy < 90) {
-          this.facing = dx >= 0 ? 'right' : 'left';
+        if (Math.abs(dx) < 175 && Math.abs(dx) > 20 && dy < 90) {
+          const desiredFacing = dx >= 0 ? 'right' : 'left';
+          if (desiredFacing === this.facing) {
+            this.turnReactionTimer = 0;
+          } else {
+            this.turnReactionTimer += dt;
+            if (this.turnReactionTimer >= 0.58) {
+              this.facing = desiredFacing;
+              this.turnReactionTimer = 0;
+            }
+          }
+        } else {
+          this.turnReactionTimer = 0;
         }
+      } else {
+        this.turnReactionTimer = 0;
       }
 
       const dir = this.facing === 'right' ? 1 : -1;
@@ -3103,9 +4034,11 @@
       if (this.x <= this.minX) {
         this.x = this.minX;
         this.facing = 'right';
+        this.turnReactionTimer = 0;
       } else if (this.x + this.w >= this.maxX) {
         this.x = this.maxX - this.w;
         this.facing = 'left';
+        this.turnReactionTimer = 0;
       }
     }
 
@@ -3133,13 +4066,298 @@
   }
 
   // ==========================================================================
+  // MADRID (PARQUE DEL RETIRO): PAVO REAL (PeacockEnemy) — 2 HP
+  // - Estado Pasivo (tailOpen = false): camina luciendo su cola plegada esmeralda;
+  //   vulnerable a salto en la cabeza (-1 HP por salto).
+  // - Estado Cola Abierta (tailOpen = true): se detiene y despliega su abanico
+  //   de plumas con ocelos zamarreándose; 100 % INMUNE al salto superior (daña al
+  //   jugador y rebota). Planta [Z] le hace daño; Especiales [C] por área solo
+  //   cierran su cola y lo noquean/enamoran sin quitarle HP (salvo Terremoto de
+  //   Nico cayendo directamente encima, que resta 1 HP y lo deja noqueado).
+  // ==========================================================================
+  class PeacockEnemy {
+    constructor(x, y, minX, maxX, speed = 62, levelIndex = 0) {
+      this.w = 38;
+      this.h = 46;
+      this.x = x;
+      this.y = y - this.h;
+      this.minX = minX;
+      this.maxX = maxX;
+      this.levelIndex = levelIndex;
+      this.baseSpeed = Math.abs(speed) * getLevelSpeedScale(levelIndex);
+      this.vx = this.baseSpeed;
+      this.facing = 'right';
+      this.dead = false;
+      this.stunTimer = 0;
+      this.hypnotizedTimer = 0;
+      this.slowTimer = 0;
+      this.pauseTimer = 0;
+      this.animTimer = Math.random() * 4;
+      this.tailOpen = false;
+      this.stateTimer = Math.abs(Math.sin(x)) * 1.2;
+      this.passiveDuration = 2.8;
+      this.openDuration = 2.2;
+      this.reopenCooldown = 0;
+      this.shakeParticleTimer = 0;
+      initHeavyHitFields(this, 2);
+    }
+
+    isDisabled() {
+      return this.stunTimer > 0 || this.hypnotizedTimer > 0;
+    }
+
+    stun(seconds = 3.2) {
+      this.stunTimer = Math.max(this.stunTimer, seconds);
+      this.hypnotizedTimer = 0;
+      this.tailOpen = false;
+      this.stateTimer = 0;
+      this.reopenCooldown = 1.6;
+    }
+
+    hypnotize(seconds = 3.5) {
+      this.hypnotizedTimer = Math.max(this.hypnotizedTimer, seconds);
+      this.stunTimer = 0;
+      this.tailOpen = false;
+      this.stateTimer = 0;
+      this.reopenCooldown = 1.6;
+    }
+
+    applySlow(seconds = 2.0) {
+      this.slowTimer = Math.max(this.slowTimer || 0, seconds);
+    }
+
+    scareFlyUp() {
+      return false;
+    }
+
+    takeHit(particles = null, knockDir = 1, fromPlantOrSpecial = false, ignoreCooldown = false, stunDuration = 0.55) {
+      if (this.dead) return 'none';
+      if (!ignoreCooldown && this.hitCooldown > 0) return 'cooldown';
+      if (this.tailOpen && !fromPlantOrSpecial && !this.isDisabled()) {
+        return 'tail_blocked';
+      }
+      this.hp = Math.max(0, (Number.isFinite(this.hp) ? this.hp : 2) - 1);
+      if (this.hp >= 1) {
+        this.tailOpen = false;
+        this.stateTimer = 0;
+        this.reopenCooldown = 1.6;
+        this.hypnotizedTimer = 0;
+        this.stunTimer = Math.max(this.stunTimer, stunDuration);
+        this.hitFlashTimer = 0.30;
+        this.hitCooldown = 0.28;
+        this.knockbackVx = (knockDir >= 0 ? 1 : -1) * 110;
+        this.knockbackTimer = 0.20;
+        if (particles) {
+          const cx = this.x + this.w * 0.5;
+          const cy = this.y + this.h * 0.45;
+          particles.Burst(cx, cy, '#10b981', 12);
+          particles.Burst(cx, cy, '#2563eb', 8);
+          particles.Burst(cx, cy, '#fbbf24', 6);
+        }
+        return 'damaged';
+      }
+      this.dead = true;
+      this.tailOpen = false;
+      return 'killed';
+    }
+
+    update(dt, player = null, particles = null, sound = null) {
+      if (this.dead) return;
+      if (this.slowTimer > 0) this.slowTimer = Math.max(0, this.slowTimer - dt);
+      const spdScale = this.slowTimer > 0 ? SLOW_SPEED_FACTOR : 1.0;
+      this.animTimer += dt * (this.slowTimer > 0 ? 0.6 : 1.0);
+      if (this.stunTimer > 0) this.stunTimer = Math.max(0, this.stunTimer - dt);
+      if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
+      if (tickHeavyHitFields(this, dt)) return;
+      if (this.isDisabled()) {
+        this.tailOpen = false;
+        return;
+      }
+      if (this.reopenCooldown > 0) this.reopenCooldown = Math.max(0, this.reopenCooldown - dt);
+
+      this.stateTimer += dt;
+      if (!this.tailOpen) {
+        const playerNear =
+          player &&
+          !player.dead &&
+          Math.abs(player.x + player.w * 0.5 - (this.x + this.w * 0.5)) < 105 &&
+          Math.abs(player.y + player.h - (this.y + this.h)) < 75;
+        if (this.reopenCooldown <= 0 && (this.stateTimer >= this.passiveDuration || playerNear)) {
+          this.tailOpen = true;
+          this.stateTimer = 0;
+          this.vx = 0;
+          this.shakeParticleTimer = 0;
+          if (player && !player.dead) {
+            this.facing = player.x + player.w * 0.5 >= this.x + this.w * 0.5 ? 'right' : 'left';
+          }
+          if (particles) {
+            const cx = this.x + this.w * 0.5;
+            const cy = this.y + this.h * 0.42;
+            particles.Burst(cx, cy, '#10b981', 8);
+            particles.Burst(cx, cy, '#fbbf24', 6);
+          }
+          if (sound && typeof sound.peacockFan === 'function') {
+            sound.peacockFan();
+          }
+        }
+      } else {
+        this.vx = 0;
+        this.shakeParticleTimer += dt;
+        if (particles && this.shakeParticleTimer >= 0.35) {
+          this.shakeParticleTimer = 0;
+          const cx = this.x + this.w * 0.5 + (Math.random() - 0.5) * 28;
+          const cy = this.y + this.h * 0.35 + (Math.random() - 0.5) * 18;
+          particles.Sparkle(cx, cy, Math.random() < 0.5 ? '#10b981' : '#fbbf24');
+        }
+        if (this.stateTimer >= this.openDuration) {
+          this.tailOpen = false;
+          this.stateTimer = 0;
+          this.reopenCooldown = 1.4;
+        }
+      }
+
+      if (!this.tailOpen) {
+        const dir = this.facing === 'right' ? 1 : -1;
+        this.vx = dir * this.baseSpeed * spdScale;
+        this.x += this.vx * dt;
+        if (this.x <= this.minX) {
+          this.x = this.minX;
+          this.facing = 'right';
+        } else if (this.x + this.w >= this.maxX) {
+          this.x = this.maxX - this.w;
+          this.facing = 'left';
+        }
+      }
+    }
+
+    draw(ctx, sprites, cameraX, solids, movingPlatforms) {
+      if (this.dead) return;
+      drawProjectedShadow(ctx, this.x, this.y + this.h, this.w, solids, movingPlatforms, cameraX);
+      const screenX = this.x - cameraX;
+      const screenY = this.y;
+      sprites.drawPeacockHD(
+        ctx,
+        screenX,
+        screenY,
+        this.facing,
+        this.animTimer,
+        this.isDisabled(),
+        this.tailOpen,
+        this.hitFlashTimer > 0,
+        this.hp
+      );
+      drawEnemyStatusOverlay(
+        ctx,
+        screenX,
+        screenY,
+        this.w,
+        this.stunTimer,
+        this.hypnotizedTimer,
+        this.animTimer,
+        this.slowTimer,
+        this.h
+      );
+    }
+  }
+
+  // ==========================================================================
+  // MADRID (PARQUE DEL RETIRO): CICLISTA LOCO (CrazyCyclistEnemy) — 1 HP
+  // Patrulla continua y rápida de punta a punta entre pozos sin detenerse jamás.
+  // No persigue al jugador ni tiene fuego amigo; muere de 1 solo golpe.
+  // ==========================================================================
+  class CrazyCyclistEnemy {
+    constructor(x, y, minX, maxX, speed = 158, levelIndex = 0) {
+      this.w = 42;
+      this.h = 44;
+      this.x = x;
+      this.y = y - this.h;
+      this.minX = minX;
+      this.maxX = maxX;
+      this.levelIndex = levelIndex;
+      this.baseSpeed = Math.max(135, Math.abs(speed)) * getLevelSpeedScale(levelIndex);
+      this.facing = speed >= 0 ? 'right' : 'left';
+      this.vx = (this.facing === 'right' ? 1 : -1) * this.baseSpeed;
+      this.dead = false;
+      this.hp = 1;
+      this.maxHp = 1;
+      this.pauseTimer = 0;
+      this.stunTimer = 0;
+      this.hypnotizedTimer = 0;
+      this.slowTimer = 0;
+      this.animTimer = Math.random() * 4;
+    }
+
+    isDisabled() {
+      return this.stunTimer > 0 || this.hypnotizedTimer > 0;
+    }
+
+    stun(seconds = 3.0) {
+      this.stunTimer = Math.max(this.stunTimer, seconds);
+    }
+
+    hypnotize(seconds = 3.5) {
+      this.hypnotizedTimer = Math.max(this.hypnotizedTimer, seconds);
+    }
+
+    applySlow(seconds = 2.0) {
+      this.slowTimer = Math.max(this.slowTimer || 0, seconds);
+    }
+
+    scareFlyUp() {
+      return false;
+    }
+
+    update(dt) {
+      if (this.dead) return;
+      if (this.slowTimer > 0) this.slowTimer = Math.max(0, this.slowTimer - dt);
+      const spdScale = this.slowTimer > 0 ? SLOW_SPEED_FACTOR : 1.0;
+      this.animTimer += dt * (this.slowTimer > 0 ? 0.55 : 1.0);
+      if (this.stunTimer > 0) this.stunTimer = Math.max(0, this.stunTimer - dt);
+      if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
+      if (this.isDisabled()) return;
+
+      this.pauseTimer = 0;
+      this.vx = (this.facing === 'right' ? 1 : -1) * this.baseSpeed * spdScale;
+      this.x += this.vx * dt;
+      if (this.x <= this.minX) {
+        this.x = this.minX;
+        this.facing = 'right';
+        this.vx = Math.abs(this.vx);
+      } else if (this.x + this.w >= this.maxX) {
+        this.x = this.maxX - this.w;
+        this.facing = 'left';
+        this.vx = -Math.abs(this.vx);
+      }
+    }
+
+    draw(ctx, sprites, cameraX, solids, movingPlatforms) {
+      if (this.dead) return;
+      drawProjectedShadow(ctx, this.x, this.y + this.h, this.w, solids, movingPlatforms, cameraX);
+      const screenX = this.x - cameraX;
+      const screenY = this.y;
+      sprites.drawCrazyCyclistHD(ctx, screenX, screenY, this.facing, this.animTimer, this.isDisabled());
+      drawEnemyStatusOverlay(
+        ctx,
+        screenX,
+        screenY,
+        this.w,
+        this.stunTimer,
+        this.hypnotizedTimer,
+        this.animTimer,
+        this.slowTimer,
+        this.h
+      );
+    }
+  }
+
+  // ==========================================================================
   // MADRID: COTORRA VERDE (GreenParakeetEnemy)
   // Ave invasora muy rápida y común en Madrid. Vuela en trayectoria sinusoidal
   // a media altura. Al escuchar el ladrido doble de la Tina ("¡Guau, guau!"),
   // huye despavorida hacia arriba fuera de la pantalla.
   // ==========================================================================
   class GreenParakeetEnemy {
-    constructor(x, baseY, minX, maxX, ampY = 36, speed = 120, levelIndex = 0) {
+    constructor(x, baseY, minX, maxX, ampY = 36, speed = 120, levelIndex = 0, variant = 'madrid') {
       this.x = x;
       this.baseY = baseY;
       this.y = baseY;
@@ -3149,7 +4367,8 @@
       this.maxX = maxX;
       this.ampY = ampY;
       this.levelIndex = levelIndex;
-      this.baseSpeed = Math.abs(speed) * getLevelSpeedScale(levelIndex) * 1.15;
+      this.variant = variant || 'madrid';
+      this.baseSpeed = Math.abs(speed) * getLevelSpeedScale(levelIndex) * (this.variant === 'barcelona' ? 1.02 : 1.15);
       this.vx = this.baseSpeed;
       this.vy = 0;
       this.facing = 'right';
@@ -3225,7 +4444,8 @@
         this.animTimer,
         this.isDisabled(),
         this.scaredFlying,
-        false
+        false,
+        this.variant
       );
       drawEnemyStatusOverlay(
         ctx,
@@ -4272,6 +5492,11 @@
         type === 'electric_shield';
       this.isReserveDrop = Boolean(fromReserveDrop && isPowerUpType);
       this.fromReserveDrop = fromReserveDrop;
+      this.isHighArcDrop = false;
+      this.highArcRiseGravity = 560;
+      this.vx = 0;
+      this.arcBounds = null;
+      this.tinaDelayTimer = 0;
       this._seenOnScreen = Boolean(fromReserveDrop);
       this.falling = fromReserveDrop;
       this.vy = this.isReserveDrop ? 148 : fromReserveDrop ? 85 : 0;
@@ -4283,9 +5508,24 @@
       this.popTargetY = y;
     }
 
+    /** Escupe el coleccionable en arco lateral con retardo configurable para La Tina (1.0s para 1UP). */
+    startSidewaysArc(vx, vy = -330, tinaDelay = 1.0, pickupDelay = 0.45, bounds = null) {
+      this._seenOnScreen = true;
+      this.falling = true;
+      this.isHighArcDrop = false;
+      this.popTimer = 0;
+      this.vx = vx || 0;
+      this.vy = vy;
+      this.arcBounds = bounds || null;
+      this.tinaDelayTimer = Math.max(0, Number(tinaDelay) || 0);
+      this.pickupDelay = Math.max(this.pickupDelay, Number(pickupDelay) || 0);
+    }
+
     startBlockPop(startY, targetY, duration = 0.28) {
       this._seenOnScreen = true;
       this.falling = false;
+      this.isHighArcDrop = false;
+      this.vx = 0;
       this.vy = 0;
       this.popDuration = Math.max(0.1, duration);
       this.popTimer = this.popDuration;
@@ -4293,6 +5533,20 @@
       this.popTargetY = targetY;
       this.baseY = targetY;
       this.y = startY;
+      this.pickupDelay = Math.max(this.pickupDelay, 0.22);
+    }
+
+    /** Lanza el coleccionable hacia lo alto de la pantalla para luego caer suavemente hacia el suelo. */
+    startHighLaunch(startY, peakY = 54) {
+      this._seenOnScreen = true;
+      this.falling = true;
+      this.isHighArcDrop = true;
+      this.popTimer = 0;
+      this.highArcRiseGravity = 560;
+      const riseDist = Math.max(40, startY - peakY);
+      this.vy = -Math.sqrt(2 * this.highArcRiseGravity * riseDist);
+      this.y = startY;
+      this.baseY = startY;
       this.pickupDelay = Math.max(this.pickupDelay, 0.22);
     }
 
@@ -4324,6 +5578,9 @@
       if (this.pickupDelay > 0) {
         this.pickupDelay = Math.max(0, this.pickupDelay - dt);
       }
+      if (this.tinaDelayTimer > 0) {
+        this.tinaDelayTimer = Math.max(0, this.tinaDelayTimer - dt);
+      }
 
       if (this.popTimer > 0) {
         this.popTimer = Math.max(0, this.popTimer - dt);
@@ -4340,39 +5597,63 @@
 
       if (this.falling) {
         const prevBottom = this.y + this.h;
+        if (this.vx) {
+          this.x += this.vx * dt;
+          if (this.arcBounds) {
+            if (this.x < this.arcBounds.minX) {
+              this.x = this.arcBounds.minX;
+              this.vx = 0;
+            } else if (this.x + this.w > this.arcBounds.maxX) {
+              this.x = this.arcBounds.maxX - this.w;
+              this.vx = 0;
+            }
+          }
+        }
         if (this.isReserveDrop) {
           // Caída vertical recta a velocidad media constante sin aceleración de gravedad
           this.vy = 148;
+        } else if (this.isHighArcDrop) {
+          if (this.vy < 0) {
+            this.vy = Math.min(0, this.vy + (this.highArcRiseGravity || 560) * dt);
+          } else {
+            this.vy = Math.min(115, this.vy + 210 * dt);
+          }
         } else {
           this.vy = Math.min(420, this.vy + 720 * dt);
         }
         this.y += this.vy * dt;
 
-        const all = solids.concat(movingPlatforms || []);
-        for (let i = 0; i < all.length; i++) {
-          const p = all[i];
-          if (!p || p.broken || p.fallen) continue;
-          if (
-            this.x + this.w > p.x + 2 &&
-            this.x < p.x + p.w - 2 &&
-            prevBottom <= p.y + 18 &&
-            this.y + this.h >= p.y
-          ) {
-            this.y = p.y - this.h - 4;
-            this.baseY = this.y;
-            this.falling = false;
-            this.vy = 0;
-            break;
+        if (this.vy >= 0) {
+          const all = solids.concat(movingPlatforms || []);
+          for (let i = 0; i < all.length; i++) {
+            const p = all[i];
+            if (!p || p.broken || p.fallen) continue;
+            if (
+              this.x + this.w > p.x + 2 &&
+              this.x < p.x + p.w - 2 &&
+              prevBottom <= p.y + 18 &&
+              this.y + this.h >= p.y
+            ) {
+              this.y = p.y - this.h - 4;
+              this.baseY = this.y;
+              this.falling = false;
+              this.isHighArcDrop = false;
+              this.vx = 0;
+              this.vy = 0;
+              break;
+            }
           }
-        }
 
-        // Si cae sobre un hueco sin plataforma debajo, aterriza a altura de suelo seguro (nunca cae al vacío)
-        const safeFloorY = this.isReserveDrop ? 416 : 428;
-        if (this.falling && this.y >= safeFloorY) {
-          this.y = safeFloorY;
-          this.baseY = safeFloorY;
-          this.falling = false;
-          this.vy = 0;
+          // Si cae sobre un hueco sin plataforma debajo, aterriza a altura de suelo seguro (nunca cae al vacío)
+          const safeFloorY = this.isReserveDrop ? 416 : 428;
+          if (this.falling && this.y >= safeFloorY) {
+            this.y = safeFloorY;
+            this.baseY = safeFloorY;
+            this.falling = false;
+            this.isHighArcDrop = false;
+            this.vx = 0;
+            this.vy = 0;
+          }
         }
       } else {
         this.y = this.baseY + Math.sin(this.timer) * 4;
@@ -4471,19 +5752,22 @@
   }
 
   // ==========================================================================
-  // PROYECTIL BOTÁNICO DE GRAVEDAD CERO: PLANTA / HOJA (Tecla J)
-  // - Viaja en línea recta constante con gravedad cero (gravity = 0).
-  // - Soporta tiro horizontal (0°), diagonal arriba (-45° con W / ↑) y
-  //   diagonal abajo (+45° en el aire con S / ↓).
-  // - Desaparece al salir del encuadre de cámara o al impactar a un enemigo.
+  // PROYECTIL BOTÁNICO DE GRAVEDAD PROGRESIVA: PLANTA / HOJA (Tecla D)
+  // - Tramo inicial tenso (~150 px con gravedad leve) que curva suavemente hacia
+  //   abajo hasta tocar suelo (~380-420 px en horizontal).
+  // - Soporta tiro horizontal (0°), diagonal arriba (45° en arco parabólico
+  //   con ↑) y diagonal abajo (+45° en el aire con ↓).
+  // - Desaparece con partículas verdes/hojas al chocar suelo o plataformas.
   // ==========================================================================
   class PlantProjectile {
     constructor(x, y, dirX = 1, dirY = 0) {
       this.x = x;
       this.y = y;
+      this.startX = x;
+      this.startY = y;
       this.w = 20;
       this.h = 20;
-      this.speed = 640;
+      this.speed = 540;
 
       const norm = Math.hypot(dirX, dirY) || 1;
       this.dirX = dirX / norm;
@@ -4491,28 +5775,161 @@
       this.vx = this.dirX * this.speed;
       this.vy = this.dirY * this.speed;
 
-      // Físicas de Gravedad Cero: viaja en línea recta constante sin caída parabólica
-      this.gravity = 0;
+      // Gravedad progresiva: arranque firme y caída parabólica (+25 % de alcance: ~252 px en suelo, ~414 px a 45°)
+      const isDiagonal = Math.abs(this.dirY) > 0.1;
+      this.baseGravity = isDiagonal ? 13 : 26;
+      this.maxGravity = isDiagonal ? 2360 : 3700;
+      this.gravityStartDist = 94;
+      this.gravityRampDist = 238;
+      this.gravity = this.baseGravity;
       this.dead = false;
+      this.deflected = false;
+      this.damageDisabled = false;
+      this.deflectLife = 0;
       this.animTimer = 0;
+    }
+
+    computeProgressiveGravity() {
+      const traveled = Math.hypot(this.x - this.startX, this.y - this.startY);
+      const u = Math.min(1, Math.max(0, traveled - this.gravityStartDist) / this.gravityRampDist);
+      return this.baseGravity + (this.maxGravity - this.baseGravity) * (u * u);
+    }
+
+    emitSurfaceImpact(particles, impactX, impactY) {
+      if (!particles) return;
+      if (typeof particles.Burst === 'function') {
+        particles.Burst(impactX, impactY, '#22c55e', 7);
+      }
+      if (Array.isArray(particles.particles)) {
+        const leafPalette = ['#4ade80', '#bef264', '#16a34a'];
+        for (let i = 0; i < 5; i++) {
+          const spreadAngle = -Math.PI * (0.15 + 0.7 * (i / 4)) + (Math.random() - 0.5) * 0.28;
+          const speed = 55 + Math.random() * 95;
+          particles.particles.push({
+            x: impactX + (Math.random() - 0.5) * 6,
+            y: impactY - 1,
+            vx: Math.cos(spreadAngle) * speed,
+            vy: Math.sin(spreadAngle) * speed - 25,
+            radius: 3.4 + Math.random() * 1.4,
+            color: leafPalette[i % leafPalette.length],
+            life: 0.34 + Math.random() * 0.18,
+            maxLife: 0.52,
+            gravity: 340,
+            shape: 'leaf',
+            rotation: Math.random() * Math.PI * 2,
+            rotSpeed: (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 6)
+          });
+        }
+      }
+    }
+
+    findSurfaceCollision(solids, platforms, prevX, prevY, prevBottom) {
+      const horizOverlap = (s) => this.x + this.w > s.x && this.x < s.x + s.w;
+      const surfaceLists = [solids, platforms];
+      for (let li = 0; li < surfaceLists.length; li++) {
+        const list = surfaceLists[li];
+        if (!Array.isArray(list)) continue;
+        for (let i = 0; i < list.length; i++) {
+          const s = list[i];
+          if (!s || !(s.w > 0 && s.h > 0)) continue;
+          if (s.revealed === false && s.visible === false) continue;
+          if (s.state === 'respawning' || s.y < -500) continue;
+
+          const isOneWay = Boolean(s.oneWay || s.isOneWay);
+          if (this.vy >= 0 && prevBottom <= s.y + 8 && this.y + this.h >= s.y && horizOverlap(s)) {
+            return {
+              snapY: s.y - this.h,
+              impactX: this.x + this.w * 0.5,
+              impactY: s.y
+            };
+          }
+          if (isOneWay) continue;
+
+          if (horizOverlap(s) && this.y + this.h >= s.y && this.y < s.y + s.h) {
+            if (prevY >= s.y + s.h - 8 && this.vy < 0) {
+              return { snapY: s.y + s.h, impactX: this.x + this.w * 0.5, impactY: s.y + s.h };
+            }
+            if (prevX + this.w <= s.x + 8) {
+              return { snapX: s.x - this.w, impactX: s.x, impactY: this.y + this.h * 0.5 };
+            }
+            if (prevX >= s.x + s.w - 8) {
+              return { snapX: s.x + s.w, impactX: s.x + s.w, impactY: this.y + this.h * 0.5 };
+            }
+            return {
+              impactX: this.x + this.w * 0.5,
+              impactY: Math.min(Math.max(this.y + this.h * 0.5, s.y), s.y + s.h)
+            };
+          }
+        }
+      }
+      return null;
+    }
+
+    deflectFromShield(shieldX = null) {
+      if (this.deflected) return;
+      this.deflected = true;
+      this.damageDisabled = true;
+      this.dead = false;
+      const prevVx =
+        Number.isFinite(this.vx) && this.vx !== 0
+          ? this.vx
+          : (this.dirX >= 0 ? 1 : -1) * this.speed;
+      this.vx = -Math.sign(prevVx) * Math.max(240, Math.abs(prevVx) * 0.48);
+      this.vy = -Math.max(195, Math.abs(this.vy || 0) * 0.35 + 210);
+      this.gravity = 980;
+      this.deflectLife = 0.42;
+      if (Number.isFinite(shieldX)) {
+        this.x = prevVx > 0 ? Math.min(this.x, shieldX - this.w) : Math.max(this.x, shieldX);
+      }
     }
 
     update(dt, solids = [], movingPlatforms = [], particles = null, cameraX = 0, viewW = 960, viewH = 540) {
       if (this.dead) return;
       this.animTimer += dt;
 
-      if (particles && Math.random() < 0.7) {
-        particles.Sparkle(
-          this.x + 10,
-          this.y + 10,
-          Math.random() < 0.5 ? '#bef264' : '#4ade80'
-        );
+      if (this.deflected) {
+        this.deflectLife -= dt;
+        if (this.deflectLife <= 0) {
+          this.dead = true;
+          return;
+        }
+        if (particles && Math.random() < 0.65) {
+          particles.Sparkle(
+            this.x + 10,
+            this.y + 10,
+            Math.random() < 0.5 ? '#fde047' : '#f8fafc'
+          );
+        }
+      } else {
+        this.gravity = this.computeProgressiveGravity();
+        if (particles && Math.random() < 0.7) {
+          particles.Sparkle(
+            this.x + 10,
+            this.y + 10,
+            Math.random() < 0.5 ? '#bef264' : '#4ade80'
+          );
+        }
       }
 
-      // Movimiento rectilíneo constante (gravity = 0)
+      const prevX = this.x;
+      const prevY = this.y;
+      const prevBottom = this.y + this.h;
+
+      // Arco de gravedad progresiva (o rebote tras bloqueo con escudo)
       this.vy += this.gravity * dt;
       this.x += this.vx * dt;
       this.y += this.vy * dt;
+
+      if (!this.deflected) {
+        const hit = this.findSurfaceCollision(solids, movingPlatforms, prevX, prevY, prevBottom);
+        if (hit) {
+          if (Number.isFinite(hit.snapX)) this.x = hit.snapX;
+          if (Number.isFinite(hit.snapY)) this.y = hit.snapY;
+          this.emitSurfaceImpact(particles, hit.impactX, hit.impactY);
+          this.dead = true;
+          return;
+        }
+      }
 
       // Desaparece al salir del encuadre visible de la cámara
       if (
@@ -4527,6 +5944,13 @@
 
     draw(ctx, sprites, cameraX) {
       if (this.dead) return;
+      if (this.deflected) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, this.deflectLife / 0.28));
+        sprites.drawPlantProjectileHD(ctx, this.x - cameraX, this.y, this.vx, this.vy, this.animTimer * 3.2);
+        ctx.restore();
+        return;
+      }
       sprites.drawPlantProjectileHD(ctx, this.x - cameraX, this.y, this.vx, this.vy, this.animTimer);
     }
   }
@@ -4761,6 +6185,7 @@
         p.x += p.vx * dt;
         p.y += p.vy * dt;
         p.vy += (p.gravity || 0) * dt;
+        if (p.rotSpeed) p.rotation = (p.rotation || 0) + p.rotSpeed * dt;
       }
     }
 
@@ -4808,6 +6233,22 @@
           ctx.strokeText(p.text, p.x - cameraX, p.y);
           ctx.fillStyle = p.color;
           ctx.fillText(p.text, p.x - cameraX, p.y);
+        } else if (p.shape === 'leaf') {
+          const r = p.radius || 3.8;
+          ctx.save();
+          ctx.translate(p.x - cameraX, p.y);
+          ctx.rotate(p.rotation || 0);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, r * 1.35, r * 0.68, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#14532d';
+          ctx.lineWidth = 0.9;
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.9, 0);
+          ctx.lineTo(r * 0.9, 0);
+          ctx.stroke();
+          ctx.restore();
         } else {
           ctx.beginPath();
           ctx.arc(p.x - cameraX, p.y, p.radius || 3, 0, Math.PI * 2);
@@ -4816,6 +6257,166 @@
         }
       }
       ctx.restore();
+    }
+  }
+
+  // ==========================================================================
+  // PARK GÜELL (EVENTO ÚNICO POR PARTIDA): LA SALAMANDRA / LAGARTIJA DE TRENCADÍS
+  // Corre a gran velocidad un máximo de 3 pasadas (ida, vuelta e ida) sobre una
+  // plataforma larga cerca del 50 %; derrotarla otorga 1 VIDA EXTRA (con delay 1s Tina).
+  // ==========================================================================
+  class GaudiLizardEnemy {
+    constructor(
+      x,
+      surfaceY,
+      platformX = 3290,
+      platformW = 480,
+      minX = 3298,
+      maxX = 3762,
+      speed = 296,
+      levelIndex = 2,
+      triggerX = 3060,
+      maxPasses = 3
+    ) {
+      this.w = 56;
+      this.h = 30;
+      this.platformX = platformX;
+      this.platformW = platformW;
+      this.surfaceY = surfaceY;
+      this.minX = minX;
+      this.maxX = maxX;
+      this.x = Number.isFinite(x) ? x : maxX - this.w;
+      this.y = surfaceY - this.h;
+      this.levelIndex = levelIndex;
+      this.runSpeed = Math.max(270, Math.abs(speed));
+      this.triggerX = Number.isFinite(triggerX) ? triggerX : platformX - 240;
+      this.maxPasses = Math.max(1, maxPasses || 3);
+      this.passesCompleted = 0;
+      this.state = 'waiting'; // 'waiting' | 'running' | 'escaping'
+      this.facing = 'left';
+      this.vx = -this.runSpeed;
+      this.vy = 0;
+      this.dead = false;
+      this.defeated = false;
+      this.escaped = false;
+      this.escapeTimer = 0;
+      this.stunTimer = 0;
+      this.hypnotizedTimer = 0;
+      this.slowTimer = 0;
+      this.animTimer = 0;
+    }
+
+    canReceiveStatus() {
+      return this.state === 'running' && !this.dead && !this.escaped && !this.defeated;
+    }
+
+    isDisabled() {
+      return this.stunTimer > 0 || this.hypnotizedTimer > 0;
+    }
+
+    stun(seconds = 2.5) {
+      this.stunTimer = Math.max(this.stunTimer, seconds);
+    }
+
+    hypnotize(seconds = 2.5) {
+      this.hypnotizedTimer = Math.max(this.hypnotizedTimer, seconds);
+    }
+
+    applySlow(seconds = 2.0) {
+      this.slowTimer = Math.max(this.slowTimer || 0, seconds);
+    }
+
+    scareFlyUp() {
+      return false;
+    }
+
+    update(dt, leader) {
+      if (this.dead) return null;
+      this.animTimer += dt;
+
+      if (this.state === 'waiting') {
+        if (leader && leader.x + (leader.w || 32) >= this.triggerX) {
+          this.state = 'running';
+          this.facing = 'left';
+          this.passesCompleted = 0;
+          this.x = this.maxX - this.w;
+          this.y = this.surfaceY - this.h;
+          this.vx = -this.runSpeed;
+          return 'activated';
+        }
+        return null;
+      }
+
+      if (this.state === 'escaping') {
+        this.escapeTimer += dt;
+        this.vx = -560;
+        this.vy = Math.min(480, this.vy + 900 * dt);
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        if (this.escapeTimer >= 1.15 || this.y > 540 || this.x + this.w < this.platformX - 520) {
+          this.escaped = true;
+          this.dead = true;
+        }
+        return null;
+      }
+
+      if (this.slowTimer > 0) this.slowTimer = Math.max(0, this.slowTimer - dt);
+      if (this.stunTimer > 0) this.stunTimer = Math.max(0, this.stunTimer - dt);
+      if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
+      if (this.isDisabled()) return null;
+
+      const spdScale = this.slowTimer > 0 ? SLOW_SPEED_FACTOR : 1.0;
+      const dir = this.facing === 'right' ? 1 : -1;
+      this.vx = dir * this.runSpeed * spdScale;
+      this.x += this.vx * dt;
+
+      if (this.facing === 'left' && this.x <= this.minX) {
+        this.x = this.minX;
+        this.passesCompleted++;
+        if (this.passesCompleted >= this.maxPasses) {
+          this.state = 'escaping';
+          this.vy = -140;
+          this.escapeTimer = 0;
+          return 'escaped';
+        }
+        this.facing = 'right';
+      } else if (this.facing === 'right' && this.x + this.w >= this.maxX) {
+        this.x = this.maxX - this.w;
+        this.passesCompleted++;
+        if (this.passesCompleted >= this.maxPasses) {
+          this.state = 'escaping';
+          this.vy = -140;
+          this.escapeTimer = 0;
+          return 'escaped';
+        }
+        this.facing = 'left';
+      }
+      return null;
+    }
+
+    draw(ctx, sprites, cameraX, solids, movingPlatforms) {
+      if (this.dead || this.state === 'waiting') return;
+      const sx = this.x - cameraX;
+      if (sx < -120 || sx > 1080) return;
+
+      if (this.state === 'running') {
+        drawProjectedShadow(ctx, this.x, this.y + this.h, this.w, solids, movingPlatforms, cameraX);
+      }
+      ctx.save();
+      ctx.translate(-cameraX, 0);
+      sprites.drawGaudiLizardHD(ctx, this, this.animTimer);
+      ctx.restore();
+      drawEnemyStatusOverlay(
+        ctx,
+        sx,
+        this.y,
+        this.w,
+        this.stunTimer,
+        this.hypnotizedTimer,
+        this.animTimer,
+        this.slowTimer,
+        this.h
+      );
     }
   }
 
@@ -5008,6 +6609,579 @@
         ctx.fillText('♥', this.x + this.w / 2, this.y - 8);
       }
       ctx.restore();
+    }
+  }
+
+  // ==========================================================================
+  // CANARIAS (BOSQUE DE GARAJONAY): EL ZORRITO (GarajonayFoxEnemy) - 1 HP
+  // - Exclusivo de Garajonay (Z2 Canarias).
+  // - Ágil, escurridizo, esquiva tiros bajos y salta activamente entre suelo y vigas altas.
+  // ==========================================================================
+  const FOX_GRAVITY = 1080;
+
+  class GarajonayFoxEnemy {
+    constructor(x, y, minX, maxX, speed = 165, levelIndex = 0) {
+      this.w = 40;
+      this.h = 28;
+      this.x = x;
+      this.y = y - this.h;
+      this.initialPlatformY = y;
+      this.minX = minX;
+      this.maxX = maxX;
+      this.levelIndex = levelIndex;
+      this.baseSpeed = Math.max(125, Math.abs(speed)) * getLevelSpeedScale(levelIndex);
+      this.vx = -this.baseSpeed;
+      this.vy = 0;
+      this.onGround = true;
+      this.facing = 'left';
+      this.dead = false;
+      this.hp = 1;
+      this.stunTimer = 0;
+      this.hypnotizedTimer = 0;
+      this.slowTimer = 0;
+      this.animTimer = Math.random() * 5;
+      this.aiState = 'patrol';
+      this.crouchTimer = 0;
+      this.verticalCooldown = 0.7;
+      this.attackCooldown = 0;
+      this.dodgeCooldown = 0;
+      this.patrolHopCooldown = 1.6 + Math.random() * 1.2;
+      this.dartTimer = 1.1 + Math.random() * 1.1;
+      this.jumpTargetPlat = null;
+      this.dropFromPlat = null;
+      this.dropLandingX = 0;
+      this.attackDir = 1;
+    }
+
+    isDisabled() {
+      return this.stunTimer > 0 || this.hypnotizedTimer > 0;
+    }
+
+    stun(seconds = 3.0) {
+      this.stunTimer = Math.max(this.stunTimer, seconds);
+      this._resetTransientJumpState();
+    }
+
+    hypnotize(seconds = 3.2) {
+      this.hypnotizedTimer = Math.max(this.hypnotizedTimer, seconds);
+      this._resetTransientJumpState();
+    }
+
+    applySlow(seconds = 2.0) {
+      this.slowTimer = Math.max(this.slowTimer || 0, seconds);
+    }
+
+    _resetTransientJumpState() {
+      if (this.aiState !== 'patrol') {
+        this.aiState = 'patrol';
+        this.crouchTimer = 0;
+        this.jumpTargetPlat = null;
+        this.dropFromPlat = null;
+        this.vx *= 0.25;
+      }
+    }
+
+    _hasFloorSupportAt(platforms, probeX, targetY, toleranceY = 12) {
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken) continue;
+        if (probeX >= p.x + 2 && probeX <= p.x + p.w - 2 && Math.abs(p.y - targetY) <= toleranceY) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    _findSupportingPlatform(platforms) {
+      const footLeft = this.x + 4;
+      const footRight = this.x + this.w - 4;
+      const feetY = this.y + this.h;
+      let best = null;
+      let bestDiff = 6;
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken) continue;
+        if (footRight > p.x && footLeft < p.x + p.w) {
+          const diff = Math.abs(feetY - p.y);
+          if (diff <= bestDiff) {
+            bestDiff = diff;
+            best = p;
+          }
+        }
+      }
+      return best;
+    }
+
+    _findClimbableHighPlatform(platforms, preferX = null) {
+      const foxCx = this.x + this.w * 0.5;
+      let best = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken || p.style === 'crane') continue;
+        if (Number.isFinite(p.fallDelay) || p.isFalling) continue;
+        const targetTopY = p.y - this.h;
+        const deltaY = this.y - targetTopY;
+        if (deltaY < 24 || deltaY > 185) continue;
+        const horizontallyOutside = this.x + this.w <= p.x + 4 || this.x >= p.x + p.w - 4;
+        if (!p.oneWay && !horizontallyOutside) continue;
+        const platCx = p.x + p.w * 0.5;
+        const distHoriz = Math.abs(foxCx - platCx);
+        if (distHoriz > p.w * 0.5 + 165) continue;
+        const targetBias = preferX !== null ? Math.abs(platCx - preferX) * 0.42 : 0;
+        const score = distHoriz + deltaY * 0.32 + targetBias;
+        if (score < bestScore) {
+          bestScore = score;
+          best = p;
+        }
+      }
+      return best;
+    }
+
+    _findLowerLandingSpot(platforms, currentPlat, preferX = null) {
+      if (!currentPlat) return null;
+      let best = null;
+      let bestScore = Infinity;
+      const desiredX = preferX !== null ? preferX - this.w * 0.5 : this.x;
+      for (let i = 0; i < platforms.length; i++) {
+        const p = platforms[i];
+        if (!p || p.broken || p === currentPlat || p.style === 'crane') continue;
+        if (Number.isFinite(p.fallDelay) || p.isFalling) continue;
+        const dropDy = p.y - (this.y + this.h);
+        if (dropDy < 22 || dropDy > 215) continue;
+        const pSafeMin = p.x + 12;
+        const pSafeMax = p.x + p.w - this.w - 12;
+        if (pSafeMax < pSafeMin) continue;
+
+        const candidates = [];
+        if (currentPlat.oneWay) {
+          const reachMin = Math.max(pSafeMin, currentPlat.x - 85);
+          const reachMax = Math.min(pSafeMax, currentPlat.x + currentPlat.w + 85 - this.w);
+          if (reachMin <= reachMax) {
+            candidates.push(Math.max(reachMin, Math.min(reachMax, desiredX)));
+          }
+        } else {
+          const leftOff = currentPlat.x - this.w - 10;
+          const rightOff = currentPlat.x + currentPlat.w + 10;
+          if (leftOff >= pSafeMin && leftOff <= pSafeMax) candidates.push(leftOff);
+          if (rightOff >= pSafeMin && rightOff <= pSafeMax) candidates.push(rightOff);
+        }
+
+        for (let c = 0; c < candidates.length; c++) {
+          const cx = candidates[c];
+          if (
+            !this._hasFloorSupportAt(platforms, cx + 4, p.y, 10) ||
+            !this._hasFloorSupportAt(platforms, cx + this.w - 4, p.y, 10)
+          ) {
+            continue;
+          }
+          const score = Math.abs(cx - this.x) + dropDy * 0.25 + Math.abs(cx - desiredX) * 0.35;
+          if (score < bestScore) {
+            bestScore = score;
+            best = { plat: p, targetX: cx };
+          }
+        }
+      }
+      return best;
+    }
+
+    _applyGravityAndLanding(dt, allPlatforms, ignorePlat = null) {
+      const prevBottom = this.y + this.h;
+      this.vy = Math.min(MAX_FALL_SPEED, this.vy + FOX_GRAVITY * dt);
+      this.y += this.vy * dt;
+      this.onGround = false;
+
+      if (this.dropFromPlat && prevBottom > this.dropFromPlat.y + 16) {
+        this.dropFromPlat = null;
+      }
+
+      if (this.vy >= 0 && allPlatforms.length > 0) {
+        const footLeft = this.x + 4;
+        const footRight = this.x + this.w - 4;
+        let landedPlat = null;
+        let bestY = Infinity;
+        for (let i = 0; i < allPlatforms.length; i++) {
+          const p = allPlatforms[i];
+          if (!p || p.broken) continue;
+          if (ignorePlat && p === ignorePlat && prevBottom <= ignorePlat.y + 16) continue;
+          if (
+            footRight > p.x &&
+            footLeft < p.x + p.w &&
+            prevBottom <= p.y + 12 &&
+            this.y + this.h >= p.y &&
+            this.y + this.h <= p.y + 30
+          ) {
+            if (p.y < bestY) {
+              bestY = p.y;
+              landedPlat = p;
+            }
+          }
+        }
+        if (landedPlat) {
+          this.y = landedPlat.y - this.h;
+          this.vy = 0;
+          this.onGround = true;
+          this.dropFromPlat = null;
+          return landedPlat;
+        }
+      }
+
+      if (this.y > 540) {
+        this.dead = true;
+      }
+      return null;
+    }
+
+    _startClimbJumpWindup(plat) {
+      const foxCx = this.x + this.w * 0.5;
+      this.aiState = 'crouch_up';
+      this.crouchTimer = 0.11;
+      this.jumpTargetPlat = plat;
+      this.dropFromPlat = null;
+      this.vx = 0;
+      this.facing = plat.x + plat.w * 0.5 >= foxCx ? 'right' : 'left';
+    }
+
+    _startDropJumpWindup(dropSpot, currentPlat) {
+      this.aiState = 'crouch_down';
+      this.crouchTimer = 0.10;
+      this.jumpTargetPlat = dropSpot.plat;
+      this.dropLandingX = dropSpot.targetX;
+      this.dropFromPlat = currentPlat && currentPlat.oneWay ? currentPlat : null;
+      this.vx = 0;
+      this.facing = dropSpot.targetX >= this.x ? 'right' : 'left';
+    }
+
+    update(dt, leader, solids = [], movingPlatforms = [], projectiles = []) {
+      if (this.dead) return;
+      this.animTimer += dt;
+      if (this.stunTimer > 0) this.stunTimer = Math.max(0, this.stunTimer - dt);
+      if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
+      if (this.slowTimer > 0) this.slowTimer = Math.max(0, this.slowTimer - dt);
+      if (this.verticalCooldown > 0) this.verticalCooldown = Math.max(0, this.verticalCooldown - dt);
+      if (this.attackCooldown > 0) this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+      if (this.dodgeCooldown > 0) this.dodgeCooldown = Math.max(0, this.dodgeCooldown - dt);
+      if (this.patrolHopCooldown > 0) this.patrolHopCooldown = Math.max(0, this.patrolHopCooldown - dt);
+      if (this.dartTimer > 0) this.dartTimer = Math.max(0, this.dartTimer - dt);
+
+      const allPlatforms =
+        solids.length || movingPlatforms.length
+          ? solids.concat(movingPlatforms)
+          : [];
+
+      let supportPlat = null;
+      if (allPlatforms.length > 0 && this.onGround) {
+        supportPlat = this._findSupportingPlatform(allPlatforms);
+        if (supportPlat) {
+          if (Number.isFinite(supportPlat.dx) && supportPlat.dx !== 0) {
+            this.x += supportPlat.dx;
+          }
+          if (Number.isFinite(supportPlat.dy) && supportPlat.dy !== 0) {
+            this.y += supportPlat.dy;
+          }
+        } else {
+          this.onGround = false;
+        }
+      }
+
+      if (this.isDisabled()) {
+        if (!this.onGround && allPlatforms.length > 0) {
+          this.x += this.vx * 0.25 * dt;
+          const landed = this._applyGravityAndLanding(dt, allPlatforms, this.dropFromPlat);
+          if (landed) {
+            this.vx = 0;
+            this.aiState = 'patrol';
+          }
+        }
+        return;
+      }
+
+      const spdScale = this.slowTimer > 0 ? SLOW_SPEED_FACTOR : 1.0;
+
+      // 1A. Anticipación breve agachada antes de saltar HACIA ARRIBA a una viga elevada
+      if (this.aiState === 'crouch_up') {
+        if (!this.onGround && allPlatforms.length > 0) {
+          const landed = this._applyGravityAndLanding(dt, allPlatforms);
+          if (!landed) return;
+        }
+        this.vx = 0;
+        this.crouchTimer -= dt;
+        const targetPlat = this.jumpTargetPlat;
+        if (targetPlat) {
+          this.facing = targetPlat.x + targetPlat.w * 0.5 >= this.x + this.w * 0.5 ? 'right' : 'left';
+        }
+        if (this.crouchTimer <= 0) {
+          if (targetPlat && !targetPlat.broken) {
+            const targetTopY = targetPlat.y - this.h;
+            const deltaY = Math.max(24, this.y - targetTopY);
+            const clearance = 26;
+            const peakH = deltaY + clearance;
+            const vy0 = -Math.sqrt(2 * FOX_GRAVITY * peakH);
+            const tUp = -vy0 / FOX_GRAVITY;
+            const tDown = Math.sqrt((2 * clearance) / FOX_GRAVITY);
+            const flightTime = Math.max(0.22, tUp + tDown);
+            const leadX = Number.isFinite(targetPlat.vx) ? targetPlat.vx * flightTime * 0.65 : 0;
+            const safeMin = targetPlat.x + 12 + leadX;
+            const safeMax = Math.max(safeMin, targetPlat.x + targetPlat.w - this.w - 12 + leadX);
+            const targetLandX = Math.max(safeMin, Math.min(safeMax, this.x + leadX * 0.5));
+            const rawVx = (targetLandX - this.x) / flightTime;
+            this.vx = Math.max(-275, Math.min(275, rawVx));
+            this.vy = vy0;
+            this.onGround = false;
+            this.facing = this.vx >= 0 ? 'right' : 'left';
+            this.aiState = 'climbing_jump';
+            this.verticalCooldown = 1.65;
+            this.patrolHopCooldown = 2.6;
+          } else {
+            this.aiState = 'patrol';
+          }
+          this.jumpTargetPlat = null;
+        }
+        return;
+      }
+
+      // 1B. Anticipación breve agachada antes de BAJAR de una viga hacia el suelo inferior
+      if (this.aiState === 'crouch_down') {
+        if (!this.onGround && allPlatforms.length > 0) {
+          const landed = this._applyGravityAndLanding(dt, allPlatforms, this.dropFromPlat);
+          if (!landed) return;
+        }
+        this.vx = 0;
+        this.crouchTimer -= dt;
+        if (this.crouchTimer <= 0) {
+          const targetPlat = this.jumpTargetPlat;
+          if (targetPlat && !targetPlat.broken) {
+            const vy0 = -165;
+            const fallDist = Math.max(20, (targetPlat.y - this.h) - this.y);
+            const tTotal = (-vy0 + Math.sqrt(vy0 * vy0 + 2 * FOX_GRAVITY * fallDist)) / FOX_GRAVITY;
+            const rawVx = (this.dropLandingX - this.x) / Math.max(0.2, tTotal);
+            this.vx = Math.max(-235, Math.min(235, rawVx));
+            this.vy = vy0;
+            this.onGround = false;
+            if (Math.abs(this.vx) > 4) this.facing = this.vx >= 0 ? 'right' : 'left';
+            this.aiState = 'drop_jump';
+            this.verticalCooldown = 1.65;
+            this.patrolHopCooldown = 2.6;
+          } else {
+            this.dropFromPlat = null;
+            this.aiState = 'patrol';
+          }
+          this.jumpTargetPlat = null;
+        }
+        return;
+      }
+
+      // 1C. Anticipación de brinco ágil de caza sobre el mismo plano
+      if (this.aiState === 'attack_crouch') {
+        if (!this.onGround && allPlatforms.length > 0) {
+          const landed = this._applyGravityAndLanding(dt, allPlatforms);
+          if (!landed) return;
+        }
+        this.vx = 0;
+        this.facing = this.attackDir >= 0 ? 'right' : 'left';
+        this.crouchTimer -= dt;
+        if (this.crouchTimer <= 0) {
+          this.vy = -315;
+          this.vx = this.attackDir * 248 * spdScale;
+          this.onGround = false;
+          this.aiState = 'attack_leap';
+          this.attackCooldown = 1.85;
+        }
+        return;
+      }
+
+      // 2. Trayectorias parabólicas en el aire
+      if (
+        this.aiState === 'climbing_jump' ||
+        this.aiState === 'drop_jump' ||
+        this.aiState === 'attack_leap' ||
+        this.aiState === 'dodge_jump'
+      ) {
+        this.x += this.vx * dt;
+        const landed = this._applyGravityAndLanding(
+          dt,
+          allPlatforms,
+          this.aiState === 'drop_jump' ? this.dropFromPlat : null
+        );
+        if (this.dead) return;
+        if (landed) {
+          if (this.aiState === 'climbing_jump' || this.aiState === 'drop_jump') {
+            this.verticalCooldown = 1.5;
+          }
+          this.aiState = 'patrol';
+        }
+        return;
+      }
+
+      // 3. Caída libre continua si perdió soporte real
+      if (!this.onGround && allPlatforms.length > 0) {
+        const landed = this._applyGravityAndLanding(dt, allPlatforms);
+        if (this.dead) return;
+        if (landed) {
+          this.aiState = 'patrol';
+        }
+        return;
+      }
+
+      // 4. Esquiva ágil saltando por encima de proyectiles bajos de Planta [Z] (solo sobre suelo seguro)
+      if (this.onGround && this.dodgeCooldown <= 0 && Array.isArray(projectiles) && projectiles.length > 0) {
+        for (let i = 0; i < projectiles.length; i++) {
+          const p = projectiles[i];
+          if (!p || p.dead) continue;
+          const isLowHorizontal = Math.abs(p.vy || 0) < 45;
+          const distX = (this.x + this.w * 0.5) - (p.x + (p.w || 16) * 0.5);
+          if (isLowHorizontal && Math.abs(distX) >= 45 && Math.abs(distX) <= 235 && ((p.vx || 0) * distX > 0)) {
+            if (p.y + (p.h || 14) * 0.5 >= this.y - 12 && p.y <= this.y + this.h + 8) {
+              const foxCx = this.x + this.w * 0.5;
+              const hopDir = this.facing === 'right' ? 1 : -1;
+              const landSafe =
+                !supportPlat ||
+                this._hasFloorSupportAt(allPlatforms, foxCx + hopDir * 75, supportPlat.y, 12);
+              if (landSafe) {
+                this.vy = -355;
+                this.vx = hopDir * this.baseSpeed * 0.9 * spdScale;
+                this.onGround = false;
+                this.aiState = 'dodge_jump';
+                this.dodgeCooldown = 1.1;
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      // 5. Lógica activa de persecución y saltos entre vigas elevadas y suelo
+      const foxCx = this.x + this.w * 0.5;
+      const foxFeetY = this.y + this.h;
+      let chasingPlayer = false;
+
+      if (leader && !leader.dead) {
+        const leaderCx = leader.x + leader.w * 0.5;
+        const leaderFeetY = leader.y + leader.h;
+        const dx = leaderCx - foxCx;
+        const absDx = Math.abs(dx);
+
+        // A. Si el jugador está debajo y el zorrito está en viga elevada -> saltar abajo limpiamente
+        if (
+          allPlatforms.length > 0 &&
+          supportPlat &&
+          foxFeetY < 440 &&
+          this.verticalCooldown <= 0 &&
+          leaderFeetY >= foxFeetY + 20 &&
+          absDx < 245
+        ) {
+          const dropSpot = this._findLowerLandingSpot(allPlatforms, supportPlat, leaderCx);
+          if (dropSpot) {
+            this._startDropJumpWindup(dropSpot, supportPlat);
+            return;
+          }
+        }
+
+        // B. Si el jugador está en viga superior cercana -> saltar arriba para cazarlo
+        if (
+          allPlatforms.length > 0 &&
+          this.verticalCooldown <= 0 &&
+          leaderFeetY <= this.y - 16 &&
+          leaderFeetY >= this.y - 185 &&
+          absDx < 220
+        ) {
+          const climbPlat = this._findClimbableHighPlatform(allPlatforms, leaderCx);
+          if (climbPlat) {
+            this._startClimbJumpWindup(climbPlat);
+            return;
+          }
+        }
+
+        // C. En el mismo plano: persecución rápida y salto frontal si hay suelo seguro adelante
+        if (absDx < 260 && Math.abs(leaderFeetY - foxFeetY) <= 24) {
+          chasingPlayer = true;
+          this.facing = dx >= 0 ? 'right' : 'left';
+          const lookDir = dx >= 0 ? 1 : -1;
+          if (absDx >= 68 && absDx <= 178 && this.attackCooldown <= 0) {
+            const safeJump =
+              !supportPlat ||
+              (this._hasFloorSupportAt(allPlatforms, foxCx + lookDir * 58, supportPlat.y, 12) &&
+                this._hasFloorSupportAt(allPlatforms, foxCx + lookDir * 118, supportPlat.y, 12));
+            if (safeJump) {
+              this.aiState = 'attack_crouch';
+              this.crouchTimer = 0.09;
+              this.attackDir = lookDir;
+              this.vx = 0;
+              return;
+            }
+          }
+        }
+      }
+
+      // D. Incluso durante patrulla libre, subir/bajar entre vigas elevadas y suelo para dinamismo vertical
+      if (allPlatforms.length > 0 && this.verticalCooldown <= 0 && this.patrolHopCooldown <= 0) {
+        if (supportPlat && foxFeetY < 440) {
+          const dropSpot = this._findLowerLandingSpot(allPlatforms, supportPlat, leader ? leader.x : null);
+          if (dropSpot) {
+            this._startDropJumpWindup(dropSpot, supportPlat);
+            return;
+          }
+        } else {
+          const climbPlat = this._findClimbableHighPlatform(allPlatforms, foxCx);
+          if (climbPlat) {
+            this._startClimbJumpWindup(climbPlat);
+            return;
+          }
+        }
+        this.patrolHopCooldown = 1.8;
+      }
+
+      // E. Movimiento escurridizo horizontal (con cambios rápidos de dirección)
+      if (!chasingPlayer && this.dartTimer <= 0) {
+        this.facing = this.facing === 'right' ? 'left' : 'right';
+        this.dartTimer = 1.25 + Math.random() * 1.25;
+      }
+
+      const dir = this.facing === 'right' ? 1 : -1;
+      const moveSpeed = this.baseSpeed * (chasingPlayer ? 1.26 : 1.0) * spdScale;
+      const stepVx = dir * moveSpeed;
+      const nextX = this.x + stepVx * dt;
+
+      if (supportPlat && allPlatforms.length > 0) {
+        const edgeTooClose =
+          dir > 0
+            ? nextX + this.w > supportPlat.x + supportPlat.w - 6
+            : nextX < supportPlat.x + 6;
+        const leadProbeX = dir > 0 ? nextX + this.w + 6 : nextX - 6;
+        const floorAhead = !edgeTooClose || this._hasFloorSupportAt(allPlatforms, leadProbeX, supportPlat.y, 12);
+        if (!floorAhead) {
+          const safeLeft = supportPlat.x + 6;
+          const safeRight = Math.max(safeLeft, supportPlat.x + supportPlat.w - this.w - 6);
+          this.x = Math.max(safeLeft, Math.min(safeRight, this.x));
+          this.facing = dir > 0 ? 'left' : 'right';
+          this.vx = 0;
+          this.dartTimer = 1.0 + Math.random() * 0.9;
+          return;
+        }
+      }
+
+      this.vx = stepVx;
+      this.x = nextX;
+
+      const onOriginalHeight = Math.abs(this.y + this.h - this.initialPlatformY) <= 10;
+      if (onOriginalHeight || !allPlatforms.length) {
+        if (this.x <= this.minX) {
+          this.x = this.minX;
+          this.facing = 'right';
+          this.dartTimer = 1.1;
+        } else if (this.x + this.w >= this.maxX) {
+          this.x = this.maxX - this.w;
+          this.facing = 'left';
+          this.dartTimer = 1.1;
+        }
+      }
+    }
+
+    draw(ctx, sprites, cameraX, solids, movingPlatforms) {
+      if (this.dead) return;
+      drawProjectedShadow(ctx, this.x, this.y + this.h, this.w, solids, movingPlatforms, cameraX);
+      sprites.drawGarajonayFoxHD(ctx, this, cameraX, this.animTimer);
+      drawEnemyStatusOverlay(ctx, this.x - cameraX, this.y, this.w, this.stunTimer, this.hypnotizedTimer, this.animTimer, this.slowTimer, this.h);
     }
   }
 
@@ -5266,7 +7440,7 @@
         if (particles) {
           particles.Burst(this.x + this.w / 2, this.y + this.h / 2, '#f8fafc', 16);
           particles.Burst(this.x + this.w / 2, this.y + this.h / 2, '#94a3b8', 10);
-          particles.FloatingText(this.x - 24, this.y - 14, '¡1/2! 💥 ¡CORAZA PARTIDA!', '#fde047');
+          particles.FloatingText(this.x - 24, this.y - 14, '💥 ¡CORAZA PARTIDA!', '#fde047');
         }
         return 'cracked';
       }
@@ -5564,6 +7738,7 @@
     e.feintTimer = 0.6 + Math.random() * 0.8;
     e.feintMode = 1;
     e.partnerBoost = false;
+    e.turnCooldown = 0;
   }
 
   function getActiveAIPlatforms(aiCtx) {
@@ -5614,6 +7789,61 @@
     return null;
   }
 
+  function findContiguousGroundSpan(allPlatforms, e) {
+    if (!allPlatforms || !allPlatforms.length || !e) return null;
+    const feetY = e.y + e.h;
+    const cx = e.x + (e.w || 28) * 0.5;
+    let seed = null;
+    for (let i = 0; i < allPlatforms.length; i++) {
+      const p = allPlatforms[i];
+      if (!p || Math.abs(p.y - feetY) > 16) continue;
+      if (cx >= p.x - 4 && cx <= p.x + p.w + 4) {
+        seed = p;
+        break;
+      }
+    }
+    if (!seed) return null;
+    let spanMin = seed.x;
+    let spanMax = seed.x + seed.w;
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (let i = 0; i < allPlatforms.length; i++) {
+        const p = allPlatforms[i];
+        if (!p || Math.abs(p.y - seed.y) > 14) continue;
+        if (p.x <= spanMax + 6 && p.x + p.w >= spanMin - 6) {
+          if (p.x < spanMin) {
+            spanMin = p.x;
+            expanded = true;
+          }
+          if (p.x + p.w > spanMax) {
+            spanMax = p.x + p.w;
+            expanded = true;
+          }
+        }
+      }
+    }
+    return { x: spanMin, w: spanMax - spanMin, y: seed.y };
+  }
+
+  function clampAndReverseAtBound(e, minX, maxX, edgeDir, turnCooldownSec = 0.28) {
+    const ew = e.w || 28;
+    const spanW = maxX - minX;
+    const pad = Math.min(8, Math.max(2, (spanW - ew) * 0.15));
+    const safeMin = minX + pad;
+    const safeMax = Math.max(safeMin, maxX - ew - pad);
+    e.x = edgeDir > 0 ? safeMax : safeMin;
+    if ((e.turnCooldown || 0) <= 0) {
+      const revDir = edgeDir > 0 ? -1 : 1;
+      e.vx = revDir * Math.max(40, Math.abs(e.vx || 0));
+      e.facing = revDir > 0 ? 'right' : 'left';
+      e.turnCooldown = turnCooldownSec;
+      return revDir;
+    }
+    e.vx = 0;
+    return edgeDir;
+  }
+
   function updateTacticalGroundAI(e, dt, leader, aiCtx = null, opts = {}) {
     const tier = (aiCtx && aiCtx.aiTier) || e.aiTier || 1;
     const cityKey = (aiCtx && aiCtx.cityKey) || e.aiCity || 'buenosaires';
@@ -5623,6 +7853,7 @@
 
     if (e.jumpCooldown > 0) e.jumpCooldown = Math.max(0, e.jumpCooldown - dt);
     if (e.dodgeCooldown > 0) e.dodgeCooldown = Math.max(0, e.dodgeCooldown - dt);
+    if (e.turnCooldown > 0) e.turnCooldown = Math.max(0, e.turnCooldown - dt);
 
     // Restaurar o mantener hitbox agachada con pies anclados al suelo
     if (e.crouchTimer > 0) {
@@ -5694,6 +7925,9 @@
 
     if (e.isCrouching) {
       targetSpeed = 0;
+    } else if ((e.turnCooldown || 0) > 0) {
+      // Mantener dirección post-giro estable durante turnCooldown sin re-invertir cada frame
+      targetSpeed = baseSpd * (inSight ? 0.96 : 0.9);
     } else if (cfg.tier >= 2 && inSight && absDx > 10) {
       // Tier 2+: Persecución activa hacia el líder a media/larga distancia
       moveDir = dx >= 0 ? 1 : -1;
@@ -5707,6 +7941,8 @@
       e.facing = moveDir > 0 ? 'right' : 'left';
       targetSpeed = baseSpd * 0.95;
     }
+
+    const supSpan = e.onGround && allPlatforms.length > 0 ? findContiguousGroundSpan(allPlatforms, e) : null;
 
     // Detección de obstáculos verticales (escalones / barandas) y bordes/huecos en plataformas
     if (targetSpeed > 0 && allPlatforms.length > 0 && e.onGround && e.jumpCooldown <= 0) {
@@ -5725,16 +7961,21 @@
             e.jumpCooldown = 0.55;
             break;
           } else if (stepH > 68) {
-            // Muro alto: invertir dirección
-            moveDir *= -1;
-            e.facing = moveDir > 0 ? 'right' : 'left';
+            // Muro alto: invertir dirección respetando cooldown
+            if ((e.turnCooldown || 0) <= 0) {
+              moveDir *= -1;
+              e.facing = moveDir > 0 ? 'right' : 'left';
+              e.turnCooldown = 0.25;
+            } else {
+              targetSpeed = 0;
+            }
             break;
           }
         }
       }
 
       // 2. Comprobar suelo adelante o hueco saltable
-      if (e.onGround) {
+      if (e.onGround && targetSpeed > 0) {
         const probeAheadX = moveDir > 0 ? e.x + e.w + 8 : e.x - 8;
         let supportAhead = false;
         for (let i = 0; i < allPlatforms.length; i++) {
@@ -5746,7 +7987,7 @@
           }
         }
         if (!supportAhead) {
-          // Si hay tierra al otro lado de un hueco pequeño (24..132px), salta en Tier 2+; si no, gira en el borde
+          // Si hay tierra al otro lado de un hueco pequeño (24..132px), salta en Tier 2+; si no, gira en el borde con clamp y turnCooldown
           let landingFound = false;
           if (cfg.tier >= 2) {
             for (let scan = 28; scan <= 132; scan += 22) {
@@ -5762,10 +8003,23 @@
             e.onGround = false;
             e.jumpCooldown = 0.6;
             targetSpeed = Math.max(targetSpeed, 155 * cfg.cityAggro);
-          } else {
-            moveDir *= -1;
-            e.facing = moveDir > 0 ? 'right' : 'left';
+          } else if ((e.turnCooldown || 0) <= 0) {
+            const edgeDir = moveDir;
+            e.vx = edgeDir * targetSpeed;
+            if (supSpan) {
+              moveDir = clampAndReverseAtBound(e, supSpan.x, supSpan.x + supSpan.w, edgeDir, 0.28);
+            } else {
+              moveDir = -edgeDir;
+              e.vx = -e.vx;
+              e.facing = moveDir > 0 ? 'right' : 'left';
+              e.turnCooldown = 0.28;
+            }
             targetSpeed *= 0.85;
+          } else {
+            if (supSpan) {
+              clampAndReverseAtBound(e, supSpan.x, supSpan.x + supSpan.w, moveDir, 0.28);
+            }
+            targetSpeed = 0;
           }
         }
       }
@@ -5803,23 +8057,49 @@
       if (canPatrol) {
         if (e.x <= e.minX) {
           e.x = e.minX;
-          e.facing = 'right';
+          if ((e.turnCooldown || 0) <= 0) {
+            e.vx = Math.abs(e.vx || targetSpeed || 40);
+            e.facing = 'right';
+            e.turnCooldown = 0.25;
+          }
         } else if (e.x + e.w >= e.maxX) {
           e.x = e.maxX - e.w;
-          e.facing = 'left';
+          if ((e.turnCooldown || 0) <= 0) {
+            e.vx = -Math.abs(e.vx || targetSpeed || 40);
+            e.facing = 'left';
+            e.turnCooldown = 0.25;
+          }
         }
       } else if (opts.tetherChase) {
         const minT = (e.homeX || e.x) - 85;
         const maxT = (e.homeX || e.x) + 85;
         if (e.x < minT) {
           e.x = minT;
-          e.facing = 'right';
+          if ((e.turnCooldown || 0) <= 0) {
+            e.vx = Math.abs(e.vx || targetSpeed || 40);
+            e.facing = 'right';
+            e.turnCooldown = 0.25;
+          }
         } else if (e.x > maxT) {
           e.x = maxT;
-          e.facing = 'left';
+          if ((e.turnCooldown || 0) <= 0) {
+            e.vx = -Math.abs(e.vx || targetSpeed || 40);
+            e.facing = 'left';
+            e.turnCooldown = 0.25;
+          }
         }
       }
       return;
+    }
+
+    // Asegurar clamp seguro dentro del tramo continuo de suelo tras avanzar a pie
+    if (e.onGround && supSpan) {
+      const ew = e.w || 28;
+      if (e.x < supSpan.x + 2) {
+        clampAndReverseAtBound(e, supSpan.x, supSpan.x + supSpan.w, -1, 0.28);
+      } else if (e.x + ew > supSpan.x + supSpan.w - 2) {
+        clampAndReverseAtBound(e, supSpan.x, supSpan.x + supSpan.w, 1, 0.28);
+      }
     }
 
     // Gravedad y aterrizaje sobre plataformas activas cuando hay gravedad/salto
@@ -5849,10 +8129,18 @@
     } else if (cfg.tier < 2 && canPatrol && !inSight) {
       if (e.x <= e.minX) {
         e.x = e.minX;
-        e.facing = 'right';
+        if ((e.turnCooldown || 0) <= 0) {
+          e.vx = Math.abs(e.vx || targetSpeed || 40);
+          e.facing = 'right';
+          e.turnCooldown = 0.25;
+        }
       } else if (e.x + e.w >= e.maxX) {
         e.x = e.maxX - e.w;
-        e.facing = 'left';
+        if ((e.turnCooldown || 0) <= 0) {
+          e.vx = -Math.abs(e.vx || targetSpeed || 40);
+          e.facing = 'left';
+          e.turnCooldown = 0.25;
+        }
       }
     }
   }
@@ -5881,6 +8169,7 @@
       this.animTimer = Math.random() * 5;
       this.swingActive = false;
       this.bubbleTimer = 0;
+      this.turnCooldown = 0;
       initTacticalGroundFields(this, aiOpts);
     }
 
@@ -5975,9 +8264,61 @@
         return;
       }
       updateTacticalGroundAI(this, dt, leader, aiCtx, { tetherChase: true, minSpeed: 56 });
+      if (aiCtx && Array.isArray(aiCtx.allies)) {
+        const minSep = 120;
+        const myH = this.h || 42;
+        for (let i = 0; i < aiCtx.allies.length; i++) {
+          const ally = aiCtx.allies[i];
+          if (
+            !ally ||
+            ally === this ||
+            !(ally instanceof TrapitoEnemy) ||
+            ally.dead ||
+            ally.scaredFleeing ||
+            ally.defeated ||
+            (typeof ally.isDisabled === 'function' && ally.isDisabled())
+          ) {
+            continue;
+          }
+          if (Math.abs((ally.y || 0) - this.y) >= 30) continue;
+          const myCx = this.x + this.w * 0.5;
+          const allyCx = ally.x + (ally.w || this.w) * 0.5;
+          const diffX = myCx - allyCx;
+          if (Math.abs(diffX) < minSep) {
+            const pushDir = diffX === 0 ? (this.x <= ally.x ? -1 : 1) : (diffX > 0 ? 1 : -1);
+            const step = Math.min(220 * dt, (minSep - Math.abs(diffX)) * 0.5);
+            const candidateX = this.x + pushDir * step;
+            let onFirmSurface = true;
+            if (Array.isArray(aiCtx.solids) && aiCtx.solids.length > 0) {
+              const footY = this.y + myH;
+              onFirmSurface = false;
+              for (let sIdx = 0; sIdx < aiCtx.solids.length; sIdx++) {
+                const s = aiCtx.solids[sIdx];
+                if (!s || Math.abs(s.y - footY) > 10) continue;
+                const safeMargin = s.w - this.w >= 20 ? 8 : 3;
+                if (
+                  candidateX >= s.x + safeMargin &&
+                  candidateX + this.w <= s.x + s.w - safeMargin
+                ) {
+                  onFirmSurface = true;
+                  break;
+                }
+              }
+            }
+            if (onFirmSurface) {
+              this.x = candidateX;
+              if ((this.turnCooldown || 0) <= 0 && pushDir * (this.vx || 0) < 0) {
+                this.vx = pushDir * Math.max(40, Math.abs(this.vx || 0));
+              }
+            }
+          }
+        }
+      }
       if (leader) {
         const dx = (leader.x + leader.w * 0.5) - (this.x + this.w * 0.5);
-        this.facing = dx >= 0 ? 'right' : 'left';
+        if ((this.turnCooldown || 0) <= 0 && Math.abs(dx) > 10) {
+          this.facing = dx >= 0 ? 'right' : 'left';
+        }
         const swingRange = 135 + ((this.aiTier || 1) - 1) * 14 + (this.aiCity === 'rosario' ? 18 : 0);
         this.swingActive = Math.abs(dx) < swingRange && Math.abs(leader.y - this.y) < 88;
       }
@@ -5990,15 +8331,16 @@
 
     draw(ctx, sprites, cameraX, solids, movingPlatforms) {
       if (this.dead) return;
-      const sx = this.x - cameraX;
+      const camX = Math.round(cameraX);
+      const sx = Math.round(this.x - camX);
       if (sx < -160 || sx > 1120) return;
-      drawProjectedShadow(ctx, this.x, this.y + this.h, this.w, solids, movingPlatforms, cameraX);
+      drawProjectedShadow(ctx, this.x, this.y + this.h, this.w, solids, movingPlatforms, camX);
       ctx.save();
-      ctx.translate(-cameraX, 0);
+      ctx.translate(-camX, 0);
       sprites.drawTrapitoHD(ctx, this, this.animTimer);
       ctx.restore();
       if (!this.scaredFleeing) {
-        drawEnemyStatusOverlay(ctx, sx, this.y, this.w, this.stunTimer, this.hypnotizedTimer, this.animTimer);
+        drawEnemyStatusOverlay(ctx, sx, Math.round(this.y), this.w, this.stunTimer, this.hypnotizedTimer, this.animTimer);
       }
     }
   }
@@ -6715,6 +9057,7 @@
       this.x = x;
       this.y = y;
       this.anchorY = y;
+      this.poleBaseY = Number.isFinite(aiOpts && aiOpts.baseY) ? aiOpts.baseY : 460;
       this.w = 42;
       this.h = 34;
       this.aiTier = Math.max(1, Math.min(4, Number(aiOpts && aiOpts.aiTier) || 1));
@@ -6901,7 +9244,9 @@
       this.h = 44;
       this.baseH = 44;
       this.y = y - this.h;
-      this.throwCooldown = 1.0 + Math.random() * 0.8;
+      this.throwCooldown = 1.45 + Math.random() * 0.9;
+      this.throwWindup = 0;
+      this.throwWindupDuration = 0.32;
       this.swayPhase = Math.random() * 6;
       this.onPole = Boolean(aiOpts && aiOpts.onPole);
       this.wasOnPole = this.onPole;
@@ -6931,6 +9276,7 @@
       this.defeated = true;
       this.pendingThrow = null;
       this.throwAnim = 0;
+      this.throwWindup = 0;
       this.stunTimer = 0;
       this.hypnotizedTimer = 0;
       const dir =
@@ -6963,7 +9309,10 @@
         }
         return;
       }
-      if (tickEnemyStatus(this, dt)) return;
+      if (tickEnemyStatus(this, dt)) {
+        this.throwWindup = 0;
+        return;
+      }
       this.swayPhase += dt;
 
       if (!this.onPole) {
@@ -6973,44 +9322,59 @@
         this.vy = 0;
       }
       const cfg = getArgentinaAIConfig(this.aiTier, this.aiCity);
-      if (leader) {
+      if (leader && !this.isDisabled()) {
         const predictOffset = cfg.tier >= 3 ? (leader.vx || 0) * 0.34 : 0;
         const dx = (leader.x + leader.w * 0.5 + predictOffset) - (this.x + this.w * 0.5);
         this.facing = dx >= 0 ? 'right' : 'left';
-        this.throwCooldown -= dt;
         const throwRange = (this.onPole ? 510 : 470) + (cfg.tier - 1) * 35;
-        if (this.throwCooldown <= 0 && Math.abs(dx) < throwRange) {
-          this.throwCooldown = Math.max(
-            1.15,
-            (2.25 + Math.random() * 0.45) * cfg.cooldownMult * (this.partnerBoost ? 0.85 : 1.0)
-          );
-          this.throwAnim = 0.34;
-          const dir = dx >= 0 ? 1 : -1;
-          const dist = Math.abs(dx);
-          if (this.onPole) {
-            // Desde lo alto de la farola costanera, arroja el porrón hacia adelante y abajo
-            const throwY = this.y + 18;
-            const speedX = Math.max(105, Math.min(285, dist * 0.92 + (Math.random() - 0.5) * 32));
-            const speedY = leader.y > this.y + 20 ? -185 : -330;
-            this.pendingThrow = new BeerBottleProjectile(
-              this.x + (dir > 0 ? this.w - 4 : 4),
-              throwY,
-              dir * speedX,
-              speedY
+        if (this.throwWindup > 0) {
+          this.throwWindup = Math.max(0, this.throwWindup - dt);
+          if (this.throwWindup <= 0) {
+            // +40% de pausa entre lanzamientos (~2.2–2.6s) tras completar la preparación
+            this.throwCooldown = Math.max(
+              2.2,
+              Math.min(
+                2.6,
+                (2.32 + Math.random() * 0.28) *
+                  (0.86 + cfg.cooldownMult * 0.16) *
+                  (this.partnerBoost ? 0.94 : 1.0)
+              )
             );
-          } else {
-            // Balística aproximada con menor dispersión en Tier 3-4
-            const flightTime = 0.55 + Math.min(0.45, dist / 900);
-            const wobble = (Math.random() - 0.5) * (cfg.tier >= 3 ? 34 : 68);
-            const speedX = Math.max(125, Math.min(330, dist / flightTime + wobble));
-            this.pendingThrow = new BeerBottleProjectile(
-              this.x + this.w * 0.5,
-              this.y + 12,
-              dir * speedX,
-              cfg.tier >= 3 ? -415 : -400
-            );
+            this.throwAnim = 0.34;
+            const dir = dx >= 0 ? 1 : -1;
+            const dist = Math.abs(dx);
+            if (this.onPole) {
+              // Desde lo alto de la farola costanera, arroja el porrón hacia adelante y abajo
+              const throwY = this.y + 18;
+              const speedX = Math.max(105, Math.min(285, dist * 0.92 + (Math.random() - 0.5) * 32));
+              const speedY = leader.y > this.y + 20 ? -185 : -330;
+              this.pendingThrow = new BeerBottleProjectile(
+                this.x + (dir > 0 ? this.w - 4 : 4),
+                throwY,
+                dir * speedX,
+                speedY
+              );
+            } else {
+              // Balística aproximada con menor dispersión en Tier 3-4
+              const flightTime = 0.55 + Math.min(0.45, dist / 900);
+              const wobble = (Math.random() - 0.5) * (cfg.tier >= 3 ? 34 : 68);
+              const speedX = Math.max(125, Math.min(330, dist / flightTime + wobble));
+              this.pendingThrow = new BeerBottleProjectile(
+                this.x + this.w * 0.5,
+                this.y + 12,
+                dir * speedX,
+                cfg.tier >= 3 ? -415 : -400
+              );
+            }
+          }
+        } else {
+          this.throwCooldown -= dt;
+          if (this.throwCooldown <= 0 && Math.abs(dx) < throwRange) {
+            this.throwWindup = this.throwWindupDuration;
           }
         }
+      } else {
+        this.throwWindup = 0;
       }
     }
 
@@ -7032,15 +9396,18 @@
   }
 
   // Ráfaga horizontal de aire helado: NO quita vida, ralentiza movimiento y salto durante 2 s
+  // Alcance reducido al 50 % (life: 1.7 s -> ~399.5 px a 1.0x, ~455.4 px a 1.14x en Rosario)
   class ColdBlastProjectile {
     constructor(x, y, dir = -1, speedScale = 1.0, owner = null) {
       this.w = 44;
       this.h = 26;
       this.x = dir >= 0 ? x : x - this.w;
+      this.startX = this.x;
       this.y = y;
       this.dir = dir >= 0 ? 1 : -1;
       this.vx = this.dir * 235 * (Number(speedScale) || 1.0);
-      this.life = 3.4;
+      this.life = 1.7;
+      this.maxRange = Math.abs(this.vx) * this.life;
       this.dead = false;
       this.animTimer = 0;
       this.slowSeconds = 2.0;
@@ -7052,7 +9419,12 @@
       this.animTimer += dt;
       this.life -= dt;
       this.x += this.vx * dt;
-      if (this.life <= 0 || this.x < cameraX - 160 || this.x > cameraX + 1120) {
+      if (
+        this.life <= 0 ||
+        Math.abs(this.x - this.startX) >= this.maxRange ||
+        this.x < cameraX - 160 ||
+        this.x > cameraX + 1120
+      ) {
         this.dead = true;
       }
     }
@@ -9603,6 +11975,10 @@
     ELECTRIC_FIELD_RADIUS,
     getLevelSpeedScale,
     getArgentinaAIConfig,
+    findSupportingSurfaceSpan,
+    getActorSafeBoundsOnSpan,
+    computeCompanionFormationTargets,
+    applyCompanionFollowEdgeGuard,
     aabbOverlap,
     drawProjectedShadow,
     Player,
@@ -9616,6 +11992,8 @@
     MadridCatEnemy,
     SelfieTouristEnemy,
     RoyalGuardEnemy,
+    PeacockEnemy,
+    CrazyCyclistEnemy,
     GreenParakeetEnemy,
     SwarmParakeet,
     ElectricJellyfishEnemy,
@@ -9625,6 +12003,8 @@
     SwarmRoyalSeagull,
     VolcanicGeyser,
     GallotiaLizardEnemy,
+    GarajonayFoxEnemy,
+    GaudiLizardEnemy,
     CanarianHoopoeEnemy,
     SwarmCanarianHoopoe,
     BlindCrabEnemy,

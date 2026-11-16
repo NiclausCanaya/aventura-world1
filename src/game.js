@@ -12,10 +12,10 @@
   const LOGICAL_W = 960;
   const LOGICAL_H = 540;
   const RENDER_SCALE = 2; // 1920x1080 Nativo HD (DPR 2x)
-  const GAME_VERSION = 'v3.7';
+  const GAME_VERSION = 'v3.9';
   const ARCADE_BOARD_KEY = 'aventura_arcade_leaderboard_v1';
   const ARCADE_TOP_LIMIT = 5;
-  const DEFAULT_TIME_LIMIT = 120;
+  const DEFAULT_TIME_LIMIT = 210;
 
   // Coordenadas de la Caja de Reserva (Item Box [SHIFT]) en el HUD superior
   const ITEM_BOX_RECT = { x: 449, y: 4, w: 72, h: 48 };
@@ -35,8 +35,9 @@
       this.bgRenderer = new global.BackgroundRenderer();
       this.particles = new global.Entities.ParticleSystem();
 
-      // Estados: 'menu' | 'save_slots' | 'controls' | 'leaderboard' | 'settings' | 'playing' | 'paused' | 'level_cinematic' | 'level_clear' | 'map' | 'gameover' | 'victory'
-      this.state = 'menu';
+      // Estados: 'splash' | 'menu' | 'save_slots' | 'controls' | 'leaderboard' | 'settings' | 'playing' | 'paused' | 'level_cinematic' | 'level_clear' | 'map' | 'gameover' | 'victory'
+      this.state = 'splash';
+      this._splashDismissed = false;
 
       // Ranuras de guardado (1, 2, 3)
       this.activeSlotId = null;
@@ -77,6 +78,10 @@
       this.runCoins = 0;
       this.levelCoins = 0;
       this.lives = 3;
+      this.savedHearts =
+        global.WorldProgress && typeof global.WorldProgress.getHearts === 'function'
+          ? global.WorldProgress.getHearts()
+          : 3;
       this.survivalRiskMode = false;
       this.tookDamageInZone = false;
       this.postGameOverFallback = false;
@@ -122,8 +127,14 @@
       this.startCheatEligible = false;
       this.startCheatBuffer = '';
       this.etHomeBuffer = '';
+      this.pwingBuffer = '';
+      this.airTourBuffer = '';
+      this.ghostBuffer = '';
+      this.ghostRescueToastCooldown = 0;
       this.isAbductedByCheat = false;
       this.abductionCheat = null;
+      this.isBiplaneFlightCheat = false;
+      this.biplaneFlightCheat = null;
       this.pendingCityUnlock = null;
       this.pendingContinentUnlock = null;
       this.cheatLoadTime = 0;
@@ -170,6 +181,8 @@
       this.madridCats = [];
       this.selfieTourists = [];
       this.royalGuards = [];
+      this.peacocks = [];
+      this.crazyCyclists = [];
       this.greenParakeets = [];
       this.swarmParakeets = [];
       this.isMadridSwarm = false;
@@ -181,6 +194,10 @@
       this.isPalmaSwarm = false;
       this.geysers = [];
       this.gallotias = [];
+      this.garajonayFoxes = [];
+      this.gaudiLizard = null;
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
       this.abubillas = [];
       this.swarmAbubillas = [];
       this.blindCrabs = [];
@@ -242,6 +259,7 @@
       this.hasWaterPits = false;
       this.hasStormWaves = false;
       this.waterPits = [];
+      this.roseTunnels = [];
       this.zigzagPigeons = [];
       this.swarmPigeons = [];
       this.swarmEventTriggered = false;
@@ -263,8 +281,8 @@
       this.inputManager.bindEvents();
       this.setupAudioButton();
       this.setupSettingsModal();
+      this.setupSplashOverlay();
       this.syncControlHintsUI();
-      this.sound.playMenuMusic('zen');
       this.render();
       requestAnimationFrame((ts) => this.loop(ts));
     }
@@ -450,6 +468,92 @@
       }
     }
 
+    setupSplashOverlay() {
+      if (typeof document === 'undefined') return;
+      const overlay = document.getElementById('splash-overlay');
+      if (!overlay) {
+        this.state = 'menu';
+        return;
+      }
+      if (this.state !== 'splash') {
+        overlay.classList.add('hidden');
+        return;
+      }
+
+      const onPointerActivate = (ev) => {
+        if (this.state !== 'splash' || this._splashDismissed) return;
+        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+        const target = ev.target;
+        if (target && typeof target.closest === 'function') {
+          if (target.closest('#global-mute-btn, #btn-mute')) return;
+        }
+        if (typeof ev.preventDefault === 'function') ev.preventDefault();
+        this.enterMenuFromSplash();
+      };
+
+      this._splashPointerHandler = onPointerActivate;
+      document.addEventListener('pointerdown', onPointerActivate, true);
+    }
+
+    hideSplashOverlay() {
+      if (typeof document === 'undefined') return;
+      if (this._splashPointerHandler) {
+        document.removeEventListener('pointerdown', this._splashPointerHandler, true);
+        this._splashPointerHandler = null;
+      }
+      const overlay = document.getElementById('splash-overlay');
+      if (!overlay) return;
+      try { overlay.blur(); } catch (e) {}
+      overlay.classList.add('is-leaving');
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('is-leaving');
+      }, 270);
+    }
+
+    enterMenuFromSplash() {
+      if (this.state !== 'splash' || this._splashDismissed) return;
+      this._splashDismissed = true;
+      this.state = 'menu';
+      this.menuDemoTimer = 0;
+      this.menuDemoSkillTriggered = false;
+      this.menuDemoParticles = new global.Entities.ParticleSystem();
+
+      if (this.sound) {
+        this.sound.init();
+        if (typeof this.sound.unlock === 'function') {
+          this.sound.unlock();
+        }
+        const resumePromise =
+          typeof this.sound.resume === 'function' ? this.sound.resume() : null;
+
+        const playConfirm = () => {
+          if (!this.sound || this.sound.muted) return;
+          if (typeof this.sound.coin === 'function') {
+            this.sound.coin();
+          } else if (typeof this.sound.playMenuConfirmChord === 'function') {
+            this.sound.playMenuConfirmChord(false);
+          }
+        };
+
+        if (this.sound.ctx && this.sound.ctx.state === 'running') {
+          playConfirm();
+        } else if (resumePromise && typeof resumePromise.then === 'function') {
+          resumePromise.then((ok) => {
+            if (ok) playConfirm();
+          });
+        } else if (typeof this.sound.playMenuConfirmChord === 'function') {
+          this.sound.playMenuConfirmChord(false);
+        }
+
+        if (typeof this.sound.playMenuMusic === 'function') {
+          this.sound.playMenuMusic('zen');
+        }
+      }
+
+      this.hideSplashOverlay();
+    }
+
     setupAudioButton() {
       this.sound.syncMuteUI();
       ['btn-mute', 'global-mute-btn'].forEach((id) => {
@@ -556,15 +660,15 @@
         return this.inputManager.getControlScheme();
       }
       return {
-        profile: 'preset_a',
+        profile: 'preset_b',
         up: 'ArrowUp',
         down: 'ArrowDown',
         left: 'ArrowLeft',
         right: 'ArrowRight',
         jump: 'Space',
-        shoot: 'KeyZ',
-        tina: 'KeyX',
-        skill: 'KeyC',
+        shoot: 'KeyD',
+        tina: 'KeyS',
+        skill: 'KeyA',
         reserve: 'ShiftLeft'
       };
     }
@@ -588,12 +692,93 @@
       return fallbackText || code;
     }
 
+    formatControlHintText(text) {
+      if (!text || typeof text !== 'string') return text;
+      const kUp = this.getControlKeyBadge('up', true, '↑');
+      const kDown = this.getControlKeyBadge('down', true, '↓');
+      const kShoot = this.getControlKeyBadge('shoot', true, 'Z');
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
+      const kSkill = this.getControlKeyBadge('skill', true, 'C');
+      const kReserve = this.getControlKeyBadge('reserve', true, 'SHIFT');
+      return text
+        .replace(/\[↑\+Z\]/g, `[${kUp}+${kShoot}]`)
+        .replace(/\[↓\+Z\]/g, `[${kDown}+${kShoot}]`)
+        .replace(/\[Z\/C\]/g, `[${kShoot}/${kSkill}]`)
+        .replace(/\[X\]/g, `[${kTina}]`)
+        .replace(/\[Z\]/g, `[${kShoot}]`)
+        .replace(/\[C\]/g, `[${kSkill}]`)
+        .replace(/\[SHIFT\]/g, `[${kReserve}]`)
+        .replace(/\[↑\]/g, `[${kUp}]`);
+    }
+
+    wrapBannerText(ctx, text, maxWidth) {
+      const clean = String(text || '').trim();
+      if (!clean) return [];
+      if (ctx.measureText(clean).width <= maxWidth) return [clean];
+      const words = clean.split(/\s+/);
+      if (words.length >= 2) {
+        let bestSplit = -1;
+        let bestDiff = Infinity;
+        for (let i = 1; i < words.length; i++) {
+          const left = words.slice(0, i).join(' ');
+          const right = words.slice(i).join(' ');
+          const lw = ctx.measureText(left).width;
+          const rw = ctx.measureText(right).width;
+          if (lw <= maxWidth && rw <= maxWidth) {
+            const diff = Math.abs(lw - rw);
+            if (diff < bestDiff) {
+              bestDiff = diff;
+              bestSplit = i;
+            }
+          }
+        }
+        if (bestSplit > 0) {
+          return [words.slice(0, bestSplit).join(' '), words.slice(bestSplit).join(' ')];
+        }
+      }
+      const lines = [];
+      let current = '';
+      for (let i = 0; i < words.length; i++) {
+        const candidate = current ? `${current} ${words[i]}` : words[i];
+        if (!current || ctx.measureText(candidate).width <= maxWidth) {
+          current = candidate;
+        } else {
+          lines.push(current);
+          current = words[i];
+        }
+      }
+      if (current) lines.push(current);
+      return lines;
+    }
+
+    updateOverlayTimers(dt) {
+      if (this.levelBannerTimer > 0) {
+        this.levelBannerTimer = Math.max(0, this.levelBannerTimer - dt);
+      } else if (this.activeHintTimer > 0) {
+        // Solo descontar mientras el aviso es visible (no oculto tras el banner inicial de nivel)
+        this.activeHintTimer = Math.max(0, this.activeHintTimer - dt);
+      }
+      if (this.swarmAlertTimer > 0) {
+        this.swarmAlertTimer = Math.max(0, this.swarmAlertTimer - dt);
+      }
+    }
+
+    syncPresetButtonsActive(profileId) {
+      const btnPresetA = document.getElementById('btn-preset-a');
+      const btnPresetB = document.getElementById('btn-preset-b');
+      const btnPresetCustom = document.getElementById('btn-preset-custom');
+      if (btnPresetA) btnPresetA.classList.toggle('active', profileId === 'preset_a');
+      if (btnPresetB) btnPresetB.classList.toggle('active', profileId === 'preset_b');
+      if (btnPresetCustom) btnPresetCustom.classList.toggle('active', profileId === 'custom');
+    }
+
     syncControlHintsUI() {
       const scheme = this.getControlSchemeSafe();
       const profileBadge = document.getElementById('settings-controls-profile-badge');
       if (profileBadge) {
         profileBadge.textContent = this.getControlProfileLabel(scheme.profile);
       }
+      this.syncPresetButtonsActive(scheme.profile);
 
       const kUp = this.getControlKeyBadge('up', true, '↑');
       const kDown = this.getControlKeyBadge('down', true, '↓');
@@ -626,7 +811,10 @@
       }
 
       const btnTina = document.getElementById('btn-tina');
-      if (btnTina) btnTina.textContent = `🐾 TINA [${kTina}]`;
+      if (btnTina) {
+        btnTina.textContent = `🐾 TINA [${kTina}]`;
+        btnTina.setAttribute('aria-label', `Ladrido Doble de la Tina (Tecla ${kTina})`);
+      }
 
       const setBtnSub = (id, text) => {
         const btn = document.getElementById(id);
@@ -834,9 +1022,7 @@
       const listEl = document.getElementById('controls-actions-list');
       if (!listEl) return;
 
-      if (btnPresetA) btnPresetA.classList.toggle('active', scheme.profile === 'preset_a');
-      if (btnPresetB) btnPresetB.classList.toggle('active', scheme.profile === 'preset_b');
-      if (btnPresetCustom) btnPresetCustom.classList.toggle('active', scheme.profile === 'custom');
+      this.syncPresetButtonsActive(scheme.profile);
 
       if (statusBar) {
         statusBar.classList.remove('warning', 'waiting');
@@ -1149,6 +1335,10 @@
     }
 
     handleCanvasPointer(cx, cy) {
+      if (this.state === 'splash') {
+        this.enterMenuFromSplash();
+        return;
+      }
       if (this.state === 'playing') {
         this.invalidateStartCheat();
         if (
@@ -1245,6 +1435,8 @@
               this.retryCurrentZone();
             } else if (cx >= 622 && cx <= 816) {
               this.lives = 3;
+              this.savedHearts = 3;
+              this.syncHeartsToSlot(3);
               this.returnToMenu(false);
             }
           } else {
@@ -1262,7 +1454,7 @@
           this.resumeGame();
         } else if (cy > 268 && cy <= 316) {
           if (this.sound && typeof this.sound.stopMusic === 'function') this.sound.stopMusic();
-          this.loadLevel(this.levelIndex);
+          this.loadLevel(this.levelIndex, this.preserveSessionHearts());
           this.state = 'playing';
           if (this.sound && typeof this.sound.startMusic === 'function') {
             this.sound.startMusic(this.getActiveLevelMusicTheme(), this.getActiveLevelMusicMeta());
@@ -1324,10 +1516,18 @@
         typeof global.WorldProgress.getLives === 'function' ? global.WorldProgress.getLives() : existing.lives
       );
       this.lives = Number.isFinite(savedLives) && savedLives >= 1 ? Math.min(99, Math.floor(savedLives)) : 3;
+      const savedHearts = Number(
+        typeof global.WorldProgress.getHearts === 'function' ? global.WorldProgress.getHearts() : existing.hearts
+      );
+      this.savedHearts =
+        Number.isFinite(savedHearts) && savedHearts >= 1 ? Math.max(1, Math.min(3, Math.floor(savedHearts))) : 3;
+      this.player = null;
       this.survivalRiskMode = false;
       this.setPostGameOverActive(false);
       this.carriedPowerUp = null;
       this.reservePowerUp = null;
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
       const spawnTarget =
         typeof global.WorldProgress.getLastPlayedTarget === 'function'
           ? global.WorldProgress.getLastPlayedTarget()
@@ -1479,15 +1679,19 @@
       this.runCoins = 0;
       this.lives = 3;
       this.syncLivesToSlot();
+      this.savedHearts = 3;
+      this.syncHeartsToSlot(3);
       this.survivalRiskMode = false;
       this.tookDamageInZone = false;
       this.setPostGameOverActive(false);
       this.totalTime = 0;
       this.levelIndex = 0;
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
       this.player = null;
       this.clearRunEquipment();
       this.resetLevelBoneTracking();
-      this.loadLevel(0);
+      this.loadLevel(0, 3);
       this.state = 'playing';
       this.sound.startMusic(this.getActiveLevelMusicTheme(), this.getActiveLevelMusicMeta());
     }
@@ -1516,15 +1720,19 @@
       this.runCoins = 0;
       this.lives = 3;
       this.syncLivesToSlot();
+      this.savedHearts = 3;
+      this.syncHeartsToSlot(3);
       this.survivalRiskMode = false;
       this.tookDamageInZone = false;
       this.setPostGameOverActive(false);
       this.totalTime = 0;
       this.levelIndex = 0;
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
       this.player = null;
       this.clearRunEquipment();
       this.resetLevelBoneTracking();
-      this.loadLevel(0);
+      this.loadLevel(0, 3);
       this.state = 'playing';
       this.sound.startMusic(this.getActiveLevelMusicTheme(), this.getActiveLevelMusicMeta());
     }
@@ -1635,6 +1843,13 @@
      * o limpiando antes la música/fanfarria de un nivel recién completado.
      */
     openMap(opts = {}) {
+      if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
+        this.sound.stopBiplaneAmbience();
+      }
+      this.isBiplaneFlightCheat = false;
+      this.biplaneFlightCheat = null;
+      this.airTourBuffer = '';
+      this.ghostBuffer = '';
       if (this.sound.menuMusicPlaying && !this.sound.muted) {
         this.sound.stopMusic();
         if (typeof this.sound.stopFanfareAudio === 'function') {
@@ -1684,6 +1899,38 @@
       return this.lives;
     }
 
+    /** Guarda los corazones actuales (1..3) en memoria y en la ranura activa. */
+    syncHeartsToSlot(val = null) {
+      const raw =
+        val !== null && val !== undefined
+          ? Number(val)
+          : (this.player && Number.isFinite(this.player.hearts) && this.player.hearts >= 1
+              ? this.player.hearts
+              : (Number.isFinite(this.savedHearts) && this.savedHearts >= 1 ? this.savedHearts : 3));
+      const clean = Number.isFinite(raw) && raw >= 1 ? Math.max(1, Math.min(3, Math.floor(raw))) : 3;
+      this.savedHearts = clean;
+      if (global.WorldProgress && typeof global.WorldProgress.setHearts === 'function') {
+        global.WorldProgress.setHearts(clean);
+      }
+      return clean;
+    }
+
+    /** Preserva y sincroniza los corazones actuales (1..3) sin restaurar a 3 al cambiar de nivel/mapa. */
+    preserveSessionHearts() {
+      const playerHearts =
+        this.player && Number.isFinite(this.player.hearts) && this.player.hearts >= 1
+          ? this.player.hearts
+          : null;
+      const sessionHearts =
+        Number.isFinite(this.savedHearts) && this.savedHearts >= 1 ? this.savedHearts : null;
+      const storedHearts =
+        global.WorldProgress && typeof global.WorldProgress.getHearts === 'function'
+          ? global.WorldProgress.getHearts()
+          : 3;
+      const picked = playerHearts !== null ? playerHearts : (sessionHearts !== null ? sessionHearts : storedHearts);
+      return this.syncHeartsToSlot(picked);
+    }
+
     /** Suma +1 VIDA y sincroniza inmediatamente con la ranura guardada. */
     grantExtraLife() {
       const current = Number(this.lives);
@@ -1701,6 +1948,7 @@
       }
       this.clearTransientInput();
       this.preserveSessionLives();
+      this.preserveSessionHearts();
       this.survivalRiskMode = false;
       this.setPostGameOverActive(false);
       this.resetLevelBoneTracking();
@@ -1789,6 +2037,31 @@
       }
     }
 
+    /** Reproduce la fanfarria y destellos dorados al recoger cualquier huesito dorado secreto. */
+    emitGoldenBonePickupEffect(cx, cy, label) {
+      if (this.sound) {
+        if (typeof this.sound.playSecret1Up === 'function') {
+          this.sound.playSecret1Up();
+        } else if (typeof this.sound.play1Up === 'function') {
+          this.sound.play1Up();
+        } else if (typeof this.sound.oneUp === 'function') {
+          this.sound.oneUp();
+        }
+      }
+      if (this.particles) {
+        this.particles.Burst(cx, cy, '#fde047', 30);
+        this.particles.Burst(cx, cy, '#fbbf24', 20);
+        this.particles.Burst(cx, cy, '#fef08a', 12);
+        for (let sp = 0; sp < 8; sp++) {
+          const ang = (Math.PI * 2 * sp) / 8;
+          this.particles.Sparkle(cx + Math.cos(ang) * 16, cy + Math.sin(ang) * 16, '#fde047');
+        }
+        if (label) {
+          this.particles.FloatingText(cx - 55, cy - 29, label, '#fde047');
+        }
+      }
+    }
+
     handleHiddenBlockReveal(hb, info) {
       if (!hb || !info || info.wasUsed || hb._itemSpawned) return;
       hb._itemSpawned = true;
@@ -1803,7 +2076,9 @@
       if (itemType === 'golden_bone' || itemType === '1up_bone') {
         spawned.secretKey = hb.secretKey || this.getGoldenBoneKey(this.cityKey, this.levelIndex, hb);
       }
-      if (typeof spawned.startBlockPop === 'function') {
+      if (itemType === 'tina_golden_bone' && typeof spawned.startHighLaunch === 'function') {
+        spawned.startHighLaunch(info.spawnY, 54);
+      } else if (typeof spawned.startBlockPop === 'function') {
         spawned.startBlockPop(info.spawnY, info.targetY, 0.28);
       }
       this.collectibles.push(spawned);
@@ -1814,7 +2089,10 @@
       const normalizedKey = this.normalizeCityKey(cityKey);
       const defs = global.CITY_DEFS || {};
       const def = defs[normalizedKey] || defs[cityKey];
-      if (!def || !def.playable || !global.WorldProgress.isUnlocked(normalizedKey)) return;
+      const isTempLocked =
+        typeof global.isCountryLocked === 'function' &&
+        global.isCountryLocked((def && def.country) || normalizedKey);
+      if (!def || !def.playable || isTempLocked || !global.WorldProgress.isUnlocked(normalizedKey)) return;
 
       this.cityKey = normalizedKey;
       const levels = this.getCityLevels();
@@ -1825,12 +2103,15 @@
       }
 
       const zoneNum = targetIdx + 1;
-      // Conservar las vidas actuales de la sesión / ranura guardada (solo se resetean a 3 tras Game Over o Partida Nueva)
+      // Conservar las vidas y corazones actuales de la sesión / ranura guardada (solo se resetean a 3 tras perder vida, Game Over o Partida Nueva)
       this.preserveSessionLives();
+      const prevHearts = this.preserveSessionHearts();
       this.survivalRiskMode = false;
       this.tookDamageInZone = false;
       this.setPostGameOverActive(false);
       this.resetLevelBoneTracking();
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
 
       this.lockLandscapeOrientation();
       this.sound.stopMenuMusic();
@@ -1843,12 +2124,12 @@
         global.WorldProgress.setLastPlayedLocation(normalizedKey, zoneNum);
       }
       this.levelIndex = targetIdx;
-      this.loadLevel(this.levelIndex);
+      this.loadLevel(this.levelIndex, prevHearts);
       this.state = 'playing';
       this.sound.startMusic(this.getActiveLevelMusicTheme(), this.getActiveLevelMusicMeta());
     }
 
-    /** Reintentar la zona actual tras Game Over con 3 vidas completas y puntaje en 0. */
+    /** Reintentar la zona actual tras Game Over con 3 vidas completas, 3 corazones y puntaje en 0. */
     retryCurrentZone() {
       const city = this.normalizeCityKey(this.cityKey || 'barcelona');
       const idx = Math.max(0, this.levelIndex | 0);
@@ -1856,8 +2137,13 @@
       this.levelStartScore = 0;
       this.lives = 3;
       this.syncLivesToSlot();
+      if (this.player) this.player.hearts = 3;
+      this.savedHearts = 3;
+      this.syncHeartsToSlot(3);
       this.survivalRiskMode = false;
       this.tookDamageInZone = false;
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
       this.enterZone(city, idx);
     }
 
@@ -1872,9 +2158,19 @@
       this.closeSettingsModal(false);
       if (this.sound && typeof this.sound.setHurryUp === 'function') this.sound.setHurryUp(false);
       if (this.sound && typeof this.sound.stopAnnouncementAudio === 'function') this.sound.stopAnnouncementAudio();
+      if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') this.sound.stopBiplaneAmbience();
       this.sound.stopAllSounds();
+      this.isBiplaneFlightCheat = false;
+      this.biplaneFlightCheat = null;
+      this.airTourBuffer = '';
+      this.ghostMode = false;
+      this.ghostBuffer = '';
+      this.ghostToastTimer = 0;
+      this.ghostRescueToastCooldown = 0;
+      if (this.player) this.player.ghostMode = false;
       this.clearTransientInput();
       this.preserveSessionLives();
+      this.preserveSessionHearts();
       this.survivalRiskMode = false;
       this.setPostGameOverActive(false);
       this.resetLevelBoneTracking();
@@ -1977,6 +2273,20 @@
       }
 
       if (city === 'ushuaia') {
+        const chileTempLocked =
+          typeof global.isCountryLocked === 'function'
+            ? global.isCountryLocked('chile')
+            : !!(global.LOCKED_COUNTRIES && global.LOCKED_COUNTRIES.chile);
+        if (chileTempLocked) {
+          this.pendingContinentUnlock = null;
+          this.pendingCityUnlock = null;
+          this.openMap({
+            level: 'world',
+            worldNode: 'argentina',
+            cursorCity: 'ushuaia'
+          });
+          return;
+        }
         const nextKey = def ? def.next : null;
         const pendingWorld =
           this.pendingContinentUnlock && this.pendingContinentUnlock.to === 'chile'
@@ -2028,10 +2338,10 @@
     /**
      * Carga un nivel.
      * REGLA ESTRICTA DE RESETEO ENTRE NIVELES:
-     * Al completar un nivel y pasar al siguiente, se pierden tanto el power-up
-     * equipado como el que esté guardado en la Caja de Reserva (se inicia en estado base).
+     * Al completar un nivel y pasar al siguiente, se conservan los corazones actuales (1..3)
+     * junto con el equipamiento conservado en la sesión.
      */
-    loadLevel(index) {
+    loadLevel(index, initialHearts = null) {
       const cityLevels = this.getCityLevels();
       const safeIndex = Number.isInteger(index) && index >= 0 && index < cityLevels.length ? index : 0;
       this.levelIndex = safeIndex;
@@ -2056,8 +2366,17 @@
       this.startCheatEligible = isBarcelonaZone1 && isFreshNewSlot;
       this.startCheatBuffer = '';
       this.etHomeBuffer = '';
+      this.pwingBuffer = '';
+      this.airTourBuffer = '';
+      this.ghostBuffer = '';
+      this.ghostRescueToastCooldown = 0;
       this.isAbductedByCheat = false;
       this.abductionCheat = null;
+      this.isBiplaneFlightCheat = false;
+      this.biplaneFlightCheat = null;
+      if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
+        this.sound.stopBiplaneAmbience();
+      }
       this.pendingCityUnlock = null;
       this.pendingContinentUnlock = null;
       this.cheatLoadTime =
@@ -2120,17 +2439,18 @@
         )
       );
       this.hiddenBlocks = (raw.hiddenBlocks || []).map((hb) => {
-        const secretKey = this.getGoldenBoneKey(this.cityKey, safeIndex, hb);
+        const blockItem = hb.item || 'golden_bone';
+        const secretKey = blockItem === 'tina_golden_bone' ? null : this.getGoldenBoneKey(this.cityKey, safeIndex, hb);
         const block = new global.Entities.HiddenBlock(
           hb.x,
           hb.y,
           hb.w || 32,
           hb.h || 32,
-          hb.item || 'golden_bone',
+          blockItem,
           hb.style || 'secret_gold',
           secretKey
         );
-        if (this.collectedBonesInRun && this.collectedBonesInRun.has(secretKey)) {
+        if (secretKey && this.collectedBonesInRun && this.collectedBonesInRun.has(secretKey)) {
           block.revealed = true;
           block.hit = true;
           block.used = true;
@@ -2212,8 +2532,24 @@
       this.royalGuards = (raw.royalGuards || []).map(
         (rg) => new global.Entities.RoyalGuardEnemy(rg.x, rg.y, rg.minX, rg.maxX, rg.speed, index)
       );
+      this.peacocks = (raw.peacocks || []).map(
+        (pk) => new global.Entities.PeacockEnemy(pk.x, pk.y, pk.minX, pk.maxX, pk.speed, index)
+      );
+      this.crazyCyclists = (raw.crazyCyclists || []).map(
+        (cc) => new global.Entities.CrazyCyclistEnemy(cc.x, cc.y, cc.minX, cc.maxX, cc.speed, index)
+      );
       this.greenParakeets = (raw.greenParakeets || []).map(
-        (g) => new global.Entities.GreenParakeetEnemy(g.x, g.baseY, g.minX, g.maxX, g.ampY, g.speed, index)
+        (g) =>
+          new global.Entities.GreenParakeetEnemy(
+            g.x,
+            g.baseY,
+            g.minX,
+            g.maxX,
+            g.ampY,
+            g.speed,
+            index,
+            g.variant || (this.cityKey === 'barcelona' ? 'barcelona' : 'madrid')
+          )
       );
       this.swarmParakeets = [];
       this.isMadridSwarm = !!raw.isMadridSwarm;
@@ -2246,6 +2582,25 @@
       this.gallotias = (raw.gallotias || []).map(
         (g) => new global.Entities.GallotiaLizardEnemy(g.x, g.y, g.minX, g.maxX, g.speed, index)
       );
+      this.garajonayFoxes = (raw.garajonayFoxes || []).map(
+        (f) => new global.Entities.GarajonayFoxEnemy(f.x, f.y, f.minX, f.maxX, f.speed, index)
+      );
+      this.gaudiLizard = null;
+      if (raw.gaudiLizard && !this.lizardEventConsumed && !this.gaudiLizardEventResolved) {
+        const glCfg = raw.gaudiLizard;
+        this.gaudiLizard = new global.Entities.GaudiLizardEnemy(
+          glCfg.x,
+          glCfg.y,
+          glCfg.platformX,
+          glCfg.platformW,
+          glCfg.minX,
+          glCfg.maxX,
+          glCfg.speed || 296,
+          index,
+          glCfg.triggerX,
+          glCfg.maxPasses || 3
+        );
+      }
       this.abubillas = (raw.abubillas || []).map(
         (a) => new global.Entities.CanarianHoopoeEnemy(a.x, a.baseY, a.minX, a.maxX, a.vx, a.amplitude, a.diveSpeed, index)
       );
@@ -2286,7 +2641,14 @@
         (fp) => new global.Entities.FatPigeonEnemy(fp.x, fp.y, fp.minX, fp.maxX, fp.speed)
       );
       this.horneroNests = (raw.horneroNests || []).map(
-        (hn) => new global.Entities.HorneroNest(hn.x, hn.y, hn.aggroRange, hn.cooldown, hn.speed, aiOpts)
+        (hn) => new global.Entities.HorneroNest(
+          hn.x,
+          hn.y,
+          hn.aggroRange,
+          hn.cooldown,
+          hn.speed,
+          Object.assign({}, aiOpts, Number.isFinite(hn.baseY) ? { baseY: hn.baseY } : null)
+        )
       );
       this.horneros = [];
       this.swarmHorneros = [];
@@ -2399,10 +2761,12 @@
         : [];
       this.swarmFrigates = [];
       this.isFrigateSwarm = !!raw.isFrigateSwarm;
-      this.autoScrollSpeed = Number(raw.autoScrollSpeed) || 0;
+      this.autoScrollSpeed =
+        raw.autoScroll === false ? 0 : Math.max(0, Number(raw.autoScrollSpeed) || 0);
       this.constantWindX = Number(raw.constantWindX) || 0;
       this.hasSandPhysics = !!raw.hasSandPhysics;
-      this.hasIcePhysics = !!raw.hasIcePhysics;
+      this.hasIcePhysics = !!(raw.hasIcePhysics || raw.isIceLevel);
+      this.isIceLevel = this.hasIcePhysics;
       this.hasSaltPhysics = !!raw.hasSaltPhysics;
       this.hasLavaPits = !!raw.hasLavaPits;
       this.hasDeadlyPits = !!raw.hasDeadlyPits;
@@ -2412,6 +2776,7 @@
       this.windForceX = 0;
       this.hasWaterPits = !!raw.hasWaterPits || this.cityKey === 'palma';
       this.hasStormWaves = !!raw.hasStormWaves;
+      this.roseTunnels = Array.isArray(raw.roseTunnels) ? raw.roseTunnels : [];
       this.waterPits = this.computeWaterPits();
       this.zigzagPigeons = (raw.zigzagPigeons || []).map(
         (z) => new global.Entities.ZigZagPigeon(z.x, z.baseY, z.minX, z.maxX, z.ampY, z.speed, index)
@@ -2433,6 +2798,14 @@
           } else if (e.type === 'royal_guard' || e.type === 'royalGuard') {
             this.royalGuards.push(
               new global.Entities.RoyalGuardEnemy(e.x, e.y, minX, maxX, e.speed || 62, index)
+            );
+          } else if (e.type === 'peacock') {
+            this.peacocks.push(
+              new global.Entities.PeacockEnemy(e.x, e.y, minX, maxX, e.speed || 62, index)
+            );
+          } else if (e.type === 'crazy_cyclist' || e.type === 'crazyCyclist') {
+            this.crazyCyclists.push(
+              new global.Entities.CrazyCyclistEnemy(e.x, e.y, minX, maxX, e.speed || 158, index)
             );
           } else if (e.type === 'pigeon') {
             this.pigeons.push(
@@ -2460,7 +2833,8 @@
               p.maxX || p.x + 150,
               p.ampY || p.amp || 36,
               p.speed || 150,
-              index
+              index,
+              p.variant || (this.cityKey === 'barcelona' ? 'barcelona' : 'madrid')
             )
           );
         });
@@ -2476,12 +2850,16 @@
         ...this.madridCats,
         ...this.selfieTourists,
         ...this.royalGuards,
+        ...this.peacocks,
+        ...this.crazyCyclists,
         ...this.greenParakeets,
         ...this.jellyfishes,
         ...this.crabs,
         ...this.goats,
         ...this.royalSeagulls,
         ...this.gallotias,
+        ...this.garajonayFoxes,
+        ...(this.gaudiLizard ? [this.gaudiLizard] : []),
         ...this.abubillas,
         ...this.blindCrabs,
         ...this.trapitos,
@@ -2515,9 +2893,24 @@
       const spawnPos = raw.spawn && Number.isFinite(raw.spawn.x) && Number.isFinite(raw.spawn.y)
         ? raw.spawn
         : { x: 80, y: 390 };
-      const prevHearts = this.player ? this.player.hearts : 3;
+      const fallbackHearts =
+        this.player && Number.isFinite(this.player.hearts) && this.player.hearts >= 1
+          ? this.player.hearts
+          : (Number.isFinite(this.savedHearts) && this.savedHearts >= 1
+              ? this.savedHearts
+              : (global.WorldProgress && typeof global.WorldProgress.getHearts === 'function'
+                  ? global.WorldProgress.getHearts()
+                  : 3));
+      const targetHearts =
+        initialHearts !== null && initialHearts !== undefined ? Number(initialHearts) : fallbackHearts;
       this.player = new global.Entities.Player(spawnPos.x, spawnPos.y, this.selectedCharacter);
-      this.player.hearts = prevHearts > 0 ? prevHearts : 3;
+      this.player.ghostMode = Boolean(this.ghostMode);
+      const safeHearts =
+        Number.isFinite(targetHearts) && targetHearts >= 1
+          ? Math.max(1, Math.min(this.player.maxHearts || 3, Math.floor(targetHearts)))
+          : 3;
+      this.player.hearts = safeHearts;
+      this.syncHeartsToSlot(safeHearts);
       this.player.reserveItem = this.reservePowerUp || null;
       if (preservedPowerUp) {
         this.player.equipPowerUp(preservedPowerUp);
@@ -2536,6 +2929,7 @@
     }
 
     nextLevel() {
+      this.preserveSessionHearts();
       if (this.sound && typeof this.sound.stopAnnouncementAudio === 'function') {
         this.sound.stopAnnouncementAudio();
       }
@@ -2596,7 +2990,7 @@
       const label =
         newType === 'angel_wings'
           ? '🪽 ¡ALAS DE ÁNGEL (3x SALTO)!'
-          : '🌿 ¡POWER-UP PLANTA [Z]!';
+          : this.formatControlHintText('🌿 ¡POWER-UP PLANTA [Z]!');
       const byTina = Boolean(touchedBy && this.tina && touchedBy === this.tina);
       const fromReserveDrop = Boolean(c && c.isReserveDrop);
 
@@ -2633,7 +3027,9 @@
         this.particles.FloatingText(
           c.x - 52,
           c.y - 10,
-          byTina ? '🐾 ¡GUARDADO EN RESERVA [SHIFT]!' : '¡GUARDADO EN RESERVA [SHIFT]!',
+          this.formatControlHintText(
+            byTina ? '🐾 ¡GUARDADO EN RESERVA [SHIFT]!' : '¡GUARDADO EN RESERVA [SHIFT]!'
+          ),
           '#fde047'
         );
         return;
@@ -2684,7 +3080,7 @@
       this.particles.FloatingText(
         dropX - 38,
         dropY + 26,
-        '⬇ ¡RESERVA [SHIFT]!',
+        this.formatControlHintText('⬇ ¡RESERVA [SHIFT]!'),
         '#38bdf8'
       );
       return true;
@@ -2695,10 +3091,10 @@
     }
 
     /**
-     * Dispara un proyectil botánico (Planta/Hoja) de gravedad cero (gravity = 0)
-     * con soporte multidireccional:
-     * - Tiro estándar (D solo): Horizontal (0°) en la dirección que mira el personaje.
-     * - Tiro diagonal arriba (↑ + D): 45° hacia arriba.
+     * Dispara un proyectil botánico (Planta/Hoja) de gravedad progresiva
+     * con alcance corto controlado y soporte multidireccional:
+     * - Tiro estándar (D solo): horizontal inicial (~75 px) y caída suave al piso (~190-210 px).
+     * - Tiro diagonal arriba (↑ + D): 45° en arco parabólico compacto (~50 % del alcance anterior).
      * - Tiro diagonal abajo (↓ + D en el aire): 45° hacia abajo.
      */
     tryShootPlant() {
@@ -2739,11 +3135,22 @@
     // CINEMÁTICA DE FIN DE NIVEL: METRO DE BARCELONA (TMB) + JINGLE + IRIS OUT
     // ========================================================================
     handleTimeUp() {
+      if (this.ghostMode) {
+        this.levelTimer = DEFAULT_TIME_LIMIT;
+        this.timeLeft = DEFAULT_TIME_LIMIT;
+        this.hurryUpTriggered = false;
+        if (this.sound && typeof this.sound.setHurryUp === 'function') {
+          this.sound.setHurryUp(false);
+        }
+        return;
+      }
       this.triggerPlayerDeath({ fellInPit: false, timeUp: true });
     }
 
     triggerPlayerDeath({ fellInPit = false, timeUp = false } = {}) {
+      if (this.ghostMode) return;
       if (this.isAbductedByCheat) return;
+      if (this.isBiplaneFlightCheat) return;
       if (this.state !== 'playing' || !this.player || this.player.dead) return;
       this.tookDamageInZone = true;
 
@@ -2849,9 +3256,11 @@
             this.sound.gameOver();
           }
           this.prepareGameOverScreen(achievedScore);
-          // Tras un Game Over, restablecer las vidas base a 3 en sesión y en el guardado para el próximo intento
+          // Tras un Game Over, restablecer las vidas y corazones base a 3 en sesión y en el guardado para el próximo intento
           this.lives = 3;
           this.syncLivesToSlot();
+          this.savedHearts = 3;
+          this.syncHeartsToSlot(3);
         } else {
           this.syncLivesToSlot();
           this.resetCurrentLevel();
@@ -2890,16 +3299,20 @@
       this.swarmAlertTimer = 0;
       this.swarmEventTriggered = false;
 
-      // Al perder 1 vida, se limpia el Power-Up activo pero se conserva la Reserva [SHIFT]
+      // Al perder los 3 corazones y consumir 1 vida, se limpia el Power-Up activo,
+      // se conserva la Reserva [SHIFT] y se restauran los 3 corazones para la nueva vida.
       this.carriedPowerUp = null;
       if (this.player && typeof this.player.clearAllPowerUps === 'function') {
         this.player.clearAllPowerUps();
+        this.player.hearts = 3;
       }
+      this.savedHearts = 3;
+      this.syncHeartsToSlot(3);
 
       // Recarga limpia del nivel (enemigos, plataformas móviles/caedizas, coleccionables, cámara)
       this.loadLevel(this.levelIndex);
 
-      // Restauración estricta del estado de partida, reloj estándar a 120s y música normal
+      // Restauración estricta del estado de partida, reloj estándar a 210s y música normal
       const resetTimeLimit = Number.isFinite(this.levelData && this.levelData.timeLimit)
         ? this.levelData.timeLimit
         : DEFAULT_TIME_LIMIT;
@@ -2992,15 +3405,23 @@
      * Detecta todos los pozos/abismos entre plataformas sólidas de suelo para niveles
      * costeros, con agua o con peces saltarines, devolviendo { x, w, surfaceY, hasFish }.
      */
+    isRosarioParanaWater() {
+      return (
+        this.cityKey === 'rosario' ||
+        !!(this.levelData && typeof this.levelData.theme === 'string' && this.levelData.theme.indexOf('ro_') === 0)
+      );
+    }
+
     computeWaterPits() {
       const hasAnyFish = this.pacificHazards.length > 0 || this.palometas.length > 0;
       if (!this.hasWaterPits && !hasAnyFish) return [];
+      const waterTone = this.isRosarioParanaWater() ? 'parana' : 'ocean';
 
       const segs = [];
       for (let i = 0; i < this.solids.length; i++) {
         const s = this.solids[i];
         if (!s || s.oneWay) continue;
-        if (s.y >= 450 && s.y <= 505 && s.w > 0) {
+        if (s.y <= 505 && s.y + (s.h || 0) >= 470 && s.w > 0) {
           segs.push({ x: s.x, end: s.x + s.w });
         }
       }
@@ -3045,7 +3466,8 @@
           x: gapX,
           w: gapW,
           surfaceY: clampSurfaceY(surfaceY),
-          hasFish
+          hasFish,
+          waterTone
         });
       }
 
@@ -3054,12 +3476,30 @@
         const inPit = pits.some((p) => fx >= p.x - 16 && fx <= p.x + p.w + 16);
         const inSolid = merged.some((g) => fx >= g.x && fx <= g.end);
         if (!inPit && !inSolid) {
-          pits.push({
-            x: fx - 64,
-            w: 128,
-            surfaceY: clampSurfaceY(fishes[f].y),
-            hasFish: true
-          });
+          let startX = Math.max(0, fx - 64);
+          let endX = fx + 64;
+          for (let j = 0; j < merged.length; j++) {
+            const m = merged[j];
+            if (m.end <= startX || m.x >= endX) continue;
+            if (m.x <= startX && m.end >= endX) {
+              startX = endX;
+              break;
+            }
+            if (m.x <= startX && m.end > startX) {
+              startX = m.end;
+            } else if (m.x < endX && m.end >= endX) {
+              endX = m.x;
+            }
+          }
+          if (endX - startX > 12) {
+            pits.push({
+              x: startX,
+              w: endX - startX,
+              surfaceY: clampSurfaceY(fishes[f].y),
+              hasFish: true,
+              waterTone
+            });
+          }
         }
       }
       return pits;
@@ -3122,9 +3562,13 @@
         const res = global.WorldProgress.completeZone(this.cityKey, zoneNum);
         if (res && res.isLastZone) {
           global.WorldProgress.complete(this.cityKey);
+          const chileTempLocked =
+            typeof global.isCountryLocked === 'function'
+              ? global.isCountryLocked('chile')
+              : !!(global.LOCKED_COUNTRIES && global.LOCKED_COUNTRIES.chile);
           if (this.cityKey === 'canarias' && !wasSaUnlocked && !this.pendingContinentUnlock) {
             this.pendingContinentUnlock = { from: 'spain', to: 'argentina' };
-          } else if (this.cityKey === 'ushuaia' && !wasChileUnlocked && !this.pendingContinentUnlock) {
+          } else if (this.cityKey === 'ushuaia' && !chileTempLocked && !wasChileUnlocked && !this.pendingContinentUnlock) {
             this.pendingContinentUnlock = { from: 'argentina', to: 'chile' };
           } else if (nextCityKey && !wasNextCityUnlocked && !this.pendingCityUnlock) {
             const scope = this.isChileCity(this.cityKey)
@@ -3169,6 +3613,7 @@
 
     confirmLevelClear() {
       if (this.state !== 'level_clear') return;
+      this.preserveSessionHearts();
       if (!this.levelClearTallyDone) {
         this.levelClearTallyDone = true;
         this.levelClearTallyElapsed = this.getLevelClearTallyDuration();
@@ -3247,9 +3692,18 @@
 
     startLevelClearCinematic() {
       if (this.state === 'level_cinematic' || this.state === 'level_clear') return;
+      this.preserveSessionHearts();
       this.isAbductedByCheat = false;
       this.abductionCheat = null;
+      this.isBiplaneFlightCheat = false;
+      this.biplaneFlightCheat = null;
+      if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
+        this.sound.stopBiplaneAmbience();
+      }
       this.etHomeBuffer = '';
+      this.pwingBuffer = '';
+      this.airTourBuffer = '';
+      this.ghostBuffer = '';
       if (this.player) {
         this.player.hiddenInMetro = false;
         this.player.dropThroughTimer = 0;
@@ -3339,6 +3793,7 @@
       this.cinematicCableCarAscendSfx = false;
       this.cinematicCableCarX = 0;
       this.cinematicCableCarY = 0;
+      this.cinematicCableCarAngle = Math.atan2(736, 1188);
 
       this.cinematicMetroWalkElapsed = 0;
       this.cinematicMetroAllHidden = false;
@@ -3350,14 +3805,14 @@
         const stopX = this.levelData.flagX + 78;
         this.player.state = 'active';
         this.player.hiddenInMetro = false;
-        this.player.x = stopX - 18;
+        this.player.x = stopX - 32;
         this.player.facing = 'left';
         this.player.animState = 'idle';
 
         if (this.partner) {
           this.partner.state = 'active';
           this.partner.hiddenInMetro = false;
-          this.partner.x = stopX - 48;
+          this.partner.x = stopX - 54;
           this.partner.y = groundTop - this.partner.h;
           this.partner.vx = 0;
           this.partner.vy = 0;
@@ -3368,7 +3823,7 @@
         if (this.tina) {
           this.tina.state = 'active';
           this.tina.hiddenInMetro = false;
-          this.tina.x = stopX - 80;
+          this.tina.x = stopX - 76;
           this.tina.y = groundTop - this.tina.h;
           this.tina.vx = 0;
           this.tina.vy = 0;
@@ -3377,10 +3832,15 @@
           this.tina.facing = 'left';
           this.tina.targetItem = null;
         }
-        this.cinematicCableCarStartX = stopX - 245;
-        this.cinematicCableCarStartY = groundTop - 92;
-        this.cinematicCableCarX = this.cinematicCableCarStartX;
-        this.cinematicCableCarY = this.cinematicCableCarStartY;
+        const startPose = this.getTeideCableCarPose(null, -140); // Fuera del borde superior izquierdo (y < -100)
+        this.cinematicCableCarStartPulleyX = startPose.pulleyX;
+        this.cinematicCableCarPulleyX = startPose.pulleyX;
+        this.cinematicCableCarDockPulleyX = startPose.dockPulleyX;
+        this.cinematicCableCarStartX = startPose.x;
+        this.cinematicCableCarStartY = startPose.y;
+        this.cinematicCableCarX = startPose.x;
+        this.cinematicCableCarY = startPose.y;
+        this.cinematicCableCarAngle = startPose.cableAngle;
       } else if (this.usesBusOrGuaguaCinematic()) {
         const stopX = this.levelData.flagX + 78;
         const targetCamX = Math.max(
@@ -3690,11 +4150,46 @@
       }
     }
 
-    updateCableCarCinematic(dt) {
+    getTeideCableCarPose(pulleyX = null, targetCabinY = null) {
       const stopX = this.levelData.flagX + 78;
       const groundTop = this.levelData.flagY + 68;
-      const dockX = stopX - 18;
-      const dockY = groundTop - 22;
+      const cableEndX = stopX + 68;
+      const cableEndY = groundTop - 150;
+      const cableSlope = 736 / 1188;
+      const rightSlope = -800 / 1000;
+      const cabinHeightFromPulley = 168; // Brazo alargado + cabina 1.6x -> base ~4px sobre groundTop al parar
+      const cabinHalfCenter = 80;
+      const resolvedPulleyX = Number.isFinite(pulleyX)
+        ? pulleyX
+        : cableEndX + (((Number.isFinite(targetCabinY) ? targetCabinY : -140) - cabinHeightFromPulley) - cableEndY) / cableSlope;
+      const dxFromApex = resolvedPulleyX - cableEndX;
+      const pulleyY = dxFromApex <= 0
+        ? cableEndY + dxFromApex * cableSlope
+        : cableEndY + dxFromApex * rightSlope;
+      const leftAngle = Math.atan2(736, 1188);
+      const rightAngle = Math.atan2(-800, 1000);
+      const angleBlend = Math.max(0, Math.min(1, (dxFromApex + 16) / 36));
+      const cableAngle = leftAngle + (rightAngle - leftAngle) * angleBlend;
+      return {
+        x: resolvedPulleyX - cabinHalfCenter,
+        y: pulleyY + cabinHeightFromPulley,
+        pulleyX: resolvedPulleyX,
+        pulleyY,
+        cableAngle,
+        cableEndX,
+        dockPulleyX: stopX + 33
+      };
+    }
+
+    updateCableCarCinematic(dt) {
+      const stopX = this.levelData.flagX + 78;
+      const dockPulleyX = Number.isFinite(this.cinematicCableCarDockPulleyX)
+        ? this.cinematicCableCarDockPulleyX
+        : stopX + 33;
+      const dockPose = this.getTeideCableCarPose(dockPulleyX);
+      const startPulleyX = Number.isFinite(this.cinematicCableCarStartPulleyX)
+        ? this.cinematicCableCarStartPulleyX
+        : dockPulleyX - 960;
       const targetCamX = Math.max(
         0,
         Math.min(this.levelData.width - LOGICAL_W, this.levelData.flagX - LOGICAL_W * 0.42)
@@ -3708,41 +4203,65 @@
         }
       }
 
-      if (this.cinematicTimer < 0.9) {
+      if (this.cinematicTimer < 0.35) {
+        const startPose = this.getTeideCableCarPose(startPulleyX);
+        this.cinematicCableCarPulleyX = startPulleyX;
+        this.cinematicCableCarX = startPose.x;
+        this.cinematicCableCarY = startPose.y;
+        this.cinematicCableCarAngle = startPose.cableAngle;
+        this.player.facing = 'left';
         this.player.animState = 'idle';
         this.player.animTimer += dt;
-        if (this.partner) this.partner.animTimer += dt;
-        if (this.tina) this.tina.animTimer += dt;
-      } else if (this.cinematicTimer < 2.2) {
+        if (this.partner) {
+          this.partner.facing = 'left';
+          this.partner.animTimer += dt;
+        }
+        if (this.tina) {
+          this.tina.facing = 'left';
+          this.tina.animTimer += dt;
+        }
+      } else if (this.cinematicTimer < 2.15) {
         if (!this.cinematicBusArrivedSfx) {
           this.cinematicBusArrivedSfx = true;
           if (typeof this.sound.cableCarChime === 'function') this.sound.cableCarChime();
         }
-        const u = Math.min(1, (this.cinematicTimer - 0.9) / 1.3);
+        const u = Math.min(1, (this.cinematicTimer - 0.35) / 1.8);
         const ease = 1 - Math.pow(1 - u, 3);
-        this.cinematicCableCarX = this.cinematicCableCarStartX + (dockX - this.cinematicCableCarStartX) * ease;
-        this.cinematicCableCarY = this.cinematicCableCarStartY + (dockY - this.cinematicCableCarStartY) * ease;
+        this.cinematicCableCarPulleyX = startPulleyX + (dockPulleyX - startPulleyX) * ease;
+        const pose = this.getTeideCableCarPose(this.cinematicCableCarPulleyX);
+        this.cinematicCableCarX = pose.x;
+        this.cinematicCableCarY = pose.y;
+        this.cinematicCableCarAngle = pose.cableAngle;
+        this.player.facing = 'left';
         this.player.animState = 'idle';
+        this.player.animTimer += dt;
+        if (this.partner) this.partner.animTimer += dt;
+        if (this.tina) this.tina.animTimer += dt;
       } else if (this.cinematicTimer < 3.15) {
-        this.cinematicCableCarX = dockX;
-        this.cinematicCableCarY = dockY;
+        this.cinematicCableCarPulleyX = dockPulleyX;
+        this.cinematicCableCarX = dockPose.x;
+        this.cinematicCableCarY = dockPose.y;
+        this.cinematicCableCarAngle = dockPose.cableAngle;
         this.cinematicCableCarDoorsOpen = this.cinematicTimer < 2.95;
         if (!this.cinematicPartyHidden) {
-          const boardX = stopX + 18;
-          this.player.x += (boardX - this.player.x) * Math.min(1, dt * 6);
+          const boardX = dockPose.x + 68;
+          this.player.facing = 'right';
+          this.player.x += (boardX - this.player.x) * Math.min(1, dt * 6.5);
           this.player.animState = 'run';
           this.player.animTimer += dt * 1.3;
           if (this.partner) {
-            this.partner.x += (boardX - 8 - this.partner.x) * Math.min(1, dt * 6);
+            this.partner.facing = 'right';
+            this.partner.x += (boardX - 8 - this.partner.x) * Math.min(1, dt * 6.5);
             this.partner.animTimer += dt * 1.3;
           }
           if (this.tina) {
-            this.tina.x += (boardX - 18 - this.tina.x) * Math.min(1, dt * 6);
+            this.tina.facing = 'right';
+            this.tina.x += (boardX - 16 - this.tina.x) * Math.min(1, dt * 6.5);
             this.tina.animTimer += dt * 1.3;
           }
           if (this.cinematicTimer >= 2.75) {
             this.cinematicPartyHidden = true;
-            this.particles.Burst(boardX, dockY - 40, '#facc15', 18);
+            this.particles.Burst(dockPose.x + 80, dockPose.y - 48, '#facc15', 22);
           }
         }
       } else if (!this.cinematicCableCarExited) {
@@ -3752,16 +4271,26 @@
           if (typeof this.sound.cableCarAscend === 'function') this.sound.cableCarAscend();
         }
         const d = this.cinematicTimer - 3.15;
-        const speed = Math.min(340, 60 + d * 210);
-        this.cinematicCableCarX += speed * dt * 0.9;
-        this.cinematicCableCarY -= speed * dt * 0.44;
+        const speed = Math.min(500, 95 + d * 250);
+        const curPulleyX = Number.isFinite(this.cinematicCableCarPulleyX) ? this.cinematicCableCarPulleyX : dockPulleyX;
+        const cableEndX = dockPose.cableEndX;
+        const unitX = curPulleyX < cableEndX
+          ? 1188 / Math.hypot(1188, 736)
+          : 1000 / Math.hypot(1000, 800);
+        // Avanza continuamente hacia la derecha: rebasa la estación y asciende en diagonal por el cable derecho
+        this.cinematicCableCarPulleyX = curPulleyX + speed * unitX * dt;
+        const pose = this.getTeideCableCarPose(this.cinematicCableCarPulleyX);
+        this.cinematicCableCarX = pose.x;
+        this.cinematicCableCarY = pose.y;
+        this.cinematicCableCarAngle = pose.cableAngle;
         if (Math.random() < 0.4) {
-          this.particles.Sparkle(this.cinematicCableCarX + 40, this.cinematicCableCarY - 12, '#facc15');
+          this.particles.Sparkle(this.cinematicCableCarX + 80, this.cinematicCableCarY - 46, '#facc15');
         }
-        if (this.cinematicCableCarY < -40 || this.cinematicCableCarX > this.cameraX + LOGICAL_W + 40) {
+        const scrCabinLeft = (this.cinematicCableCarX + 14) - this.cameraX;
+        if (scrCabinLeft > LOGICAL_W + 24 && this.cinematicCableCarY < 90) {
           this.cinematicCableCarExited = true;
           this.cinematicCableCarExitedTimer = 0;
-          this.particles.Burst(stopX + 60, 120, '#fde047', 28);
+          this.particles.Burst(this.cameraX + LOGICAL_W - 20, Math.max(24, this.cinematicCableCarY - 40), '#fde047', 26);
         }
       } else {
         this.cinematicCableCarExitedTimer += dt;
@@ -3917,6 +4446,29 @@
       this.startCheatBuffer = '';
     }
 
+    async computeSha256Hex(text) {
+      if (
+        typeof crypto === 'undefined' ||
+        !crypto.subtle ||
+        typeof crypto.subtle.digest !== 'function' ||
+        typeof TextEncoder === 'undefined'
+      ) {
+        return '';
+      }
+      try {
+        const encoded = new TextEncoder().encode(String(text || ''));
+        const digestBuffer = await crypto.subtle.digest('SHA-256', encoded);
+        const bytes = new Uint8Array(digestBuffer);
+        let hex = '';
+        for (let i = 0; i < bytes.length; i++) {
+          hex += bytes[i].toString(16).padStart(2, '0');
+        }
+        return hex;
+      } catch (err) {
+        return '';
+      }
+    }
+
     handleStartCheatKey(code) {
       if (!this.startCheatEligible || this.state !== 'playing') return false;
       if (!code || typeof code !== 'string' || code.indexOf('Numpad') === 0) return false;
@@ -3927,29 +4479,211 @@
       else if (code === 'Digit9') digit = '9';
       if (!digit) return false;
       this.startCheatBuffer = (this.startCheatBuffer + digit).slice(-7);
-      if (this.startCheatBuffer === '9876789') {
-        this.activateStartUnlockCheat();
+      if (this.startCheatBuffer.length === 7) {
+        const candidate = this.startCheatBuffer;
+        this.computeSha256Hex(candidate).then((hash) => {
+          if (!this.startCheatEligible || this.state !== 'playing') return;
+          if (
+            hash === '04771854716c02aeb1006824cf09a0ae5d03e307d6ff4bea6238823c2417b6a9' ||
+            hash === '849e779a26d7524f3c8653c882c12f388d3a8a8e7a041f8665b6c2c38f17c14b'
+          ) {
+            this.activateStartUnlockCheat();
+          }
+        });
       }
       return true;
     }
 
+    extractCheatLetter(key, code = '') {
+      if (typeof key === 'string' && /^[a-z]$/i.test(key)) {
+        return key.toLowerCase();
+      }
+      if (typeof code === 'string' && /^Key[A-Z]$/.test(code)) {
+        return code.slice(3).toLowerCase();
+      }
+      return '';
+    }
+
     handleEtHomeCheatKey(key, code = '') {
       if (this.state !== 'playing' || this.isAbductedByCheat) return false;
-      let ch = '';
-      if (typeof key === 'string' && /^[a-z]$/i.test(key)) {
-        ch = key.toLowerCase();
-      } else if (typeof code === 'string' && /^Key[A-Z]$/.test(code)) {
-        ch = code.slice(3).toLowerCase();
-      }
+      const ch = this.extractCheatLetter(key, code);
       if (!ch) {
         this.etHomeBuffer = '';
         return false;
       }
       this.etHomeBuffer = (this.etHomeBuffer + ch).slice(-6);
-      if (this.etHomeBuffer === 'ethome') {
-        return this.activateEtHomeCheat();
+      if (this.etHomeBuffer.length === 6) {
+        const candidate = this.etHomeBuffer;
+        this.computeSha256Hex(candidate).then((hash) => {
+          if (this.state !== 'playing' || this.isAbductedByCheat) return;
+          if (
+            hash === 'b3826f4273c5832a6b90a39f2e1b876e51924e3b8c0227ec2ab48601434874c5' ||
+            hash === 'e676084567b72230392341573a8670a5c88e024a891d0e8f4898067b3d17748b'
+          ) {
+            this.activateEtHomeCheat();
+          }
+        });
       }
       return false;
+    }
+
+    handlePwingCheatKey(key, code = '') {
+      if (this.state !== 'playing' || this.isAbductedByCheat) return false;
+      const ch = this.extractCheatLetter(key, code);
+      if (!ch) {
+        this.pwingBuffer = '';
+        return false;
+      }
+      this.pwingBuffer = (this.pwingBuffer + ch).slice(-5);
+      if (this.pwingBuffer.length === 5) {
+        const candidate = this.pwingBuffer;
+        this.computeSha256Hex(candidate).then((hash) => {
+          if (this.state !== 'playing' || this.isAbductedByCheat) return;
+          if (
+            hash === '13b7a572b988aea60e9c92cc85b231f424e33a66795be745396071cdabb40fb9' ||
+            hash === '3406d3d007186e204618d18523f10a496f4d41f3229e695c68627451a874f93e'
+          ) {
+            this.activatePwingCheat();
+          }
+        });
+      }
+      return false;
+    }
+
+    handleBiplaneTourCheatKey(key, code = '') {
+      if (this.state !== 'playing' || this.isAbductedByCheat || this.isBiplaneFlightCheat) {
+        return false;
+      }
+      const ch = this.extractCheatLetter(key, code);
+      if (!ch) {
+        this.airTourBuffer = '';
+        return false;
+      }
+      this.airTourBuffer = (this.airTourBuffer + ch).slice(-4);
+      if (this.airTourBuffer.length === 4) {
+        const candidate = this.airTourBuffer;
+        this.computeSha256Hex(candidate).then((hash) => {
+          if (this.state !== 'playing' || this.isAbductedByCheat || this.isBiplaneFlightCheat) return;
+          if (
+            hash === '0f3850ab36e9d43a8615d62d179e484003562531b41a9f517c5f4e7313b00222' ||
+            hash === '28c4cd2bd444fcba6fcb0f5f36cfde1bcebe7309c150224fe135a9cbc5f2d636'
+          ) {
+            this.activateBiplaneTourCheat();
+          }
+        });
+      }
+      return false;
+    }
+
+    handleGhostCheatKey(key, code = '') {
+      if (this.state !== 'playing' && this.state !== 'paused') {
+        return false;
+      }
+      const ch = this.extractCheatLetter(key, code);
+      if (!ch) {
+        this.ghostBuffer = '';
+        return false;
+      }
+      this.ghostBuffer = (this.ghostBuffer + ch).slice(-4);
+      if (this.ghostBuffer.length === 4) {
+        const candidate = this.ghostBuffer;
+        this.computeSha256Hex(candidate).then((hash) => {
+          if (this.state !== 'playing' && this.state !== 'paused') return;
+          if (hash === '01b016612d7274bf6dfe6b2fcbe282599956cdff931bd6c1c5d82ef128897ff6') {
+            this.toggleGhostMode();
+          }
+        });
+      }
+      return false;
+    }
+
+    toggleGhostMode() {
+      this.ghostBuffer = '';
+      this.ghostMode = !this.ghostMode;
+      const enabled = this.ghostMode;
+      if (this.player) {
+        this.player.ghostMode = enabled;
+        if (enabled) {
+          this.player.slowTimer = 0;
+          this.player.hurtTimer = 0;
+        }
+      }
+      this.ghostToastTimer = 2.4;
+      this.ghostToastText = enabled
+        ? '👻 MODO FANTASMA ACTIVADO'
+        : '👻 MODO FANTASMA DESACTIVADO';
+      this.ghostToastColor = enabled ? '#67e8f9' : '#cbd5e1';
+
+      if (this.sound) {
+        if (enabled && typeof this.sound.powerup === 'function') {
+          this.sound.powerup();
+        } else if (!enabled && typeof this.sound.menuSelect === 'function') {
+          this.sound.menuSelect();
+        }
+      }
+      if (this.particles && this.player) {
+        const cx = this.player.x + this.player.w * 0.5;
+        const cy = this.player.y + this.player.h * 0.5;
+        this.particles.Burst(cx, cy, enabled ? '#67e8f9' : '#94a3b8', 18);
+        this.particles.FloatingText(
+          this.player.x - 42,
+          Math.max(48, this.player.y - 22),
+          this.ghostToastText,
+          this.ghostToastColor
+        );
+      }
+      return enabled;
+    }
+
+    rescueGhostFromPit() {
+      if (!this.ghostMode || !this.player) return false;
+      this.player.y = 468;
+      this.player.vy = -820;
+      this.player.onGround = false;
+      this.player.jumpsUsed = 0;
+      this.player.coyoteTimer = 0.25;
+      this.player.isGroundPounding = false;
+      if (this.ghostRescueToastCooldown <= 0) {
+        this.ghostRescueToastCooldown = 0.9;
+        if (this.particles) {
+          this.particles.Burst(this.player.x + this.player.w * 0.5, 484, '#67e8f9', 16);
+          this.particles.FloatingText(
+            this.player.x - 36,
+            436,
+            '👻 RESCATE FANTASMA',
+            '#67e8f9'
+          );
+        }
+      }
+      return true;
+    }
+
+    activatePwingCheat() {
+      if (!this.levelData || !this.player || this.isAbductedByCheat || this.state !== 'playing') {
+        return false;
+      }
+      this.pwingBuffer = '';
+      this.player.equipPowerUp('plant');
+      this.carriedPowerUp = 'plant';
+      this.reservePowerUp = 'angel_wings';
+      this.player.reserveItem = 'angel_wings';
+
+      if (this.sound && typeof this.sound.powerup === 'function') {
+        this.sound.powerup();
+      }
+      if (this.particles) {
+        const cx = this.player.x + this.player.w * 0.5;
+        const cy = this.player.y + this.player.h * 0.5;
+        this.particles.Burst(cx, cy, '#fde047', 20);
+        this.particles.Burst(cx, cy, '#4ade80', 18);
+        this.particles.FloatingText(
+          this.player.x - 36,
+          Math.max(48, this.player.y - 16),
+          '🌿 ¡PLANTA + 🪽 ALAS EN RESERVA!',
+          '#fde047'
+        );
+      }
+      return true;
     }
 
     getGoalFlagHitbox() {
@@ -3984,6 +4718,10 @@
         a.vx = 0;
         a.vy = 0;
         a.hangingRope = null;
+        a.isHanging = false;
+        a.onCable = false;
+        a.onZipline = false;
+        a.onVine = false;
         a.isGroundPounding = false;
         a.isCrouching = false;
         a.hurtTimer = 0;
@@ -4336,6 +5074,7 @@
           {
             sandMode: this.hasSandPhysics,
             iceMode: this.hasIcePhysics,
+            isIceLevel: this.isIceLevel,
             saltMode: this.hasSaltPhysics
           }
         );
@@ -4402,6 +5141,401 @@
       }
     }
 
+    clearLevelEnemiesForFlightTour() {
+      const lists = [
+        this.pigeons, this.scooters, this.seagulls, this.hedgehogs, this.boars,
+        this.zigzagPigeons, this.madridCats, this.selfieTourists, this.royalGuards,
+        this.peacocks, this.crazyCyclists, this.greenParakeets, this.swarmParakeets,
+        this.jellyfishes, this.crabs, this.goats, this.royalSeagulls,
+        this.swarmRoyalSeagulls, this.gallotias, this.garajonayFoxes, this.abubillas, this.swarmAbubillas,
+        this.blindCrabs, this.trapitos, this.motochorros, this.barrabravas,
+        this.canillitas, this.fatPigeons, this.horneros, this.swarmHorneros,
+        this.horneroNests, this.rockeros, this.penguins, this.coldBlasts,
+        this.palometas, this.swarmMosquitoes, this.belgranoPirates, this.fernetBottles,
+        this.fernetPuddles, this.serranoBurros, this.miniUfos, this.seaLions,
+        this.kingCrabs, this.fuegianFoxes, this.swarmCormorants, this.pumas,
+        this.condors, this.portPelicans, this.pelicanDrops, this.pacificHazards,
+        this.frigates, this.swarmFrigates, this.salineSpits, this.vicunas,
+        this.portDogs, this.rapaNuiWarriors, this.guasos, this.guasas,
+        this.guasoDancers, this.swarmPigeons, this.geysers,
+        this.newspaperProjectiles, this.enemies
+      ];
+      for (let i = 0; i < lists.length; i++) {
+        const arr = lists[i];
+        if (!Array.isArray(arr)) continue;
+        for (let j = 0; j < arr.length; j++) {
+          const enemy = arr[j];
+          if (!enemy || enemy.dead) continue;
+          enemy.dead = true;
+          if (this.particles && Number.isFinite(enemy.x) && Number.isFinite(enemy.y)) {
+            const ex = enemy.x + (enemy.w || 24) * 0.5;
+            const ey = enemy.y + (enemy.h || 24) * 0.5;
+            if (ex >= this.cameraX - 80 && ex <= this.cameraX + LOGICAL_W + 80) {
+              this.particles.Burst(ex, ey, '#f8fafc', 8);
+            }
+          }
+        }
+        arr.length = 0;
+      }
+      if (Array.isArray(this.overheadHazards)) {
+        for (let i = this.overheadHazards.length - 1; i >= 0; i--) {
+          const oh = this.overheadHazards[i];
+          if (oh && oh.isSolidBlock === false) {
+            oh.dead = true;
+            if (this.particles && Number.isFinite(oh.x) && Number.isFinite(oh.y)) {
+              this.particles.Burst(oh.x + (oh.w || 20) * 0.5, oh.y + (oh.h || 20) * 0.5, '#f8fafc', 6);
+            }
+            this.overheadHazards.splice(i, 1);
+          }
+        }
+      }
+      if (this.gaudiLizard) {
+        if (!this.gaudiLizard.dead && this.particles) {
+          this.particles.Burst(this.gaudiLizard.x + 18, this.gaudiLizard.y + 12, '#fde047', 10);
+        }
+        this.gaudiLizard.dead = true;
+        this.gaudiLizard = null;
+      }
+      this.swarmAlertTimer = 0;
+      this.swarmEventTriggered = true;
+      this.isMadridSwarm = false;
+      this.isPalmaSwarm = false;
+      this.isCanariasSwarm = false;
+      this.isMosquitoSwarm = false;
+      this.isCormorantSwarm = false;
+      this.isFrigateSwarm = false;
+    }
+
+    activateBiplaneTourCheat() {
+      if (
+        !this.levelData ||
+        !this.player ||
+        this.isAbductedByCheat ||
+        this.isBiplaneFlightCheat ||
+        this.state !== 'playing'
+      ) {
+        return false;
+      }
+      this.isBiplaneFlightCheat = true;
+      this.airTourBuffer = '';
+      this.clearTransientInput();
+      if (this.inputManager && typeof this.inputManager.clearTransient === 'function') {
+        this.inputManager.clearTransient();
+      }
+
+      const actors = [this.player, this.partner, this.tina];
+      for (let i = 0; i < actors.length; i++) {
+        const a = actors[i];
+        if (!a) continue;
+        a.hiddenInMetro = false;
+        a.vx = 0;
+        a.vy = 0;
+        a.hangingRope = null;
+        a.isHanging = false;
+        a.onCable = false;
+        a.onZipline = false;
+        a.onVine = false;
+        a.isGroundPounding = false;
+        a.isCrouching = false;
+        a.hurtTimer = 0;
+        a.ledgeState = null;
+        a.standingPlatform = null;
+        a.platformVx = 0;
+        a.platformVy = 0;
+      }
+
+      this.clearLevelEnemiesForFlightTour();
+
+      const tinaStartX = this.tina ? this.tina.x : Math.max(24, this.player.x - 42);
+      const screenCenter = this.cameraX + LOGICAL_W * 0.5;
+      const exitSide = tinaStartX <= screenCenter ? 'left' : 'right';
+      const entryX = exitSide === 'left' ? this.cameraX - 56 : this.cameraX + LOGICAL_W + 56;
+      const initialFacing = exitSide === 'left' ? 1 : -1;
+      const flightAltY = Math.max(58, Math.min(395, this.player.y + 8));
+
+      this.biplaneFlightCheat = {
+        phase: 'vanish_tina_out',
+        timer: 0,
+        animTimer: 0,
+        exitSide,
+        planeX: entryX,
+        planeY: flightAltY,
+        facing: initialFacing,
+        vx: 0,
+        vy: 0,
+        pitchAngle: 0,
+        displayPitchDeg: 0,
+        normalSpeed: 240,
+        turboMultiplier: 2.0,
+        turboActive: false,
+        passengersBoarded: false
+      };
+
+      if (this.sound && typeof this.sound.tinaBark === 'function') {
+        this.sound.tinaBark();
+      }
+      if (this.particles) {
+        this.particles.FloatingText(
+          this.player.x - 38,
+          Math.max(46, this.player.y - 26),
+          '✈️ ¡LA TINITA VA POR SU BIPLANO!',
+          '#fde047'
+        );
+      }
+      return true;
+    }
+
+    updateBiplaneTourFlight(dt) {
+      const st = this.biplaneFlightCheat;
+      if (!st || !this.player || !this.levelData) return;
+
+      st.timer += dt;
+      st.animTimer += dt;
+
+      for (let i = 0; i < this.movingPlatforms.length; i++) {
+        this.movingPlatforms[i].update(dt);
+      }
+      for (let i = 0; i < this.fallingPlatforms.length; i++) {
+        this.fallingPlatforms[i].update(dt);
+      }
+      for (let i = 0; i < this.sinkingContainers.length; i++) {
+        this.sinkingContainers[i].update(dt);
+      }
+      for (let i = 0; i < this.ropes.length; i++) {
+        this.ropes[i].update(dt);
+      }
+      this.particles.update(dt);
+
+      if (st.phase === 'vanish_tina_out') {
+        const runDir = st.exitSide === 'left' ? -1 : 1;
+        if (this.tina) {
+          this.tina.hiddenInMetro = false;
+          this.tina.facing = st.exitSide;
+          this.tina.animState = 'run';
+          this.tina.animTimer += dt * 2.0;
+          this.tina.x += runDir * 640 * dt;
+          if (Math.random() < 0.55) {
+            this.particles.Sparkle(this.tina.x + 12, this.tina.y + this.tina.h - 4, '#fde047');
+          }
+        }
+        const exitedOffscreen =
+          !this.tina ||
+          this.tina.x < this.cameraX - 44 ||
+          this.tina.x > this.cameraX + LOGICAL_W + 44 ||
+          st.timer >= 1.15;
+        if (exitedOffscreen) {
+          if (this.tina) this.tina.hiddenInMetro = true;
+          st.phase = 'plane_pickup';
+          st.timer = 0;
+          st.planeX = st.exitSide === 'left' ? this.cameraX - 54 : this.cameraX + LOGICAL_W + 54;
+          st.planeY = Math.max(54, Math.min(395, this.player.y + 8));
+          st.facing = st.exitSide === 'left' ? 1 : -1;
+          if (this.sound && typeof this.sound.startBiplaneAmbience === 'function') {
+            this.sound.startBiplaneAmbience();
+          }
+        }
+        return;
+      }
+
+      if (st.phase === 'plane_pickup') {
+        const targetX = this.player.x + this.player.w * 0.5;
+        const targetY = Math.max(52, Math.min(402, this.player.y + this.player.h * 0.42));
+        const dx = targetX - st.planeX;
+        const dy = targetY - st.planeY;
+        const dist = Math.hypot(dx, dy);
+        const approachSpeed = 580;
+
+        if (Math.abs(dx) > 4) {
+          st.facing = dx >= 0 ? 1 : -1;
+        }
+        if (dist > 0.01) {
+          const step = Math.min(dist, approachSpeed * dt);
+          st.planeX += (dx / dist) * step;
+          st.planeY += (dy / dist) * step;
+          const desiredPitch = Math.max(-Math.PI / 5, Math.min(Math.PI / 5, (dy / Math.max(80, Math.abs(dx))) * 0.45));
+          st.pitchAngle += (desiredPitch - st.pitchAngle) * Math.min(1, dt * 12);
+        }
+
+        if (Math.random() < 0.55) {
+          this.particles.Sparkle(st.planeX - st.facing * 28, st.planeY + 2, '#e0f2fe');
+        }
+
+        if (dist <= 22 || st.timer >= 2.2) {
+          st.planeX = targetX;
+          st.planeY = targetY;
+          st.pitchAngle = 0;
+          st.displayPitchDeg = 0;
+          st.vx = 0;
+          st.vy = 0;
+          st.passengersBoarded = true;
+          st.phase = 'flying';
+          st.timer = 0;
+
+          this.player.hiddenInMetro = true;
+          if (this.partner) this.partner.hiddenInMetro = true;
+          if (this.tina) this.tina.hiddenInMetro = true;
+
+          if (this.sound && typeof this.sound.coin === 'function') {
+            this.sound.coin();
+          }
+          if (this.particles) {
+            this.particles.Burst(st.planeX, st.planeY, '#fde047', 18);
+            this.particles.Burst(st.planeX, st.planeY, '#38bdf8', 14);
+            this.particles.FloatingText(
+              Math.max(this.cameraX + 20, st.planeX - 74),
+              Math.max(46, st.planeY - 38),
+              this.formatControlHintText('✈️ ¡A VOLAR! FLECHAS + [SHIFT] TURBO 2X'),
+              '#fde047'
+            );
+          }
+        }
+        return;
+      }
+
+      // Fase 'flying': control libre 100 % en gravedad cero con +45° / 0° / -45° y Turbo Shift 2x
+      const moveLeft = Boolean(this.input.left || (this.input.analogX || 0) < -0.18);
+      const moveRight = Boolean(this.input.right || (this.input.analogX || 0) > 0.18);
+      const moveUp = Boolean(this.input.up || (this.input.analogY || 0) < -0.18);
+      const moveDown = Boolean(this.input.down || (this.input.analogY || 0) > 0.18);
+      const shiftHeld = Boolean(
+        this.input.shiftHeld ||
+          (this.inputManager &&
+            typeof this.inputManager.isDown === 'function' &&
+            (this.inputManager.isDown('ShiftLeft') || this.inputManager.isDown('ShiftRight')))
+      );
+
+      const moveX = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0);
+      const moveY = (moveDown ? 1 : 0) - (moveUp ? 1 : 0);
+      const baseSpeed = st.normalSpeed || 240;
+      const speed = shiftHeld ? baseSpeed * (st.turboMultiplier || 2.0) : baseSpeed;
+      st.turboActive = shiftHeld;
+
+      if (moveX !== 0) {
+        st.facing = moveX > 0 ? 1 : -1;
+        st.vx = moveX * speed;
+      } else {
+        st.vx = 0;
+      }
+
+      if (moveY !== 0) {
+        st.vy = moveY * speed;
+      } else {
+        st.vy = 0;
+      }
+
+      // Inclinación exacta en la dirección de vuelo: subir (+45° visual => -Math.PI/4 local), bajar (-45° => +Math.PI/4), quieto/horizontal (0°)
+      const targetPitch = moveY < 0 ? -Math.PI / 4 : (moveY > 0 ? Math.PI / 4 : 0);
+      st.displayPitchDeg = moveY < 0 ? 45 : (moveY > 0 ? -45 : 0);
+      st.pitchAngle += (targetPitch - st.pitchAngle) * Math.min(1, dt * 16);
+      if (Math.abs(targetPitch - st.pitchAngle) < 0.006) {
+        st.pitchAngle = targetPitch;
+      }
+
+      const maxX = Math.max(40, (this.levelData.width || 3200) - 36);
+      const minY = 40;
+      const maxY = 460 - 24;
+      st.planeX = Math.max(36, Math.min(maxX, st.planeX + st.vx * dt));
+      st.planeY = Math.max(minY, Math.min(maxY, st.planeY + st.vy * dt));
+
+      this.player.x = st.planeX - this.player.w * 0.5;
+      this.player.y = st.planeY - this.player.h * 0.5;
+      this.player.vx = st.vx;
+      this.player.vy = st.vy;
+      this.player.onGround = false;
+      this.player.isGrounded = false;
+      this.player.facing = st.facing >= 0 ? 'right' : 'left';
+      if (this.partner) {
+        this.partner.x = st.planeX - 18 * st.facing;
+        this.partner.y = st.planeY - this.partner.h * 0.5;
+      }
+      if (this.tina) {
+        this.tina.x = st.planeX + 10 * st.facing;
+        this.tina.y = st.planeY - this.tina.h * 0.5;
+      }
+
+      if (st.turboActive && (st.vx !== 0 || st.vy !== 0) && Math.random() < 0.65) {
+        this.particles.Sparkle(
+          st.planeX - st.facing * 36,
+          st.planeY + (Math.random() - 0.5) * 10,
+          Math.random() < 0.5 ? '#fde047' : '#fb923c'
+        );
+      }
+
+      const targetCamX = Math.max(
+        0,
+        Math.min(this.levelData.width - LOGICAL_W, st.planeX - LOGICAL_W * 0.42)
+      );
+      this.cameraX += (targetCamX - this.cameraX) * Math.min(1, dt * 8);
+
+      const planeHitbox = {
+        x: st.planeX - 30,
+        y: st.planeY - 22,
+        w: 60,
+        h: 42
+      };
+      if (global.Entities.aabbOverlap(planeHitbox, this.getGoalFlagHitbox())) {
+        this.finishBiplaneTourAtGoal();
+      }
+    }
+
+    finishBiplaneTourAtGoal() {
+      const st = this.biplaneFlightCheat;
+      if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
+        this.sound.stopBiplaneAmbience();
+      }
+      if (this.levelData && this.player) {
+        const flagBox = this.getGoalFlagHitbox();
+        this.player.x = Math.min(
+          flagBox.x + flagBox.w - this.player.w - 2,
+          Math.max(flagBox.x + 2, this.player.x)
+        );
+        this.player.y = this.levelData.flagY - this.player.h;
+        this.player.vx = 0;
+        this.player.vy = 0;
+        this.player.onGround = true;
+        this.player.hiddenInMetro = false;
+      }
+      if (this.partner && this.player) {
+        this.partner.hiddenInMetro = false;
+        this.partner.x = Math.max(16, this.player.x - 24);
+        this.partner.y = this.player.y;
+      }
+      if (this.tina && this.player) {
+        this.tina.hiddenInMetro = false;
+        this.tina.x = Math.max(16, this.player.x - 42);
+        this.tina.y = this.player.y + 8;
+      }
+      if (st && this.particles) {
+        this.particles.Burst(st.planeX, st.planeY, '#fde047', 16);
+      }
+      this.isBiplaneFlightCheat = false;
+      this.biplaneFlightCheat = null;
+      this.startLevelClearCinematic();
+    }
+
+    drawBiplaneTourFlight(ctx) {
+      const st = this.biplaneFlightCheat;
+      if (!st || !this.sprites || st.phase === 'vanish_tina_out') return;
+      if (typeof this.sprites.drawTinaBiplane === 'function') {
+        const isStationary = st.vx === 0 && st.vy === 0 && st.phase === 'flying';
+        this.sprites.drawTinaBiplane(
+          ctx,
+          st.planeX - this.cameraX,
+          st.planeY,
+          st.animTimer,
+          st.facing,
+          {
+            scale: 1.32,
+            pitch: st.pitchAngle,
+            bob: isStationary ? 0 : Math.sin(st.animTimer * 6.5) * 1.4,
+            contrails: true,
+            turbo: !!st.turboActive,
+            passengers: !!st.passengersBoarded
+          }
+        );
+      }
+    }
+
     activateStartUnlockCheat() {
       this.invalidateStartCheat();
       if (global.WorldProgress && typeof global.WorldProgress.unlockAllProgress === 'function') {
@@ -4450,22 +5584,53 @@
       }
     }
 
+    /** Detecta pisotón continuo usando prevBottom del frame anterior y el 55% superior del enemigo. */
+    isPlayerStomp(enemy, dt = 0, opts = {}) {
+      if (!this.player || !enemy) return false;
+      const validVy = opts.allowZeroVy ? this.player.vy >= 0 : this.player.vy > 0;
+      if (!validVy) return false;
+      const eh = Number.isFinite(enemy.h)
+        ? enemy.h
+        : Number.isFinite(enemy.height)
+        ? enemy.height
+        : 36;
+      const curBottom = this.player.y + this.player.h;
+      const prevBottom = Number.isFinite(this.player.prevBottom)
+        ? this.player.prevBottom
+        : curBottom - this.player.vy * (Number.isFinite(dt) ? dt : 0);
+      return prevBottom <= enemy.y + eh * 0.55;
+    }
+
+    /** Otorga inmunidad breve de contacto tras un pisotón válido sin activar parpadeo visual. */
+    grantStompGrace(graceSec = 0.15) {
+      if (!this.player) return;
+      this.player.stompGraceTimer = Math.max(this.player.stompGraceTimer || 0, graceSec);
+    }
+
+    /** Aplica el rebote vertical del pisotón y activa la ventana de inmunidad post-rebote. */
+    applyPlayerStompBounce(bounceVy = -380, graceSec = 0.15) {
+      if (!this.player) return;
+      this.player.vy = bounceVy;
+      this.grantStompGrace(graceSec);
+    }
+
     handleJumpingFishPlayerCollision(fish, dt, meta = {}) {
+      if (this.ghostMode) return false;
       const box = meta.box || fish;
       if (!fish || !box || fish.dead || fish.respawnTimer > 0) return false;
       if (!global.Entities.aabbOverlap(this.player, box)) return false;
 
       const fx = box.x + box.w * 0.5;
       const fy = box.y + box.h * 0.5;
-      const stomp =
-        this.player.vy > 0 &&
-        this.player.y + this.player.h - this.player.vy * dt <= box.y + Math.max(14, box.h * 0.65);
+      const stomp = this.isPlayerStomp(box, dt);
 
       if (fish.isDisabled()) {
         if (stomp || this.player.isGroundPounding) {
           fish.eliminate(5.0);
           if (!this.player.isGroundPounding) {
-            this.player.vy = -385;
+            this.applyPlayerStompBounce(-385);
+          } else {
+            this.grantStompGrace(0.15);
           }
           const fxColor = meta.color || '#38bdf8';
           this.score += 70;
@@ -4516,7 +5681,6 @@
       if (res === 'cracked') {
         this.score += 25;
         this.sound.spikeHit();
-        this.particles.FloatingText(nest.x, nest.y - 16, '¡1/2!', '#fde047');
         this.saveHighScore();
       } else if (res === 'destroyed') {
         this.score += 100;
@@ -4528,11 +5692,82 @@
       return res;
     }
 
+    /** Derrota a La Salamandra de Trencadís, suelta 1 VIDA EXTRA en arco lateral con retardo de 1.0 s para La Tina. */
+    defeatGaudiLizard(lizard, bouncePlayer = false) {
+      const E = global.Entities;
+      if (!lizard || lizard.dead || lizard.escaped || lizard.defeated) return false;
+      if (lizard.state === 'waiting') return false;
+
+      lizard.dead = true;
+      lizard.defeated = true;
+      this.lizardEventConsumed = true;
+      this.gaudiLizardEventResolved = true;
+      this.score += 250;
+      if (bouncePlayer && this.player && !this.player.isGroundPounding) {
+        this.applyPlayerStompBounce(-410);
+      } else if (bouncePlayer) {
+        this.grantStompGrace(0.15);
+      }
+      if (this.sound && typeof this.sound.stomp === 'function') {
+        this.sound.stomp();
+      }
+
+      const ex = lizard.x + lizard.w * 0.5;
+      const ey = lizard.y + lizard.h * 0.5;
+      const mosaicPalette = ['#2563eb', '#06b6d4', '#f97316', '#facc15', '#ffffff'];
+      for (let i = 0; i < mosaicPalette.length; i++) {
+        this.particles.Burst(ex, ey, mosaicPalette[i], 8);
+      }
+
+      if (E && E.Collectible) {
+        const minDropX = (Number.isFinite(lizard.platformX) ? lizard.platformX : 3290) + 12;
+        const maxDropX =
+          (Number.isFinite(lizard.platformX) ? lizard.platformX : 3290) +
+          (Number.isFinite(lizard.platformW) ? lizard.platformW : 480) -
+          38;
+        const dropX = Math.max(minDropX + 4, Math.min(maxDropX - 4, ex - 13));
+        const dropY = lizard.y - 6;
+        const playerCx = this.player ? this.player.x + (this.player.w || 32) * 0.5 : dropX;
+        let throwDir = dropX >= playerCx ? 1 : -1;
+        if (dropX <= minDropX + 70) throwDir = 1;
+        else if (dropX >= maxDropX - 70) throwDir = -1;
+
+        const lifeHeart = new E.Collectible(dropX, dropY, 'extra_life_heart', true);
+        if (typeof lifeHeart.startSidewaysArc === 'function') {
+          lifeHeart.startSidewaysArc(throwDir * 175, -330, 1.0, 0.45, {
+            minX: minDropX,
+            maxX: maxDropX
+          });
+        }
+        this.collectibles.push(lifeHeart);
+      }
+
+      this.particles.FloatingText(lizard.x - 32, lizard.y - 24, '🦎💎 ¡1 VIDA EXTRA!', '#facc15');
+      this.saveHighScore();
+      return true;
+    }
+
     applyPlantHitToEnemy(enemy, proj) {
       const E = global.Entities;
       const knockDir = Number.isFinite(proj.vx) && proj.vx !== 0 ? (proj.vx > 0 ? 1 : -1) : 1;
       const ex = enemy.x + enemy.w * 0.5;
       const ey = enemy.y + enemy.h * 0.5;
+
+      if (E && E.GaudiLizardEnemy && enemy instanceof E.GaudiLizardEnemy) {
+        if (enemy.state !== 'running') return 'ignored';
+        this.defeatGaudiLizard(enemy, false);
+        return 'killed';
+      }
+
+      if (E && E.GarajonayFoxEnemy && enemy instanceof E.GarajonayFoxEnemy) {
+        enemy.dead = true;
+        this.score += 75;
+        this.sound.stomp();
+        this.particles.Burst(ex, ey, '#ea580c', 16);
+        this.particles.Burst(ex, ey, '#ffffff', 8);
+        this.particles.FloatingText(enemy.x, enemy.y - 8, '🌿🦊 ¡HOJAZO! +75', '#bef264');
+        return 'killed';
+      }
 
       if (
         E &&
@@ -4559,11 +5794,34 @@
       }
 
       if (E && E.RoyalGuardEnemy && enemy instanceof E.RoyalGuardEnemy) {
-        const res = enemy.takeHit(this.particles, knockDir, true, true);
+        if (proj && (proj.deflected || proj.damageDisabled)) return 'ignored';
+        const res = enemy.takeHit(this.particles, knockDir, true, true, proj);
+        if (res === 'blocked_front') {
+          const guardFacingDir =
+            typeof enemy.getFacingDir === 'function'
+              ? enemy.getFacingDir()
+              : (enemy.facing === 'right' ? 1 : -1);
+          const shieldEdgeX = guardFacingDir > 0 ? enemy.x + enemy.w : enemy.x;
+          if (proj && typeof proj.deflectFromShield === 'function') {
+            proj.deflectFromShield(shieldEdgeX);
+          } else if (proj) {
+            proj.vx = -(proj.vx || 0);
+            proj.vy = -210;
+            proj.deflected = true;
+            proj.damageDisabled = true;
+          }
+          if (this.sound && typeof this.sound.shieldClang === 'function') {
+            this.sound.shieldClang();
+          } else if (this.sound && typeof this.sound.spikeHit === 'function') {
+            this.sound.spikeHit();
+          }
+          this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '🛡️ ¡BLOQUEADO!', '#93c5fd');
+          return 'blocked_front';
+        }
         if (res === 'armor_broken') {
           this.score += 25;
           this.sound.spikeHit();
-          this.particles.FloatingText(enemy.x - 24, enemy.y - 18, '¡1/2! 🛡️ ¡ESCUDO Y CASCO ROTOS!', '#fde047');
+          this.particles.FloatingText(enemy.x - 24, enemy.y - 18, '🛡️ ¡ESCUDO Y CASCO ROTOS!', '#fde047');
         } else if (res === 'killed') {
           this.score += 85;
           this.sound.stomp();
@@ -4571,7 +5829,24 @@
           this.particles.Burst(ex, ey, '#fbbf24', 10);
           this.particles.FloatingText(enemy.x, enemy.y - 8, '🌿 ¡HOJAZO! +85', '#bef264');
         }
-        return;
+        return res;
+      }
+
+      if (E && E.PeacockEnemy && enemy instanceof E.PeacockEnemy) {
+        const res = enemy.takeHit(this.particles, knockDir, true, true);
+        if (res === 'damaged') {
+          this.score += 25;
+          this.sound.stomp();
+          this.particles.FloatingText(enemy.x - 16, enemy.y - 18, '🦚 ¡PLUMAJE CERRADO!', '#fde047');
+        } else if (res === 'killed') {
+          this.score += 85;
+          this.sound.stomp();
+          this.particles.Burst(ex, ey, '#10b981', 18);
+          this.particles.Burst(ex, ey, '#2563eb', 10);
+          this.particles.Burst(ex, ey, '#fbbf24', 8);
+          this.particles.FloatingText(enemy.x, enemy.y - 8, '🌿 ¡HOJAZO! +85', '#bef264');
+        }
+        return res;
       }
 
       if (E && E.RapaNuiWarrior && enemy instanceof E.RapaNuiWarrior) {
@@ -4579,7 +5854,7 @@
         if (res === 'mask_broken') {
           this.score += 25;
           this.sound.spikeHit();
-          this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '¡1/2! 🗿 ¡MÁSCARA ROTA!', '#fde047');
+          this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '🗿 ¡MÁSCARA ROTA!', '#fde047');
         } else if (res === 'killed') {
           this.score += 85;
           this.sound.stomp();
@@ -4596,7 +5871,6 @@
           this.score += 20;
           this.sound.stomp();
           this.particles.Burst(ex, ey, '#fde047', 12);
-          this.particles.FloatingText(enemy.x, enemy.y - 14, '¡1/2! 💥', '#fde047');
         } else if (res === 'killed') {
           this.score += 85;
           this.sound.stomp();
@@ -4611,7 +5885,7 @@
         if (res === 'armor_broken') {
           this.score += 25;
           this.sound.spikeHit();
-          this.particles.FloatingText(enemy.x - 24, enemy.y - 18, '¡1/2! 🦀 ¡CAPARAZÓN ROTO!', '#fde047');
+          this.particles.FloatingText(enemy.x - 24, enemy.y - 18, '🦀 ¡CAPARAZÓN ROTO!', '#fde047');
         } else if (res === 'killed') {
           this.score += 90;
           this.sound.stomp();
@@ -4629,7 +5903,7 @@
           this.sound.stomp();
           this.particles.Burst(ex, ey, '#ef4444', 14);
           this.particles.Burst(ex, ey, '#fbbf24', 10);
-          this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '¡1/2! 😡 ¡SIN FERNET! ¡FURIA!', '#fbbf24');
+          this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '😡 ¡SIN FERNET! ¡FURIA!', '#fbbf24');
         } else if (res === 'killed') {
           this.score += 85;
           this.sound.stomp();
@@ -4644,7 +5918,7 @@
         if (res === 'drum_broken') {
           this.score += 25;
           this.sound.stomp();
-          this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '¡1/2! 🥁 ¡BOMBO ROTO!', '#fde047');
+          this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '🥁 ¡BOMBO ROTO!', '#fde047');
         } else if (res === 'killed') {
           this.score += 85;
           this.sound.stomp();
@@ -4678,7 +5952,6 @@
           this.score += 20;
           this.sound.stomp();
           this.particles.Burst(ex, ey, '#fde047', 12);
-          this.particles.FloatingText(enemy.x, enemy.y - 14, '¡1/2! 💥', '#fde047');
         } else if (res === 'killed') {
           const isArgHeavy =
             (E.SerranoBurroEnemy && enemy instanceof E.SerranoBurroEnemy) ||
@@ -4715,22 +5988,26 @@
       const res = opts.hitFn(knockDir);
       if (res === opts.firstState) {
         this.player.y = Math.min(this.player.y, enemy.y - this.player.h - 2);
-        this.player.vy = opts.firstBounceVy || -380;
+        this.applyPlayerStompBounce(opts.firstBounceVy || -380);
         this.player.isGroundPounding = false;
         this.score += opts.firstPts || 20;
         this.sound.stomp();
         if (opts.firstBurstColor) this.particles.Burst(ex, ey, opts.firstBurstColor, 14);
         if (opts.secondBurstColor) this.particles.Burst(ex, ey, opts.secondBurstColor, 10);
-        this.particles.FloatingText(
-          enemy.x + (opts.firstTextDx || 0),
-          enemy.y + (opts.firstTextDy !== undefined ? opts.firstTextDy : -14),
-          opts.firstLabel || '¡1/2! 💥',
-          opts.firstTextColor || '#fde047'
-        );
+        if (opts.firstLabel) {
+          this.particles.FloatingText(
+            enemy.x + (opts.firstTextDx || 0),
+            enemy.y + (opts.firstTextDy !== undefined ? opts.firstTextDy : -14),
+            opts.firstLabel,
+            opts.firstTextColor || '#fde047'
+          );
+        }
         this.saveHighScore();
       } else if (res === 'killed') {
         if (!this.player.isGroundPounding || opts.alwaysBounceOnKill) {
-          this.player.vy = opts.killBounceVy || -385;
+          this.applyPlayerStompBounce(opts.killBounceVy || -385);
+        } else {
+          this.grantStompGrace(0.15);
         }
         if (opts.alwaysBounceOnKill) {
           this.player.y = Math.min(this.player.y, enemy.y - this.player.h - 2);
@@ -4764,6 +6041,8 @@
         .concat(this.madridCats)
         .concat(this.selfieTourists)
         .concat(this.royalGuards)
+        .concat(this.peacocks)
+        .concat(this.crazyCyclists)
         .concat(this.greenParakeets)
         .concat(this.swarmParakeets)
         .concat(this.jellyfishes)
@@ -4772,6 +6051,8 @@
         .concat(this.royalSeagulls)
         .concat(this.swarmRoyalSeagulls)
         .concat(this.gallotias)
+        .concat(this.garajonayFoxes)
+        .concat(this.gaudiLizard ? [this.gaudiLizard] : [])
         .concat(this.abubillas)
         .concat(this.swarmAbubillas)
         .concat(this.zigzagPigeons)
@@ -4820,25 +6101,43 @@
               this.score += 25;
               this.particles.Burst(ex, ey, '#ef4444', 14);
               this.particles.Burst(ex, ey, '#fbbf24', 10);
-              this.particles.FloatingText(enemy.x - 16, enemy.y - 18, '¡1/2! 😡 ¡SIN FERNET! ¡FURIA!', '#fbbf24');
+              this.particles.FloatingText(enemy.x - 16, enemy.y - 18, '😡 ¡SIN FERNET! ¡FURIA!', '#fbbf24');
             }
           } else if (global.Entities && global.Entities.RoyalGuardEnemy && enemy instanceof global.Entities.RoyalGuardEnemy) {
             if (enemy.hasArmor && typeof enemy.breakArmor === 'function' && enemy.breakArmor(this.particles, knockDir)) {
               stunnedCount++;
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '¡1/2! 🛡️ ¡ESCUDO Y CASCO ROTOS!', '#fde047');
+              this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '🛡️ ¡ESCUDO Y CASCO ROTOS!', '#fde047');
             } else if (!enemy.hasArmor) {
               enemy.stun(3.0);
               stunnedCount++;
               this.particles.Burst(ex, ey, '#fbbf24', 10);
             }
+          } else if (global.Entities && global.Entities.PeacockEnemy && enemy instanceof global.Entities.PeacockEnemy) {
+            // Regla general de área de efecto: NO resta HP ni mata de un golpe; solo cierra la cola y lo noquea
+            enemy.stun(3.2);
+            stunnedCount++;
+            this.particles.Burst(ex, ey, '#fbbf24', 10);
+            this.particles.FloatingText(enemy.x - 16, enemy.y - 18, '🦚 ¡NOQUEADO!', '#fde047');
+          } else if (global.Entities && global.Entities.GaudiLizardEnemy && enemy instanceof global.Entities.GaudiLizardEnemy) {
+            if (enemy.state === 'running' && this.defeatGaudiLizard(enemy, false)) {
+              stunnedCount++;
+            }
+          } else if (global.Entities && global.Entities.CrazyCyclistEnemy && enemy instanceof global.Entities.CrazyCyclistEnemy) {
+            enemy.dead = true;
+            stunnedCount++;
+            this.score += 70;
+            this.sound.stomp();
+            this.particles.Burst(ex, ey, '#ef4444', 14);
+            this.particles.Burst(ex, ey, '#facc15', 10);
+            this.particles.FloatingText(enemy.x, enemy.y - 8, '🚴 +70', '#38bdf8');
           } else if (global.Entities && global.Entities.RapaNuiWarrior && enemy instanceof global.Entities.RapaNuiWarrior) {
             if (enemy.hasMask && typeof enemy.breakMask === 'function' && enemy.breakMask(this.particles, knockDir)) {
               stunnedCount++;
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '¡1/2! 🗿 ¡MÁSCARA ROTA!', '#fde047');
+              this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '🗿 ¡MÁSCARA ROTA!', '#fde047');
             } else if (!enemy.hasMask) {
               enemy.stun(3.0);
               stunnedCount++;
@@ -4849,7 +6148,7 @@
               stunnedCount++;
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '¡1/2! 🦀 ¡CAPARAZÓN ROTO!', '#fde047');
+              this.particles.FloatingText(enemy.x - 22, enemy.y - 18, '🦀 ¡CAPARAZÓN ROTO!', '#fde047');
             } else if (enemy.armorBroken) {
               enemy.stun(3.0);
               stunnedCount++;
@@ -4860,7 +6159,7 @@
               stunnedCount++;
               this.score += 25;
               enemy.stun(1.2);
-              this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '¡1/2! 🥁 ¡BOMBO ROTO!', '#fde047');
+              this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '🥁 ¡BOMBO ROTO!', '#fde047');
             }
           } else if (global.Entities && global.Entities.HorneroNest && enemy instanceof global.Entities.HorneroNest) {
             const nestRes = this.damageHorneroNest(enemy, true);
@@ -4910,7 +6209,6 @@
               this.score += 20;
               this.sound.stomp();
               this.particles.Burst(hx, hy, '#fde047', 12);
-              this.particles.FloatingText(h.x - 8, h.y - 14, '¡1/2! 💥', '#fde047');
             } else if (boarRes === 'killed') {
               this.score += 65;
               this.particles.Burst(hx, hy, '#f97316', 18);
@@ -4944,6 +6242,8 @@
         .concat(this.madridCats)
         .concat(this.selfieTourists)
         .concat(this.royalGuards)
+        .concat(this.peacocks)
+        .concat(this.crazyCyclists)
         .concat(this.greenParakeets)
         .concat(this.swarmParakeets)
         .concat(this.jellyfishes)
@@ -4952,6 +6252,8 @@
         .concat(this.royalSeagulls)
         .concat(this.swarmRoyalSeagulls)
         .concat(this.gallotias)
+        .concat(this.garajonayFoxes)
+        .concat(this.gaudiLizard ? [this.gaudiLizard] : [])
         .concat(this.abubillas)
         .concat(this.hedgehogs)
         .concat(this.boars)
@@ -4998,6 +6300,16 @@
             this.particles.FloatingText(enemy.x - 10, enemy.y - 18, '¡INMUNE!', '#38bdf8');
           } else if (enemy.onPole && this.defeatPoleRockero(enemy, ex - cx, '♥ ¡AL SUELO! +65', '#f43f5e')) {
             hypnotizedCount++;
+          } else if (global.Entities && global.Entities.PeacockEnemy && enemy instanceof global.Entities.PeacockEnemy) {
+            // Pose / Encanto de Andrea: NO resta HP ni mata de un golpe; cierra la cola y lo enamora con corazones
+            enemy.hypnotize(3.5);
+            hypnotizedCount++;
+            this.particles.Burst(ex, ey, '#f43f5e', 10);
+            this.particles.FloatingText(enemy.x - 18, enemy.y - 18, '🦚 ¡ENAMORADO ♥!', '#fb7185');
+          } else if (global.Entities && global.Entities.GaudiLizardEnemy && enemy instanceof global.Entities.GaudiLizardEnemy) {
+            if (enemy.state === 'running' && this.defeatGaudiLizard(enemy, false)) {
+              hypnotizedCount++;
+            }
           } else {
             enemy.hypnotize(3.0);
             hypnotizedCount++;
@@ -5197,10 +6509,11 @@
       this.swarmAlertTimer = 6.0;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.65, 8);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 60,
         this.player.y - 48,
-        '🚨 ¡ALERTA DE PLAGA! ¡ENJAMBRE DE 20 COTORRAS! ¡USÁ [X]! 🚨',
+        `🚨 ¡ALERTA DE PLAGA! ¡ENJAMBRE DE 20 COTORRAS! ¡USÁ [${kTina}]! 🚨`,
         '#ef4444'
       );
 
@@ -5220,10 +6533,11 @@
       this.swarmAlertTimer = 6.0;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.7, 9);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 70,
         this.player.y - 48,
-        '⛈️ ¡TORMENTA MARINA! ¡20 GAVIOTAS REALES! ¡USÁ [X]! 🚨',
+        `⛈️ ¡TORMENTA MARINA! ¡20 GAVIOTAS REALES! ¡USÁ [${kTina}]! 🚨`,
         '#38bdf8'
       );
 
@@ -5243,10 +6557,11 @@
       this.swarmAlertTimer = 6.0;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.75, 9);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 75,
         this.player.y - 48,
-        '🌋 ¡ALERTA VOLCÁNICA! ¡20 ABUBILLAS CANARIAS! ¡USÁ [X]! 🚨',
+        `🌋 ¡ALERTA VOLCÁNICA! ¡20 ABUBILLAS CANARIAS! ¡USÁ [${kTina}]! 🚨`,
         '#fb923c'
       );
 
@@ -5266,10 +6581,11 @@
       this.swarmAlertTimer = 6.5;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.75, 9);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 85,
         this.player.y - 48,
-        '🚨 ¡ATAQUE FINAL! ¡BANDADA DE HORNEROS TELEDIRIGIDOS! ¡USÁ [X]! 🚨',
+        `🚨 ¡ATAQUE FINAL! ¡BANDADA DE HORNEROS TELEDIRIGIDOS! ¡USÁ [${kTina}]! 🚨`,
         '#ef4444'
       );
 
@@ -5304,10 +6620,11 @@
       this.swarmAlertTimer = 6.5;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.75, 9);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 95,
         this.player.y - 48,
-        '🦟 ¡NUBE DE MOSQUITOS DEL PARANÁ! ¡USÁ A TINA [X]! 🦟',
+        `🦟 ¡NUBE DE MOSQUITOS DEL PARANÁ! ¡USÁ A TINA [${kTina}]! 🦟`,
         '#fbbf24'
       );
 
@@ -5332,10 +6649,11 @@
       this.swarmAlertTimer = 6.5;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.75, 9);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 105,
         this.player.y - 48,
-        '🦅 ¡20 CORMORANES AUSTRALES! ¡USÁ A TINA [X]! 🦅',
+        `🦅 ¡20 CORMORANES AUSTRALES! ¡USÁ A TINA [${kTina}]! 🦅`,
         '#38bdf8'
       );
 
@@ -5356,10 +6674,11 @@
       this.swarmAlertTimer = 6.5;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.75, 9);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 105,
         this.player.y - 48,
-        '🦅 ¡20 FRAGATAS DEL PACÍFICO! ¡USÁ A TINA [X]! 🦅',
+        `🦅 ¡20 FRAGATAS DEL PACÍFICO! ¡USÁ A TINA [${kTina}]! 🦅`,
         '#fb923c'
       );
 
@@ -5380,10 +6699,11 @@
       this.swarmAlertTimer = 6.0;
       this.sound.alarmSiren();
       this.triggerScreenShake(0.65, 8);
+      const kTina = this.getControlKeyBadge('tina', true, 'X');
       this.particles.FloatingText(
         this.player.x - 60,
         this.player.y - 48,
-        '⚠️ ¡PELIGRO! ¡ENJAMBRE DE 20 PALOMAS! ¡USÁ [X]! ⚠️',
+        `⚠️ ¡PELIGRO! ¡ENJAMBRE DE 20 PALOMAS! ¡USÁ [${kTina}]! ⚠️`,
         '#ef4444'
       );
 
@@ -5450,6 +6770,12 @@
       if (this.screenShakeTimer > 0) {
         this.screenShakeTimer = Math.max(0, this.screenShakeTimer - dt);
       }
+      if (this.state !== 'paused' && this.ghostToastTimer > 0) {
+        this.ghostToastTimer = Math.max(0, this.ghostToastTimer - dt);
+      }
+      if (this.ghostRescueToastCooldown > 0) {
+        this.ghostRescueToastCooldown = Math.max(0, this.ghostRescueToastCooldown - dt);
+      }
 
       if (this.state === 'victory') {
         this.fireworkTimer -= dt;
@@ -5477,6 +6803,11 @@
 
       if (this.state === 'cheat_iris') {
         this.updateCheatIris(dt);
+        if (this.inputManager) this.inputManager.clearStepTriggers();
+        return;
+      }
+
+      if (this.state === 'splash') {
         if (this.inputManager) this.inputManager.clearStepTriggers();
         return;
       }
@@ -5510,9 +6841,7 @@
       if (this.isAbductedByCheat && this.abductionCheat) {
         this.totalTime += dt;
         this.levelTime += dt;
-        if (this.levelBannerTimer > 0) this.levelBannerTimer = Math.max(0, this.levelBannerTimer - dt);
-        if (this.activeHintTimer > 0) this.activeHintTimer = Math.max(0, this.activeHintTimer - dt);
-        if (this.swarmAlertTimer > 0) this.swarmAlertTimer = Math.max(0, this.swarmAlertTimer - dt);
+        this.updateOverlayTimers(dt);
 
         this.updateEtHomeAbduction(dt);
 
@@ -5522,6 +6851,19 @@
         this.clearTransientInput();
         if (this.abductionCheat && this.abductionCheat.phase !== 'falling') {
           this.particles.update(dt);
+        }
+        return;
+      }
+
+      if (this.isBiplaneFlightCheat && this.biplaneFlightCheat) {
+        this.totalTime += dt;
+        this.levelTime += dt;
+        this.updateOverlayTimers(dt);
+
+        this.updateBiplaneTourFlight(dt);
+
+        if (this.inputManager) {
+          this.inputManager.clearStepTriggers();
         }
         return;
       }
@@ -5583,18 +6925,16 @@
         this.triggerScreenShake(0.3, 5);
       }
       this.totalTime += dt;
-      if (this.levelBannerTimer > 0) this.levelBannerTimer = Math.max(0, this.levelBannerTimer - dt);
-      if (this.activeHintTimer > 0) this.activeHintTimer = Math.max(0, this.activeHintTimer - dt);
-      if (this.swarmAlertTimer > 0) this.swarmAlertTimer = Math.max(0, this.swarmAlertTimer - dt);
+      this.updateOverlayTimers(dt);
 
-      // Activar carteles tutoriales discretos arriba durante exactamente 3 segundos al acercarse
+      // Activar carteles tutoriales discretos arriba durante ~3.8 segundos visibles al acercarse
       if (this.hints && this.player) {
         for (let i = 0; i < this.hints.length; i++) {
           const h = this.hints[i];
           if (!h.triggered && this.player.x + 80 >= h.x && this.player.x <= h.x + 280) {
             h.triggered = true;
             this.activeHintText = h.text;
-            this.activeHintTimer = 3.0;
+            this.activeHintTimer = 3.8;
           }
         }
       }
@@ -5685,6 +7025,7 @@
       const solidHazards = this.overheadHazards.filter((h) => h.isSolidBlock !== false);
       const revealedHiddenBlocks = this.hiddenBlocks.filter((hb) => hb && hb.revealed);
       const playerSolids = this.solids.concat(solidHazards).concat(revealedHiddenBlocks);
+      this.player.ghostMode = Boolean(this.ghostMode);
       this.player.update(
         dt,
         this.input,
@@ -5702,6 +7043,7 @@
         {
           sandMode: this.hasSandPhysics,
           iceMode: this.hasIcePhysics,
+          isIceLevel: this.isIceLevel,
           saltMode: this.hasSaltPhysics,
           ropes: this.ropes,
           hiddenBlocks: this.hiddenBlocks
@@ -5726,15 +7068,20 @@
           }
           this.player.x = Math.min(pushLimitX, Math.max(this.player.x, blockedMaxX));
           if (this.player.x <= this.cameraX) {
-            this.sound.playerDeath();
-            this.particles.FloatingText(
-              this.player.x,
-              Math.max(60, this.player.y - 20),
-              '💥 ¡APLASTADO!',
-              '#ef4444'
-            );
-            this.triggerPlayerDeath(false, false);
-            return;
+            if (this.ghostMode) {
+              this.player.x = pushLimitX;
+              this.player.vx = Math.max(this.player.vx, 0);
+            } else {
+              this.sound.playerDeath();
+              this.particles.FloatingText(
+                this.player.x,
+                Math.max(60, this.player.y - 20),
+                '💥 ¡APLASTADO!',
+                '#ef4444'
+              );
+              this.triggerPlayerDeath(false, false);
+              return;
+            }
           }
         }
       }
@@ -5753,7 +7100,7 @@
           }
         }
         const flameBox = typeof sv.getFlameHazardBox === 'function' ? sv.getFlameHazardBox() : null;
-        if (flameBox && global.Entities.aabbOverlap(this.player, flameBox)) {
+        if (!this.ghostMode && flameBox && global.Entities.aabbOverlap(this.player, flameBox)) {
           if (this.player.invincibleTimer <= 0 && !this.player.isGroundPounding) {
             this.particles.Burst(sv.x + sv.w * 0.5, sv.y - 26, '#f97316', 14);
             this.particles.FloatingText(this.player.x - 10, this.player.y - 18, '🔥 ¡QUEMA!', '#fb923c');
@@ -5792,47 +7139,82 @@
       this.tina.update(dt, this.player, this.solids, activePlatforms, this.collectibles);
 
       // 4. ¿El Líder cayó al agua profunda, lava volcánica o en un pozo mortal? (cuesta 1 vida)
-      if (this.hasLavaPits && this.player.y > 494) {
-        if (this.sound && typeof this.sound.spikeHit === 'function') {
-          this.sound.spikeHit();
+      if (this.ghostMode) {
+        const rescueLimitY =
+          this.hasLavaPits || this.hasDeadlyPits || this.hasWaterPits ? 494 : LOGICAL_H + 40;
+        if (this.player.y > rescueLimitY) {
+          this.rescueGhostFromPit();
         }
-        this.particles.Burst(this.player.x + 16, 488, '#f97316', 24);
-        this.particles.FloatingText(this.player.x - 18, 450, '🌋 ¡CRÁTER ARDIENTE! -1 VIDA', '#fb923c');
-        this.loseLife(true);
-        return;
-      }
-      if (this.hasDeadlyPits && this.player.y > 494) {
-        if (this.sound && typeof this.sound.pitFall === 'function') {
-          this.sound.pitFall();
+      } else {
+        if (this.hasLavaPits && this.player.y > 494) {
+          if (this.sound && typeof this.sound.spikeHit === 'function') {
+            this.sound.spikeHit();
+          }
+          this.particles.Burst(this.player.x + 16, 488, '#f97316', 24);
+          this.particles.FloatingText(this.player.x - 18, 450, '🌋 ¡CRÁTER ARDIENTE! -1 VIDA', '#fb923c');
+          this.loseLife(true);
+          return;
         }
-        this.particles.Burst(this.player.x + 16, 488, '#4ade80', 18);
-        this.particles.FloatingText(this.player.x - 18, 450, '🌿 ¡AL ABISMO! -1 VIDA', '#4ade80');
-        this.loseLife(true);
-        return;
-      }
-      if (this.hasWaterPits && this.player.y > 494) {
-        if (this.sound && typeof this.sound.waterSplash === 'function') {
-          this.sound.waterSplash();
+        if (this.hasDeadlyPits && this.player.y > 494) {
+          if (this.sound && typeof this.sound.pitFall === 'function') {
+            this.sound.pitFall();
+          }
+          this.particles.Burst(this.player.x + 16, 488, '#4ade80', 18);
+          this.particles.FloatingText(this.player.x - 18, 450, '🌿 ¡AL ABISMO! -1 VIDA', '#4ade80');
+          this.loseLife(true);
+          return;
         }
-        this.particles.Burst(this.player.x + 16, 488, '#38bdf8', 22);
-        this.particles.FloatingText(this.player.x - 18, 450, '🌊 ¡AL AGUA! -1 VIDA', '#38bdf8');
-        this.loseLife(true);
-        return;
-      }
-      if (this.player.y > LOGICAL_H + 60) {
-        this.loseLife(true);
-        return;
+        if (this.hasWaterPits && this.player.y > 494) {
+          if (this.sound && typeof this.sound.waterSplash === 'function') {
+            this.sound.waterSplash();
+          }
+          const pitSplashCol = this.isRosarioParanaWater() ? '#e7d3b0' : '#38bdf8';
+          this.particles.Burst(this.player.x + 16, 488, pitSplashCol, 22);
+          this.particles.FloatingText(this.player.x - 18, 450, '🌊 ¡AL AGUA! -1 VIDA', pitSplashCol);
+          this.loseLife(true);
+          return;
+        }
+        if (this.player.y > LOGICAL_H + 60) {
+          this.loseLife(true);
+          return;
+        }
       }
 
       // 5. Colisión compartida de Coleccionables y Power-Ups Mutuamente Excluyentes
+      if (this.tina && this.tina.goldenBoostTimer > 0 && this.particles && Math.random() < 0.25) {
+        this.particles.Sparkle(
+          this.tina.x + Math.random() * this.tina.w,
+          this.tina.y + Math.random() * this.tina.h,
+          '#fde047'
+        );
+      }
       const partyMembers = [this.player, this.partner, this.tina];
       for (let i = 0; i < this.collectibles.length; i++) {
         const c = this.collectibles[i];
         c.update(dt, this.solids, this.movingPlatforms);
+        if (
+          !c.collected &&
+          (c.type === 'extra_life_heart' || c.type === '1up_heart' || (c.type === 'tina_golden_bone' && c.isHighArcDrop)) &&
+          this.particles &&
+          Math.random() < 0.45
+        ) {
+          this.particles.Sparkle(
+            c.x + 13 + (Math.random() - 0.5) * 14,
+            c.y + 13 + (Math.random() - 0.5) * 14,
+            c.type === 'extra_life_heart' || c.type === '1up_heart'
+              ? Math.random() < 0.5 ? '#fb7185' : '#fde047'
+              : Math.random() < 0.5 ? '#fef08a' : '#fbbf24'
+          );
+        }
         if (!c.canBePickedUp()) continue;
 
         const isSecret1Up = c.type === 'golden_bone' || c.type === '1up_bone';
-        const actors = isSecret1Up ? [this.player] : partyMembers;
+        const tinaBlocked = (c.tinaDelayTimer || 0) > 0;
+        const actors = isSecret1Up
+          ? [this.player]
+          : tinaBlocked
+            ? [this.player, this.partner]
+            : partyMembers;
         let touchedBy = null;
         for (let m = 0; m < actors.length; m++) {
           if (global.Entities.aabbOverlap(actors[m], c)) {
@@ -5858,9 +7240,11 @@
             c.type === 'empanada'
           ) {
             this.score += 50;
-            if (this.player.hearts < this.player.maxHearts) {
-              this.player.hearts++;
+            const maxH = this.player.maxHearts || 3;
+            if (this.player.hearts < maxH) {
+              this.player.hearts = Math.min(maxH, this.player.hearts + 1);
             }
+            this.syncHeartsToSlot(this.player.hearts);
             this.sound.burger();
             const burstColor = c.type === 'pizza' || c.type === 'empanada' ? '#f59e0b' : '#22c55e';
             const foodLabel =
@@ -5889,24 +7273,31 @@
             }
             this.score += 100;
             this.grantExtraLife();
-            if (this.sound) {
-              if (typeof this.sound.playSecret1Up === 'function') {
-                this.sound.playSecret1Up();
-              } else if (typeof this.sound.play1Up === 'function') {
-                this.sound.play1Up();
-              } else if (typeof this.sound.oneUp === 'function') {
-                this.sound.oneUp();
+            this.emitGoldenBonePickupEffect(c.x + 13, c.y + 13, '✨ ¡1UP SECRETO! +1 VIDA');
+          } else if (c.type === 'extra_life_heart' || c.type === '1up_heart') {
+            this.score += 150;
+            this.grantExtraLife();
+            if (this.sound && typeof this.sound.play1Up === 'function') {
+              this.sound.play1Up();
+            }
+            this.particles.Burst(c.x + 13, c.y + 13, '#fb7185', 24);
+            this.particles.Burst(c.x + 13, c.y + 13, '#fde047', 16);
+            this.particles.Sparkle(c.x + 13, c.y + 13, '#ffffff');
+            const prefix = touchedBy === this.tina ? '🐾❤️' : '❤️';
+            this.particles.FloatingText(c.x - 36, c.y - 18, `${prefix} ¡1 VIDA EXTRA!`, '#fb7185');
+          } else if (c.type === 'tina_golden_bone') {
+            this.score += 250;
+            if (this.tina) {
+              this.tina.growlCooldown = 0;
+              this.tina.goldenBoostTimer = 12.0;
+              this.tina.growlTimer = Math.max(this.tina.growlTimer || 0, 1.8);
+              if (this.tina.isGrounded) {
+                this.tina.jump(-290);
               }
             }
-            if (this.particles) {
-              this.particles.Burst(c.x + 13, c.y + 13, '#fde047', 30);
-              this.particles.Burst(c.x + 13, c.y + 13, '#fbbf24', 20);
-              this.particles.Burst(c.x + 13, c.y + 13, '#fef08a', 12);
-              for (let sp = 0; sp < 8; sp++) {
-                const ang = (Math.PI * 2 * sp) / 8;
-                this.particles.Sparkle(c.x + 13 + Math.cos(ang) * 16, c.y + 13 + Math.sin(ang) * 16, '#fde047');
-              }
-              this.particles.FloatingText(c.x - 42, c.y - 16, '✨ ¡1UP SECRETO! +1 VIDA', '#fde047');
+            this.emitGoldenBonePickupEffect(c.x + 13, c.y + 13, '🐾🦴 ¡LA TINA RECARGADA! +250');
+            if (this.sound && typeof this.sound.bark === 'function') {
+              setTimeout(() => this.sound && this.sound.bark(), 160);
             }
           }
           this.saveHighScore();
@@ -5920,6 +7311,8 @@
         ...this.madridCats,
         ...this.selfieTourists,
         ...this.royalGuards,
+        ...this.peacocks,
+        ...this.crazyCyclists,
         ...this.greenParakeets,
         ...this.swarmParakeets,
         ...this.jellyfishes,
@@ -5928,6 +7321,8 @@
         ...this.royalSeagulls,
         ...this.swarmRoyalSeagulls,
         ...this.gallotias,
+        ...this.garajonayFoxes,
+        ...(this.gaudiLizard && this.gaudiLizard.state === 'running' ? [this.gaudiLizard] : []),
         ...this.abubillas,
         ...this.swarmAbubillas,
         ...this.blindCrabs,
@@ -5966,12 +7361,17 @@
         ...this.guasoDancers,
         ...this.swarmFrigates
       ];
+      const projSolids = this.plantProjectiles.length
+        ? this.solids
+            .concat(solidHazards)
+            .concat(this.hiddenBlocks.filter((hb) => hb && (hb.revealed || hb.visible)))
+        : null;
       for (let i = this.plantProjectiles.length - 1; i >= 0; i--) {
         const proj = this.plantProjectiles[i];
         proj.update(
           dt,
-          this.solids,
-          this.movingPlatforms,
+          projSolids,
+          activePlatforms,
           this.particles,
           this.cameraX,
           LOGICAL_W,
@@ -5981,8 +7381,9 @@
           this.plantProjectiles.splice(i, 1);
           continue;
         }
+        if (proj.deflected || proj.damageDisabled) continue;
 
-        if (Math.abs(proj.vy || 0) < 10 && this.salineSpits.length) {
+        if ((Math.abs(proj.dirY || 0) < 0.25 || Math.abs(proj.vy || 0) < 10) && this.salineSpits.length) {
           for (let sIdx = this.salineSpits.length - 1; sIdx >= 0; sIdx--) {
             const spit = this.salineSpits[sIdx];
             if (!spit || spit.dead) continue;
@@ -6017,8 +7418,10 @@
             continue;
           }
           if (E.aabbOverlap(proj, enemy)) {
-            proj.dead = true;
-            this.applyPlantHitToEnemy(enemy, proj);
+            const hitResult = this.applyPlantHitToEnemy(enemy, proj);
+            if (hitResult !== 'blocked_front' && !proj.deflected) {
+              proj.dead = true;
+            }
             this.saveHighScore();
             break;
           }
@@ -6028,24 +7431,27 @@
         }
       }
 
+      const playerHits = (target) =>
+        !this.ghostMode && Boolean(target) && global.Entities.aabbOverlap(this.player, target);
+
       // 6. Enemigos: Palomas caminantes (con IA reactiva en niveles 3 y 4)
       for (let i = 0; i < this.pigeons.length; i++) {
         const p = this.pigeons[i];
-        p.update(dt, this.player);
+        p.update(dt, this.player, this.solids);
         if (p.dead || p.scaredFlying) continue;
 
         const px = p.x + p.w * 0.5;
         const py = p.y + p.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, p)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= p.y + 14;
+        if (playerHits(p)) {
+          const stomp = this.isPlayerStomp(p, dt);
 
           if (stomp || this.player.isGroundPounding || p.isDisabled()) {
             p.dead = true;
             if (!this.player.isGroundPounding) {
-              this.player.vy = -380;
+              this.applyPlayerStompBounce(-380);
+            } else {
+              this.grantStompGrace(0.15);
             }
             this.score += 35;
             this.sound.stomp();
@@ -6068,15 +7474,15 @@
         const bx = b.x + b.w * 0.5;
         const by = b.y + b.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, b)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= b.y + 14;
+        if (playerHits(b)) {
+          const stomp = this.isPlayerStomp(b, dt);
 
           if (stomp || this.player.isGroundPounding || b.isDisabled()) {
             b.dead = true;
             if (!this.player.isGroundPounding) {
-              this.player.vy = -390;
+              this.applyPlayerStompBounce(-390);
+            } else {
+              this.grantStompGrace(0.15);
             }
             this.score += 45;
             this.sound.stomp();
@@ -6089,24 +7495,33 @@
         }
       }
 
-      // 6b2. Enemigos: Gatos Callejeros de Madrid (comportamiento básico de patrulla)
+      // 6b2. Enemigos: Gatos Callejeros (física real de vigas, salto parabólico y gravedad)
       for (let i = 0; i < this.madridCats.length; i++) {
         const cat = this.madridCats[i];
-        cat.update(dt, this.player);
+        cat.update(dt, this.player, this.solids, this.movingPlatforms);
+        if (!cat._waterSplashed && this.hasWaterPits && cat.y > 498 && !cat.dead) {
+          cat._waterSplashed = true;
+          if (this.sound && typeof this.sound.waterSplash === 'function') {
+            this.sound.waterSplash();
+          }
+          if (this.particles) {
+            this.particles.Burst(cat.x + cat.w * 0.5, 502, '#7dd3fc', 14);
+          }
+        }
         if (cat.dead) continue;
 
         const cx = cat.x + cat.w * 0.5;
         const cy = cat.y + cat.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, cat)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= cat.y + 14;
+        if (playerHits(cat)) {
+          const stomp = this.isPlayerStomp(cat, dt);
 
           if (stomp || this.player.isGroundPounding || cat.isDisabled()) {
             cat.dead = true;
             if (!this.player.isGroundPounding) {
-              this.player.vy = -380;
+              this.applyPlayerStompBounce(-380);
+            } else {
+              this.grantStompGrace(0.15);
             }
             this.score += 40;
             this.sound.stomp();
@@ -6128,9 +7543,10 @@
         const tx = t.x + t.w * 0.5;
         const ty = t.y + t.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, t)) {
+        if (playerHits(t)) {
           if (this.player.isGroundPounding) {
             t.dead = true;
+            this.grantStompGrace(0.15);
             this.score += 75;
             this.sound.stomp();
             this.particles.Burst(tx, ty, '#f59e0b', 20);
@@ -6139,9 +7555,7 @@
           } else if (t.isDisabled()) {
             continue;
           } else {
-            const stomp =
-              this.player.vy > 0 &&
-              this.player.y + this.player.h - this.player.vy * dt <= t.y + 16;
+            const stomp = this.isPlayerStomp(t, dt);
             if (stomp) {
               // El palo selfie vertical actúa como púa que daña al jugador
               this.sound.spikeHit();
@@ -6168,37 +7582,40 @@
 
         const rx = rg.x + rg.w * 0.5;
         const ry = rg.y + rg.h * 0.5;
-        if (global.Entities.aabbOverlap(this.player, rg)) {
+        if (playerHits(rg)) {
           const knockDir = rx >= this.player.x + this.player.w * 0.5 ? 1 : -1;
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= rg.y + 18;
+          const stomp = this.isPlayerStomp(rg, dt);
           if (rg.hasArmor) {
             if (this.player.isGroundPounding) {
               rg.breakArmor(this.particles, knockDir, rg.hypnotizedTimer > 0);
               this.player.y = Math.min(this.player.y, rg.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.player.isGroundPounding = false;
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(rg.x - 24, rg.y - 18, '¡1/2! 🛡️ ¡ESCUDO Y CASCO ROTOS!', '#fde047');
+              this.particles.FloatingText(rg.x - 24, rg.y - 18, '🛡️ ¡ESCUDO Y CASCO ROTOS!', '#fde047');
               this.saveHighScore();
             } else if (stomp && rg.hypnotizedTimer > 0) {
               // Mientras está hipnotizado ♥ por Andrea, baja la guardia: el stomp hace volar casco y escudo y corta la hipnosis
               rg.breakArmor(this.particles, knockDir, true);
               this.player.y = Math.min(this.player.y, rg.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(rg.x - 24, rg.y - 18, '♥ ¡1/2! ¡GUARDIA DESARMADO!', '#f472b6');
+              this.particles.FloatingText(rg.x - 24, rg.y - 18, '♥ ¡GUARDIA DESARMADO!', '#f472b6');
               this.saveHighScore();
             } else if (stomp) {
               // Casco emplumado protege desde arriba: el jugador rebota sin dañar al guardia ni perder vida
               this.player.y = Math.min(this.player.y, rg.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.sound.spikeHit();
               this.particles.Burst(rx, rg.y + 6, '#e2e8f0', 8);
-              this.particles.FloatingText(rg.x - 26, rg.y - 18, '🪖 ¡CASCO BLINDADO! ¡USÁ [Z] O [C]!', '#fbbf24');
+              this.particles.FloatingText(
+                rg.x - 26,
+                rg.y - 18,
+                this.formatControlHintText('🪖 ¡CASCO BLINDADO! ¡USÁ [Z] O [C]!'),
+                '#fbbf24'
+              );
             } else if (!rg.isDisabled()) {
               this.damagePlayer(rx);
             }
@@ -6207,7 +7624,9 @@
             if (stomp || this.player.isGroundPounding || rg.hypnotizedTimer > 0) {
               rg.dead = true;
               if (!this.player.isGroundPounding) {
-                this.player.vy = -385;
+                this.applyPlayerStompBounce(-385);
+              } else {
+                this.grantStompGrace(0.15);
               }
               this.score += 85;
               this.sound.stomp();
@@ -6222,6 +7641,113 @@
         }
       }
 
+      // 6b3c. Enemigos: Pavos Reales de Parque del Retiro (2 HP; cola abierta inmune al salto, salvo impacto directo de Terremoto)
+      for (let i = 0; i < this.peacocks.length; i++) {
+        const pk = this.peacocks[i];
+        pk.update(dt, this.player, this.particles, this.sound);
+        if (pk.dead || pk.hitCooldown > 0) continue;
+
+        const px = pk.x + pk.w * 0.5;
+        if (playerHits(pk)) {
+          const directEarthquakeHit = Boolean(
+            this.player.isGroundPounding || this.player.justLandedGroundPoundThisFrame
+          );
+          const stomp = this.isPlayerStomp(pk, dt);
+          if (directEarthquakeHit) {
+            // Excepción: Terremoto de Nico cayendo directamente encima sí resta 1 HP (aun con cola abierta) y lo deja noqueado
+            const wasAirPound = Boolean(this.player.isGroundPounding);
+            this.player.justLandedGroundPoundThisFrame = false;
+            if (wasAirPound) {
+              this.player.abilityCooldown = Math.max(
+                this.player.abilityCooldown || 0,
+                this.player.abilityMaxCooldown || 5.0
+              );
+              this.triggerScreenShake(0.28, 7);
+              if (this.sound && typeof this.sound.earthquakeImpact === 'function') {
+                this.sound.earthquakeImpact();
+              }
+            }
+            this.resolveHeavyStompImpact(pk, {
+              hitFn: (dir) => pk.takeHit(this.particles, dir, true, true, 3.0),
+              firstState: 'damaged',
+              firstBounceVy: -380,
+              firstPts: 25,
+              firstBurstColor: '#fbbf24',
+              secondBurstColor: '#10b981',
+              firstTextDx: -20,
+              firstTextDy: -18,
+              firstLabel: '💥🦚 ¡NOQUEADO!',
+              firstTextColor: '#fde047',
+              alwaysBounceOnKill: true,
+              killPts: 85,
+              killBounceVy: -385,
+              killColor: '#10b981',
+              killLabel: '🦚 +85',
+              killTextColor: '#34d399'
+            });
+          } else if (stomp && pk.tailOpen && !pk.isDisabled()) {
+            // Cola abierta zamarreándose: 100 % inmune al salto normal por arriba (rebota y daña al jugador)
+            this.player.y = Math.min(this.player.y, pk.y - this.player.h - 2);
+            this.player.vy = -330;
+            this.sound.spikeHit();
+            this.particles.Burst(px, pk.y + 8, '#10b981', 10);
+            this.particles.Burst(px, pk.y + 8, '#fbbf24', 6);
+            this.particles.FloatingText(pk.x - 24, pk.y - 18, '🦚 ¡COLA ABIERTA! ¡INMUNE AL SALTO!', '#f43f5e');
+            this.damagePlayer(px);
+          } else if (stomp) {
+            this.resolveHeavyStompImpact(pk, {
+              hitFn: (dir) => pk.takeHit(this.particles, dir, false, true),
+              firstState: 'damaged',
+              firstBounceVy: -380,
+              firstPts: 25,
+              firstBurstColor: '#10b981',
+              secondBurstColor: '#fbbf24',
+              firstTextDx: -18,
+              firstTextDy: -18,
+              firstLabel: '🦚 ¡COLA CERRADA!',
+              firstTextColor: '#6ee7b7',
+              alwaysBounceOnKill: true,
+              killPts: 85,
+              killBounceVy: -385,
+              killColor: '#10b981',
+              killLabel: '🦚 +85',
+              killTextColor: '#34d399'
+            });
+          } else if (!pk.isDisabled()) {
+            this.damagePlayer(px);
+          }
+        }
+      }
+
+      // 6b3d. Enemigos: Ciclistas Locos de Parque del Retiro (1 HP; patrulla continua sin pausa y sin fuego amigo)
+      for (let i = 0; i < this.crazyCyclists.length; i++) {
+        const cc = this.crazyCyclists[i];
+        cc.update(dt);
+        if (cc.dead) continue;
+
+        const cx = cc.x + cc.w * 0.5;
+        const cy = cc.y + cc.h * 0.5;
+        if (playerHits(cc)) {
+          const stomp = this.isPlayerStomp(cc, dt);
+          if (stomp || this.player.isGroundPounding || cc.isDisabled()) {
+            cc.dead = true;
+            if (!this.player.isGroundPounding) {
+              this.applyPlayerStompBounce(-380);
+            } else {
+              this.grantStompGrace(0.15);
+            }
+            this.score += 70;
+            this.sound.stomp();
+            this.particles.Burst(cx, cy, '#ef4444', 14);
+            this.particles.Burst(cx, cy, '#facc15', 10);
+            this.particles.FloatingText(cc.x, cc.y - 8, '🚴 +70', '#38bdf8');
+            this.saveHighScore();
+          } else {
+            this.damagePlayer(cx);
+          }
+        }
+      }
+
       // 6b4. Enemigos: Cotorras Verdes de Madrid (vuelo sinusoidal rápido)
       for (let i = 0; i < this.greenParakeets.length; i++) {
         const g = this.greenParakeets[i];
@@ -6231,19 +7757,19 @@
         const gx = g.x + g.w * 0.5;
         const gy = g.y + g.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, g)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= g.y + 14;
+        if (playerHits(g)) {
+          const stomp = this.isPlayerStomp(g, dt);
 
           if (stomp || this.player.isGroundPounding || g.isDisabled()) {
             g.dead = true;
             if (!this.player.isGroundPounding) {
-              this.player.vy = -390;
+              this.applyPlayerStompBounce(-390);
+            } else {
+              this.grantStompGrace(0.15);
             }
             this.score += 50;
             this.sound.stomp();
-            this.particles.Burst(gx, gy, '#22c55e', 16);
+            this.particles.Burst(gx, gy, g.variant === 'barcelona' ? '#10b981' : '#22c55e', 16);
             this.particles.FloatingText(g.x, g.y, '+50', '#4ade80');
             this.saveHighScore();
           } else {
@@ -6258,7 +7784,7 @@
         sp.update(dt, this.player);
         if (sp.dead || sp.scaredFlying) continue;
 
-        if (global.Entities.aabbOverlap(this.player, sp)) {
+        if (playerHits(sp)) {
           // Impacto en ráfaga teledirigida: inflige daño y estalla en plumas
           this.particles.Burst(sp.x + sp.w * 0.5, sp.y + sp.h * 0.5, '#22c55e', 14);
           this.particles.FeatherBurst(sp.x + sp.w * 0.5, sp.y + sp.h * 0.5, '#16a34a', 8);
@@ -6278,14 +7804,14 @@
         j.update(dt, this.player);
         if (j.dead) continue;
         const jx = j.x + j.w * 0.5;
-        if (global.Entities.aabbOverlap(this.player, j) && !j.isDisabled()) {
+        if (playerHits(j) && !j.isDisabled()) {
           this.sound.electricShock();
           this.player.vy = -305;
           this.particles.Burst(jx, j.y + j.h * 0.5, '#22d3ee', 16);
           this.particles.FloatingText(
             j.x - 24,
             j.y - 14,
-            '⚡ ¡MEDUSA ELÉCTRICA! ¡USÁ [Z]!',
+            this.formatControlHintText('⚡ ¡MEDUSA ELÉCTRICA! ¡USÁ [Z]!'),
             '#22d3ee'
           );
           this.damagePlayer(jx);
@@ -6299,31 +7825,30 @@
         if (c.dead) continue;
         const cx = c.x + c.w * 0.5;
         const cy = c.y + c.h * 0.5;
-        if (global.Entities.aabbOverlap(this.player, c)) {
+        if (playerHits(c)) {
           if (this.player.isGroundPounding || c.isDisabled()) {
             c.dead = true;
+            this.grantStompGrace(0.15);
             this.score += 65;
             this.sound.stomp();
             this.particles.Burst(cx, cy, '#f97316', 18);
             this.particles.FloatingText(c.x, c.y - 8, '🦀 +65', '#fb923c');
             this.saveHighScore();
           } else {
-            const stomp =
-              this.player.vy > 0 &&
-              this.player.y + this.player.h - this.player.vy * dt <= c.y + 16;
+            const stomp = this.isPlayerStomp(c, dt);
             if (stomp && c.defenseRaised) {
               this.sound.spikeHit();
               this.player.vy = -310;
               this.particles.FloatingText(
                 c.x - 20,
                 c.y - 16,
-                '🦀 ¡PINZAS ALTAS! ¡USÁ [Z]!',
+                this.formatControlHintText('🦀 ¡PINZAS ALTAS! ¡USÁ [Z]!'),
                 '#ef4444'
               );
               this.damagePlayer(cx);
             } else if (stomp) {
               c.dead = true;
-              this.player.vy = -390;
+              this.applyPlayerStompBounce(-390);
               this.score += 60;
               this.sound.stomp();
               this.particles.Burst(cx, cy, '#f97316', 16);
@@ -6341,10 +7866,8 @@
         const g = this.goats[i];
         g.update(dt, this.player);
         if (g.dead || g.hitCooldown > 0) continue;
-        if (global.Entities.aabbOverlap(this.player, g)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= g.y + 16;
+        if (playerHits(g)) {
+          const stomp = this.isPlayerStomp(g, dt);
           if (stomp || this.player.isGroundPounding || g.isDisabled()) {
             this.resolveHeavyStompImpact(g, {
               hitFn: (dir) => g.takeHit(dir, true),
@@ -6369,13 +7892,12 @@
         if (r.dead || r.scaredFlying) continue;
         const rx = r.x + r.w * 0.5;
         const ry = r.y + r.h * 0.5;
-        if (global.Entities.aabbOverlap(this.player, r)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= r.y + 15;
+        if (playerHits(r)) {
+          const stomp = this.isPlayerStomp(r, dt);
           if (stomp || this.player.isGroundPounding || r.isDisabled()) {
             r.dead = true;
-            if (!this.player.isGroundPounding) this.player.vy = -390;
+            if (!this.player.isGroundPounding) this.applyPlayerStompBounce(-390);
+            else this.grantStompGrace(0.15);
             this.score += 60;
             this.sound.stomp();
             this.particles.Burst(rx, ry, '#f8fafc', 16);
@@ -6391,7 +7913,7 @@
         const sr = this.swarmRoyalSeagulls[i];
         sr.update(dt, this.player);
         if (sr.dead || sr.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, sr) && !sr.isDisabled()) {
+        if (playerHits(sr) && !sr.isDisabled()) {
           this.particles.Burst(sr.x + sr.w * 0.5, sr.y + sr.h * 0.5, '#f8fafc', 14);
           this.particles.FeatherBurst(sr.x + sr.w * 0.5, sr.y + sr.h * 0.5, '#94a3b8', 8);
           this.sound.spikeHit();
@@ -6408,7 +7930,7 @@
         const gy = this.geysers[i];
         gy.update(dt, this.sound, this.particles, this.player);
         const dbox = gy.getDamageBox();
-        if (dbox && global.Entities.aabbOverlap(this.player, dbox)) {
+        if (playerHits(dbox)) {
           const gLabel =
             gy.kind === 'water_spout'
               ? '💦 ¡CHORRO DEL PACÍFICO!'
@@ -6428,13 +7950,12 @@
         if (gl.dead) continue;
         const gx = gl.x + gl.w * 0.5;
         const gyPos = gl.y + gl.h * 0.5;
-        if (global.Entities.aabbOverlap(this.player, gl)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= gl.y + 15;
+        if (playerHits(gl)) {
+          const stomp = this.isPlayerStomp(gl, dt);
           if (stomp || this.player.isGroundPounding || gl.isDisabled()) {
             gl.dead = true;
-            if (!this.player.isGroundPounding) this.player.vy = -395;
+            if (!this.player.isGroundPounding) this.applyPlayerStompBounce(-395);
+            else this.grantStompGrace(0.15);
             this.score += 70;
             this.sound.stomp();
             this.particles.Burst(gx, gyPos, '#84cc16', 18);
@@ -6446,19 +7967,91 @@
         }
       }
 
+      // Enemigo exclusivo de Garajonay: El Zorrito ágil (1 HP, sube/baja vigas y puente)
+      for (let i = 0; i < this.garajonayFoxes.length; i++) {
+        const fx = this.garajonayFoxes[i];
+        fx.update(dt, this.player, this.solids, this.movingPlatforms, this.plantProjectiles);
+        if (!fx._waterSplashed && this.hasWaterPits && fx.y > 498 && !fx.dead) {
+          fx._waterSplashed = true;
+          if (this.sound && typeof this.sound.waterSplash === 'function') {
+            this.sound.waterSplash();
+          }
+          if (this.particles) {
+            this.particles.Burst(fx.x + fx.w * 0.5, 502, '#7dd3fc', 14);
+          }
+        }
+        if (fx.dead) continue;
+        const cx = fx.x + fx.w * 0.5;
+        const cy = fx.y + fx.h * 0.5;
+        if (playerHits(fx)) {
+          const stomp = this.isPlayerStomp(fx, dt);
+          if (stomp || this.player.isGroundPounding || fx.isDisabled()) {
+            fx.dead = true;
+            if (!this.player.isGroundPounding) this.applyPlayerStompBounce(-395);
+            else this.grantStompGrace(0.15);
+            this.score += 75;
+            this.sound.stomp();
+            this.particles.Burst(cx, cy, '#ea580c', 16);
+            this.particles.Burst(cx, cy, '#ffffff', 8);
+            this.particles.FloatingText(fx.x, fx.y - 6, '🦊 +75', '#fdba74');
+            this.saveHighScore();
+          } else {
+            this.damagePlayer(cx);
+            if (this.state !== 'playing') return;
+          }
+        }
+      }
+
+      // Evento único de Park Güell: La Salamandra de Trencadís (máx. 3 pasadas antes de escapar sin 1UP)
+      if (this.gaudiLizard && !this.gaudiLizard.dead) {
+        const liz = this.gaudiLizard;
+        const lizEv = liz.update(dt, this.player);
+        if (lizEv === 'activated') {
+          const lx = liz.x + liz.w * 0.5;
+          const ly = liz.y + liz.h * 0.5;
+          if (this.sound && typeof this.sound.coin === 'function') this.sound.coin();
+          this.particles.Burst(lx, ly, '#2563eb', 14);
+          this.particles.Burst(lx, ly, '#f97316', 12);
+          this.particles.FloatingText(liz.x - 42, liz.y - 26, '🦎 ¡SALAMANDRA DE TRENCADÍS! ¡3 PASADAS!', '#fde047');
+        } else if (lizEv === 'escaped') {
+          this.lizardEventConsumed = true;
+          this.gaudiLizardEventResolved = true;
+          const lx = liz.x + liz.w * 0.5;
+          const ly = liz.y + liz.h * 0.5;
+          this.particles.Burst(lx, ly, '#06b6d4', 12);
+          this.particles.FloatingText(liz.x - 28, liz.y - 22, '🦎💨 ¡ESCAPÓ! ¡SIN VIDA EXTRA!', '#94a3b8');
+        }
+        if ((liz.state === 'running' || liz.state === 'escaping') && this.particles && Math.random() < 0.35) {
+          const mosaicPalette = ['#2563eb', '#06b6d4', '#f97316', '#facc15', '#ffffff'];
+          this.particles.Sparkle(
+            liz.x + liz.w * 0.5 + (Math.random() - 0.5) * 18,
+            liz.y + liz.h * 0.65 + (Math.random() - 0.5) * 8,
+            mosaicPalette[Math.floor(Math.random() * mosaicPalette.length)]
+          );
+        }
+        if (!liz.dead && !liz.escaped && liz.state === 'running' && playerHits(liz)) {
+          const lx = liz.x + liz.w * 0.5;
+          const stomp = this.isPlayerStomp(liz, dt);
+          if (stomp || this.player.isGroundPounding || (typeof liz.isDisabled === 'function' && liz.isDisabled())) {
+            this.defeatGaudiLizard(liz, true);
+          } else {
+            this.damagePlayer(lx);
+          }
+        }
+      }
+
       for (let i = 0; i < this.abubillas.length; i++) {
         const ab = this.abubillas[i];
         ab.update(dt, this.player);
         if (ab.dead || ab.scaredFlying) continue;
         const ax = ab.x + ab.w * 0.5;
         const ay = ab.y + ab.h * 0.5;
-        if (global.Entities.aabbOverlap(this.player, ab)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= ab.y + 15;
+        if (playerHits(ab)) {
+          const stomp = this.isPlayerStomp(ab, dt);
           if (stomp || this.player.isGroundPounding || ab.isDisabled()) {
             ab.dead = true;
-            if (!this.player.isGroundPounding) this.player.vy = -395;
+            if (!this.player.isGroundPounding) this.applyPlayerStompBounce(-395);
+            else this.grantStompGrace(0.15);
             this.score += 70;
             this.sound.stomp();
             this.particles.Burst(ax, ay, '#f97316', 18);
@@ -6474,7 +8067,7 @@
         const sa = this.swarmAbubillas[i];
         sa.update(dt, this.player);
         if (sa.dead || sa.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, sa)) {
+        if (playerHits(sa)) {
           this.particles.Burst(sa.x + sa.w * 0.5, sa.y + sa.h * 0.5, '#fb923c', 14);
           this.particles.FeatherBurst(sa.x + sa.w * 0.5, sa.y + sa.h * 0.5, '#ea580c', 8);
           this.sound.spikeHit();
@@ -6491,16 +8084,14 @@
         bc.update(dt);
         if (bc.dead || bc.hitCooldown > 0) continue;
         const bx = bc.x + bc.w * 0.5;
-        if (global.Entities.aabbOverlap(this.player, bc)) {
+        if (playerHits(bc)) {
           const knockDir = bx >= this.player.x + this.player.w * 0.5 ? 1 : -1;
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= bc.y + 18;
+          const stomp = this.isPlayerStomp(bc, dt);
           if (!bc.shellBroken) {
             if (this.player.isGroundPounding) {
               const res = bc.shatter(this.particles, knockDir);
               this.player.y = Math.min(this.player.y, bc.y - this.player.h - 2);
-              this.player.vy = -360;
+              this.applyPlayerStompBounce(-360);
               this.player.isGroundPounding = false;
               if (res === 'cracked') {
                 this.score += 25;
@@ -6513,7 +8104,7 @@
               this.particles.FloatingText(
                 bc.x - 40,
                 bc.y - 18,
-                '🛡️ ¡CORAZA INVULNERABLE! ¡USÁ TERREMOTO [C] O [Z]!',
+                this.formatControlHintText('🛡️ ¡CORAZA INVULNERABLE! ¡USÁ TERREMOTO [C] O [Z]!'),
                 '#c084fc'
               );
               this.damagePlayer(bx);
@@ -6523,7 +8114,8 @@
             if (stomp || this.player.isGroundPounding || bc.isDisabled()) {
               const res = bc.shatter(this.particles, knockDir);
               if (res === 'killed' || res === true) {
-                if (!this.player.isGroundPounding) this.player.vy = -385;
+                if (!this.player.isGroundPounding) this.applyPlayerStompBounce(-385);
+                else this.grantStompGrace(0.15);
                 this.score += 200;
                 this.sound.stomp();
                 this.saveHighScore();
@@ -6545,24 +8137,24 @@
         const hx = h.x + h.w * 0.5;
         const hy = h.y + h.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, h)) {
+        if (playerHits(h)) {
           if (this.player.isGroundPounding) {
             if (global.Entities && global.Entities.Boar && h instanceof global.Entities.Boar) {
               const knockDir = hx >= this.player.x + this.player.w * 0.5 ? 1 : -1;
               const boarRes = h.takeHit(knockDir, true);
               if (boarRes === 'damaged') {
                 this.player.y = Math.min(this.player.y, h.y - this.player.h - 2);
-                this.player.vy = -350;
+                this.applyPlayerStompBounce(-350);
                 this.player.isGroundPounding = false;
                 this.score += 20;
                 this.sound.stomp();
                 this.particles.Burst(hx, hy, '#fde047', 12);
-                this.particles.FloatingText(h.x, h.y - 12, '¡1/2! 💥', '#fde047');
                 this.saveHighScore();
                 continue;
               }
             }
             h.dead = true;
+            this.grantStompGrace(0.15);
             this.score += 75;
             this.sound.stomp();
             this.particles.Burst(hx, hy, '#f97316', 20);
@@ -6573,10 +8165,11 @@
           } else {
             this.sound.spikeHit();
             this.player.vy = -310;
-            const warnText =
+            const warnText = this.formatControlHintText(
               h instanceof global.Entities.Boar
                 ? '¡COLMILLOS! ¡USÁ ORQUÍDEA [Z] O TERREMOTO [C]!'
-                : '¡PÚAS! ¡USÁ HABILIDAD [C] O [Z]!';
+                : '¡PÚAS! ¡USÁ HABILIDAD [C] O [Z]!'
+            );
             this.particles.FloatingText(h.x - 20, h.y - 16, warnText, '#f97316');
             this.damagePlayer(hx);
           }
@@ -6590,7 +8183,7 @@
         if (sp.dead || sp.scaredFlying) continue;
 
         const spx = sp.x + sp.w * 0.5;
-        if (global.Entities.aabbOverlap(this.player, sp) && !sp.isDisabled()) {
+        if (playerHits(sp) && !sp.isDisabled()) {
           this.damagePlayer(spx, true);
           if (this.state !== 'playing') return;
         }
@@ -6605,7 +8198,7 @@
         const sx = s.x + s.w * 0.5;
         const sy = s.y + s.h * 0.5;
 
-        if (global.Entities.aabbOverlap(this.player, s)) {
+        if (playerHits(s)) {
           if (this.player.isGroundPounding) {
             s.dead = true;
             this.score += 50;
@@ -6623,9 +8216,7 @@
       const checkBaStomp = (e, pts, burstColor, onDefeat = null, allowDisabledKill = true) => {
         const ex = e.x + e.w * 0.5;
         const ey = e.y + e.h * 0.5;
-        const stomp =
-          this.player.vy > 0 &&
-          this.player.y + this.player.h - this.player.vy * dt <= e.y + 18;
+        const stomp = this.isPlayerStomp(e, dt);
         if (stomp || this.player.isGroundPounding || (allowDisabledKill && e.isDisabled())) {
           if (e.onPole) {
             this.defeatPoleRockero(e, ex - (this.player.x + this.player.w * 0.5), `+${pts}`, burstColor);
@@ -6638,7 +8229,8 @@
             if (onDefeat) onDefeat();
             this.saveHighScore();
           }
-          if (!this.player.isGroundPounding) this.player.vy = -370;
+          if (!this.player.isGroundPounding) this.applyPlayerStompBounce(-370);
+          else this.grantStompGrace(0.15);
           return true;
         }
         return false;
@@ -6686,7 +8278,7 @@
         tr.update(dt, this.player, argAiCtx);
         if (tr.dead || tr.scaredFleeing || tr.defeated) continue;
         const ragBox = tr.getRagAttackBox();
-        if (global.Entities.aabbOverlap(this.player, tr) || (ragBox && global.Entities.aabbOverlap(this.player, ragBox))) {
+        if (playerHits(tr) || playerHits(ragBox)) {
           if (!checkBaStomp(tr, 55, '#84cc16', () => {
             this.collectibles.push(new global.Entities.Collectible(tr.x + 6, tr.y - 16, 'coin', true));
           })) {
@@ -6709,7 +8301,7 @@
           this.saveHighScore();
         }
         if (m.dead || m.defeated || m.crashingFromBark) continue;
-        if (global.Entities.aabbOverlap(this.player, m)) {
+        if (playerHits(m)) {
           if (!checkBaStomp(m, 70, '#ef4444')) {
             this.damagePlayer(m.x + m.w * 0.5);
           }
@@ -6724,7 +8316,7 @@
           if (this.sound && typeof this.sound.playDrumBoom === 'function') this.sound.playDrumBoom();
           const dx = (this.player.x + this.player.w * 0.5) - (b.x + b.w * 0.5);
           const dy = (this.player.y + this.player.h * 0.5) - (b.y + b.h * 0.5);
-          if (Math.hypot(dx, dy) < 210) {
+          if (!this.ghostMode && Math.hypot(dx, dy) < 210) {
             const pushDir = dx >= 0 ? 1 : -1;
             this.player.vx += pushDir * 310;
             if (this.player.onGround) this.player.vy = -120;
@@ -6732,10 +8324,8 @@
           }
         }
         if (b.hitCooldown > 0) continue;
-        if (global.Entities.aabbOverlap(this.player, b)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= b.y + 18;
+        if (playerHits(b)) {
+          const stomp = this.isPlayerStomp(b, dt);
           if (stomp || this.player.isGroundPounding || b.isDisabled()) {
             this.resolveHeavyStompImpact(b, {
               hitFn: (dir) => b.takeHit(this.particles, dir, true),
@@ -6743,7 +8333,7 @@
               firstPts: 25,
               firstTextDx: -16,
               firstTextDy: -16,
-              firstLabel: '¡1/2! 🥁 ¡BOMBO ROTO!',
+              firstLabel: '🥁 ¡BOMBO ROTO!',
               killPts: 85,
               killBounceVy: -370,
               killColor: '#38bdf8'
@@ -6761,7 +8351,7 @@
           this.newspaperProjectiles.push(c.pendingThrow);
         }
         if (c.dead) continue;
-        if (global.Entities.aabbOverlap(this.player, c)) {
+        if (playerHits(c)) {
           if (!checkBaStomp(c, 60, '#60a5fa')) {
             this.damagePlayer(c.x + c.w * 0.5);
           }
@@ -6775,7 +8365,7 @@
           this.newspaperProjectiles.splice(i, 1);
           continue;
         }
-        if (global.Entities.aabbOverlap(this.player, np)) {
+        if (playerHits(np)) {
           np.dead = true;
           this.damagePlayer(np.x + np.w * 0.5);
           this.newspaperProjectiles.splice(i, 1);
@@ -6786,7 +8376,7 @@
         const fp = this.fatPigeons[i];
         fp.update(dt);
         if (fp.dead || fp.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, fp)) {
+        if (playerHits(fp)) {
           if (!checkBaStomp(fp, 45, '#a855f7')) {
             this.damagePlayer(fp.x + fp.w * 0.5);
           }
@@ -6803,15 +8393,13 @@
             this.particles.Burst(nest.x + nest.w * 0.5, nest.y + nest.h * 0.5, '#f59e0b', 10);
           }
         }
-        if (!nest.dead && !nest.broken && global.Entities.aabbOverlap(this.player, nest)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= nest.y + 18;
+        if (!nest.dead && !nest.broken && playerHits(nest)) {
+          const stomp = this.isPlayerStomp(nest, dt);
           if (stomp || this.player.isGroundPounding) {
             const nestRes = this.damageHorneroNest(nest, false);
             if (nestRes === 'cracked' || nestRes === 'destroyed') {
               this.player.y = Math.min(this.player.y, nest.y - this.player.h - 1);
-              this.player.vy = this.player.isGroundPounding ? -320 : -375;
+              this.applyPlayerStompBounce(this.player.isGroundPounding ? -320 : -375);
               this.player.jumpsUsed = 0;
               if (this.player.isGroundPounding) {
                 this.player.isGroundPounding = false;
@@ -6828,7 +8416,7 @@
           continue;
         }
         if (h.scaredFlying || h.state === 'peeking' || h.state === 'hidden' || h.scaredTimer > 0) continue;
-        if (global.Entities.aabbOverlap(this.player, h)) {
+        if (playerHits(h)) {
           if (h.state === 'perched') {
             checkBaStomp(h, 65, '#d97706');
           } else if (!checkBaStomp(h, 65, '#d97706')) {
@@ -6844,7 +8432,7 @@
           continue;
         }
         if (sh.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, sh) && !sh.isDisabled()) {
+        if (playerHits(sh) && !sh.isDisabled()) {
           this.damagePlayer(sh.x + sh.w * 0.5, true);
           if (this.state !== 'playing') return;
         }
@@ -6857,10 +8445,10 @@
         if (
           this.player.vy >= 0 &&
           global.Entities.aabbOverlap(this.player, bd) &&
-          this.player.y + this.player.h - this.player.vy * dt <= bd.y + 18
+          this.isPlayerStomp(bd, dt, { allowZeroVy: true })
         ) {
           this.player.y = bd.y - this.player.h;
-          this.player.vy = bd.bounceVy || -660;
+          this.applyPlayerStompBounce(bd.bounceVy || -660);
           this.player.onGround = false;
           this.player.jumpsUsed = 0;
           if (bd && typeof bd.triggerBounce === 'function') {
@@ -6887,7 +8475,7 @@
           this.newspaperProjectiles.push(rk.pendingThrow);
         }
         if (rk.dead || rk.defeated || rk.fallingFromPole) continue;
-        if (global.Entities.aabbOverlap(this.player, rk)) {
+        if (playerHits(rk)) {
           if (!checkBaStomp(rk, 65, '#f43f5e')) {
             this.damagePlayer(rk.x + rk.w * 0.5);
           }
@@ -6901,7 +8489,7 @@
           this.coldBlasts.push(pg.pendingBlast);
         }
         if (pg.dead) continue;
-        if (global.Entities.aabbOverlap(this.player, pg)) {
+        if (playerHits(pg)) {
           if (!checkBaStomp(pg, 70, '#38bdf8')) {
             this.damagePlayer(pg.x + pg.w * 0.5);
           }
@@ -6915,36 +8503,8 @@
           this.coldBlasts.splice(i, 1);
           continue;
         }
-        // Fuego amigo en Ushuaia únicamente: ralentiza a otros enemigos sin dañar al emisor ni matar
-        if (this.isUshuaiaCity()) {
-          const blastTargets = [
-            ...this.fuegianFoxes,
-            ...this.seaLions,
-            ...this.kingCrabs,
-            ...this.selfieTourists,
-            ...this.royalSeagulls,
-            ...this.penguins,
-            ...this.swarmCormorants
-          ];
-          let hitEnemy = false;
-          for (let eIdx = 0; eIdx < blastTargets.length; eIdx++) {
-            const tgt = blastTargets[eIdx];
-            if (!tgt || tgt.dead || tgt.scaredFlying || tgt === cb.owner || typeof tgt.applySlow !== 'function') {
-              continue;
-            }
-            if (global.Entities.aabbOverlap(cb, tgt)) {
-              cb.dead = true;
-              this.coldBlasts.splice(i, 1);
-              tgt.applySlow(cb.slowSeconds || 2.0);
-              this.particles.Burst(tgt.x + tgt.w * 0.5, tgt.y + tgt.h * 0.5, '#7dd3fc', 14);
-              this.particles.FloatingText(tgt.x - 10, tgt.y - 16, '❄️ ¡CONGELADO!', '#7dd3fc');
-              hitEnemy = true;
-              break;
-            }
-          }
-          if (hitEnemy) continue;
-        }
-        if (global.Entities.aabbOverlap(this.player, cb)) {
+        // Sin friendly fire entre enemigos: los proyectiles de Pingüino solo afectan al jugador
+        if (playerHits(cb)) {
           cb.dead = true;
           this.coldBlasts.splice(i, 1);
           const canApplySlow = this.player && this.player.invulnTimer <= 0;
@@ -6962,7 +8522,7 @@
       for (let i = 0; i < this.palometas.length; i++) {
         const pm = this.palometas[i];
         pm.update(dt, this.player, argAiCtx);
-        this.emitJumpingFishSplash(pm, pm.waterY, '#7dd3fc');
+        this.emitJumpingFishSplash(pm, pm.waterY, this.isRosarioParanaWater() ? '#e7d3b0' : '#7dd3fc');
         if (!pm.isAirborne()) continue;
         if (this.handleJumpingFishPlayerCollision(pm, dt, { color: '#fb923c' })) {
           if (this.state !== 'playing') return;
@@ -6977,7 +8537,7 @@
           continue;
         }
         if (mq.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, mq) && !mq.isDisabled()) {
+        if (playerHits(mq) && !mq.isDisabled()) {
           this.damagePlayer(mq.x + mq.w * 0.5, true);
           if (this.state !== 'playing') return;
         }
@@ -6992,10 +8552,8 @@
           bp.pendingThrow = null;
         }
         if (bp.dead || bp.hitCooldown > 0) continue;
-        const overlapBody = global.Entities.aabbOverlap(this.player, bp);
-        const stomp =
-          this.player.vy > 0 &&
-          this.player.y + this.player.h - this.player.vy * dt <= bp.y + 20;
+        const overlapBody = playerHits(bp);
+        const stomp = this.isPlayerStomp(bp, dt);
         if (overlapBody && (stomp || this.player.isGroundPounding)) {
           this.resolveHeavyStompImpact(bp, {
             hitFn: (dir) => bp.takeHit(dir, true),
@@ -7006,7 +8564,7 @@
             secondBurstColor: '#fbbf24',
             firstTextDx: -18,
             firstTextDy: -18,
-            firstLabel: '¡1/2! 😡 ¡SIN FERNET! ¡FURIA!',
+            firstLabel: '😡 ¡SIN FERNET! ¡FURIA!',
             firstTextColor: '#fbbf24',
             alwaysBounceOnKill: true,
             killPts: 85,
@@ -7015,7 +8573,7 @@
           continue;
         }
         const punchBox = bp.punchHitbox();
-        if (punchBox && bp.disarmTimer <= 0 && global.Entities.aabbOverlap(this.player, punchBox)) {
+        if (punchBox && bp.disarmTimer <= 0 && playerHits(punchBox)) {
           this.damagePlayer(bp.x + bp.w * 0.5);
           if (this.state !== 'playing') return;
           continue;
@@ -7046,7 +8604,7 @@
           this.fernetBottles.splice(i, 1);
           continue;
         }
-        if (global.Entities.aabbOverlap(this.player, fb)) {
+        if (playerHits(fb)) {
           fb.dead = true;
           this.fernetBottles.splice(i, 1);
           this.damagePlayer(fb.x + fb.w * 0.5);
@@ -7062,7 +8620,7 @@
           continue;
         }
         const fpBox = fp.hitbox();
-        if (fpBox && global.Entities.aabbOverlap(this.player, fpBox)) {
+        if (playerHits(fpBox)) {
           this.damagePlayer(fp.x + fp.w * 0.5);
           if (this.state !== 'playing') return;
         }
@@ -7072,10 +8630,8 @@
         const sb = this.serranoBurros[i];
         sb.update(dt, this.player);
         if (sb.dead || sb.hitCooldown > 0) continue;
-        if (global.Entities.aabbOverlap(this.player, sb)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= sb.y + 18;
+        if (playerHits(sb)) {
+          const stomp = this.isPlayerStomp(sb, dt);
           if (stomp || this.player.isGroundPounding || sb.isDisabled()) {
             this.resolveHeavyStompImpact(sb, {
               hitFn: (dir) => sb.takeHit(dir, true),
@@ -7099,7 +8655,7 @@
         if (ufo._beamFxCooldown > 0) {
           ufo._beamFxCooldown = Math.max(0, ufo._beamFxCooldown - dt);
         }
-        if (global.Entities.aabbOverlap(this.player, ufo)) {
+        if (playerHits(ufo)) {
           if (!checkBaStomp(ufo, 95, '#34d399')) {
             this.damagePlayer(ufo.x + ufo.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7107,7 +8663,7 @@
           continue;
         }
         const beamBox = ufo.getBeamHitbox();
-        if (beamBox && global.Entities.aabbOverlap(this.player, beamBox)) {
+        if (playerHits(beamBox)) {
           if (!ufo._beamFxCooldown) {
             ufo._beamFxCooldown = 0.65;
             if (this.player && typeof this.player.applySlow === 'function') {
@@ -7126,7 +8682,7 @@
         const oh = this.overheadHazards[i];
         if ((!oh.isFallingHazard && oh.kind !== 'icicle') || typeof oh.getDamageBox !== 'function') continue;
         const dmgBox = oh.getDamageBox();
-        if (dmgBox && global.Entities.aabbOverlap(this.player, dmgBox)) {
+        if (playerHits(dmgBox)) {
           const ohBurst = oh.kind === 'cargo_load' ? '#ef4444' : oh.kind === 'volcanic_rock' ? '#fb923c' : oh.kind === 'stalactite' ? '#f59e0b' : '#bae6fd';
           const ohLabel = oh.kind === 'cargo_load' ? '🏗️ ¡CARGA PORTUARIA!' : oh.kind === 'volcanic_rock' ? '🌋 ¡ROCA VOLCÁNICA!' : oh.kind === 'stalactite' ? '🪨 ¡ESTALACTITA!' : '🧊 ¡CARÁMBANO!';
           const ohTxtCol = oh.kind === 'cargo_load' ? '#f87171' : oh.kind === 'volcanic_rock' ? '#fb923c' : oh.kind === 'stalactite' ? '#fde047' : '#38bdf8';
@@ -7146,10 +8702,8 @@
         const sl = this.seaLions[i];
         sl.update(dt, this.player);
         if (sl.dead || sl.hitCooldown > 0) continue;
-        if (global.Entities.aabbOverlap(this.player, sl)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= sl.y + 18;
+        if (playerHits(sl)) {
+          const stomp = this.isPlayerStomp(sl, dt);
           if (stomp || this.player.isGroundPounding || sl.isDisabled()) {
             this.resolveHeavyStompImpact(sl, {
               hitFn: (dir) => sl.takeHit(dir, true),
@@ -7172,35 +8726,38 @@
         if (kc.dead || kc.hitCooldown > 0) continue;
         const kx = kc.x + kc.w * 0.5;
         const ky = kc.y + kc.h * 0.5;
-        if (global.Entities.aabbOverlap(this.player, kc)) {
+        if (playerHits(kc)) {
           const knockDir = kx >= this.player.x + this.player.w * 0.5 ? 1 : -1;
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= kc.y + 18;
+          const stomp = this.isPlayerStomp(kc, dt);
           if (kc.hasArmor && !kc.armorBroken) {
             if (this.player.isGroundPounding) {
               kc.takeHit(this.particles, knockDir, true, true, true);
               this.player.y = Math.min(this.player.y, kc.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.player.isGroundPounding = false;
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(kc.x - 24, kc.y - 18, '¡1/2! 🦀 ¡CAPARAZÓN ROTO!', '#fde047');
+              this.particles.FloatingText(kc.x - 24, kc.y - 18, '🦀 ¡CAPARAZÓN ROTO!', '#fde047');
               this.saveHighScore();
             } else if (stomp && kc.hypnotizedTimer > 0) {
               kc.takeHit(this.particles, knockDir, true, true, true);
               this.player.y = Math.min(this.player.y, kc.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(kc.x - 24, kc.y - 18, '♥ ¡1/2! ¡ARMADURA ROTA!', '#f472b6');
+              this.particles.FloatingText(kc.x - 24, kc.y - 18, '♥ ¡ARMADURA ROTA!', '#f472b6');
               this.saveHighScore();
             } else if (stomp) {
               this.player.y = Math.min(this.player.y, kc.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.sound.spikeHit();
               this.particles.Burst(kx, kc.y + 6, '#fbbf24', 8);
-              this.particles.FloatingText(kc.x - 26, kc.y - 18, '🦀 ¡CAPARAZÓN DURO! ¡USÁ [Z] O [C]!', '#fbbf24');
+              this.particles.FloatingText(
+                kc.x - 26,
+                kc.y - 18,
+                this.formatControlHintText('🦀 ¡CAPARAZÓN DURO! ¡USÁ [Z] O [C]!'),
+                '#fbbf24'
+              );
             } else if (!kc.isDisabled()) {
               this.damagePlayer(kx);
               if (this.state !== 'playing') return;
@@ -7209,7 +8766,9 @@
             if (stomp || this.player.isGroundPounding || kc.isDisabled()) {
               kc.dead = true;
               if (!this.player.isGroundPounding) {
-                this.player.vy = -385;
+                this.applyPlayerStompBounce(-385);
+              } else {
+                this.grantStompGrace(0.15);
               }
               this.score += 90;
               this.sound.stomp();
@@ -7229,7 +8788,7 @@
         const ff = this.fuegianFoxes[i];
         ff.update(dt, this.player, argAiCtx);
         if (ff.dead) continue;
-        if (global.Entities.aabbOverlap(this.player, ff)) {
+        if (playerHits(ff)) {
           if (!checkBaStomp(ff, 70, '#ea580c')) {
             this.damagePlayer(ff.x + ff.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7241,7 +8800,7 @@
         const sc = this.swarmCormorants[i];
         sc.update(dt, this.player);
         if (sc.dead || sc.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, sc) && !sc.isDisabled()) {
+        if (playerHits(sc) && !sc.isDisabled()) {
           this.particles.Burst(sc.x + sc.w * 0.5, sc.y + sc.h * 0.5, '#f8fafc', 14);
           this.particles.FeatherBurst(sc.x + sc.w * 0.5, sc.y + sc.h * 0.5, '#0f172a', 8);
           this.sound.spikeHit();
@@ -7258,10 +8817,8 @@
         const pm = this.pumas[i];
         pm.update(dt, this.player);
         if (pm.dead || pm.hitCooldown > 0) continue;
-        if (global.Entities.aabbOverlap(this.player, pm)) {
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= pm.y + 18;
+        if (playerHits(pm)) {
+          const stomp = this.isPlayerStomp(pm, dt);
           if (stomp || this.player.isGroundPounding || pm.isDisabled()) {
             this.resolveHeavyStompImpact(pm, {
               hitFn: (dir) => pm.takeHit(this.particles, dir, true),
@@ -7286,7 +8843,7 @@
           vc.pendingSpit = null;
         }
         if (vc.dead) continue;
-        if (global.Entities.aabbOverlap(this.player, vc)) {
+        if (playerHits(vc)) {
           if (!checkBaStomp(vc, 65, '#f59e0b')) {
             this.damagePlayer(vc.x + vc.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7301,7 +8858,7 @@
           this.salineSpits.splice(i, 1);
           continue;
         }
-        if (global.Entities.aabbOverlap(this.player, sp)) {
+        if (playerHits(sp)) {
           sp.dead = true;
           this.salineSpits.splice(i, 1);
           this.particles.Burst(sp.x + sp.w * 0.5, sp.y + sp.h * 0.5, '#f8fafc', 12);
@@ -7314,7 +8871,7 @@
         const pd = this.portDogs[i];
         pd.update(dt, this.player);
         if (pd.dead || pd.happyFleeing) continue;
-        if (global.Entities.aabbOverlap(this.player, pd)) {
+        if (playerHits(pd)) {
           if (!checkBaStomp(pd, 60, '#a855f7')) {
             this.damagePlayer(pd.x + pd.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7326,7 +8883,7 @@
         const gd = this.guasoDancers[i];
         gd.update(dt);
         if (gd.dead) continue;
-        if (global.Entities.aabbOverlap(this.player, gd)) {
+        if (playerHits(gd)) {
           if (!checkBaStomp(gd, 75, gd.variant === 'guasa' ? '#ef4444' : '#1d4ed8')) {
             this.damagePlayer(gd.x + gd.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7338,7 +8895,7 @@
         const cn = this.condors[i];
         cn.update(dt, this.player);
         if (cn.dead || cn.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, cn)) {
+        if (playerHits(cn)) {
           if (!checkBaStomp(cn, 75, '#f8fafc')) {
             this.damagePlayer(cn.x + cn.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7350,7 +8907,7 @@
         const pp = this.portPelicans[i];
         pp.update(dt, this.player, this.pelicanDrops);
         if (pp.dead || pp.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, pp)) {
+        if (playerHits(pp)) {
           if (!checkBaStomp(pp, 70, '#fb923c')) {
             this.damagePlayer(pp.x + pp.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7365,7 +8922,7 @@
           this.pelicanDrops.splice(i, 1);
           continue;
         }
-        if (global.Entities.aabbOverlap(this.player, drop)) {
+        if (playerHits(drop)) {
           drop.dead = true;
           this.pelicanDrops.splice(i, 1);
           this.particles.Burst(drop.x + drop.w * 0.5, drop.y + drop.h * 0.5, '#38bdf8', 12);
@@ -7389,6 +8946,8 @@
           ? '🌋 ¡PEZ DE LAVA!'
           : ph.kind === 'flying_fish'
           ? '🐟 ¡PEZ VOLADOR!'
+          : ph.kind === 'beagle_fish'
+          ? '🐟 ¡PEZ DEL BEAGLE!'
           : '🐟 ¡PIRAÑA DEL PACÍFICO!';
         const phColor = isMagma ? '#fb7185' : '#38bdf8';
         if (this.handleJumpingFishPlayerCollision(ph, dt, { box: dbox, label: phLabel, color: phColor })) {
@@ -7400,7 +8959,7 @@
         const fr = this.frigates[i];
         fr.update(dt, this.player);
         if (fr.dead || fr.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, fr)) {
+        if (playerHits(fr)) {
           if (!checkBaStomp(fr, 75, '#fb923c')) {
             this.damagePlayer(fr.x + fr.w * 0.5);
             if (this.state !== 'playing') return;
@@ -7413,35 +8972,38 @@
         rn.update(dt, this.player);
         if (rn.dead || rn.hitCooldown > 0) continue;
         const rx = rn.x + rn.w * 0.5;
-        if (global.Entities.aabbOverlap(this.player, rn)) {
+        if (playerHits(rn)) {
           const knockDir = rx >= this.player.x + this.player.w * 0.5 ? 1 : -1;
-          const stomp =
-            this.player.vy > 0 &&
-            this.player.y + this.player.h - this.player.vy * dt <= rn.y + 18;
+          const stomp = this.isPlayerStomp(rn, dt);
           if (rn.hasMask) {
             if (this.player.isGroundPounding) {
               rn.takeHit(this.particles, knockDir, true, true);
               this.player.y = Math.min(this.player.y, rn.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.player.isGroundPounding = false;
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(rn.x - 22, rn.y - 18, '¡1/2! 🗿 ¡MÁSCARA ROTA!', '#fde047');
+              this.particles.FloatingText(rn.x - 22, rn.y - 18, '🗿 ¡MÁSCARA ROTA!', '#fde047');
               this.saveHighScore();
             } else if (stomp && rn.hypnotizedTimer > 0) {
               rn.breakMask(this.particles, knockDir, true);
               this.player.y = Math.min(this.player.y, rn.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.score += 25;
               this.sound.spikeHit();
-              this.particles.FloatingText(rn.x - 22, rn.y - 18, '♥ ¡1/2! ¡MÁSCARA ROTA!', '#f472b6');
+              this.particles.FloatingText(rn.x - 22, rn.y - 18, '♥ ¡MÁSCARA ROTA!', '#f472b6');
               this.saveHighScore();
             } else if (stomp) {
               this.player.y = Math.min(this.player.y, rn.y - this.player.h - 2);
-              this.player.vy = -370;
+              this.applyPlayerStompBounce(-370);
               this.sound.spikeHit();
               this.particles.Burst(rx, rn.y + 6, '#94a3b8', 8);
-              this.particles.FloatingText(rn.x - 26, rn.y - 18, '🗿 ¡MÁSCARA DE PIEDRA! ¡USÁ [Z] O [C]!', '#fbbf24');
+              this.particles.FloatingText(
+                rn.x - 26,
+                rn.y - 18,
+                this.formatControlHintText('🗿 ¡MÁSCARA DE PIEDRA! ¡USÁ [Z] O [C]!'),
+                '#fbbf24'
+              );
             } else if (!rn.isDisabled()) {
               this.damagePlayer(rx);
               if (this.state !== 'playing') return;
@@ -7450,7 +9012,9 @@
             if (stomp || this.player.isGroundPounding || rn.isDisabled()) {
               rn.dead = true;
               if (!this.player.isGroundPounding) {
-                this.player.vy = -385;
+                this.applyPlayerStompBounce(-385);
+              } else {
+                this.grantStompGrace(0.15);
               }
               this.score += 85;
               this.sound.stomp();
@@ -7470,7 +9034,7 @@
         const sf = this.swarmFrigates[i];
         sf.update(dt, this.player);
         if (sf.dead || sf.scaredFlying) continue;
-        if (global.Entities.aabbOverlap(this.player, sf) && !sf.isDisabled()) {
+        if (playerHits(sf) && !sf.isDisabled()) {
           this.particles.Burst(sf.x + sf.w * 0.5, sf.y + sf.h * 0.5, '#f8fafc', 14);
           this.particles.FeatherBurst(sf.x + sf.w * 0.5, sf.y + sf.h * 0.5, '#1e293b', 8);
           this.sound.spikeHit();
@@ -7503,7 +9067,9 @@
     }
 
     damagePlayer(sourceX, isSwarm = false) {
+      if (this.ghostMode) return;
       if (this.isAbductedByCheat) return;
+      if (this.isBiplaneFlightCheat) return;
       const res = this.player.takeDamage(sourceX, this.sound, this.particles, isSwarm, {
         reserveItem: this.reservePowerUp,
         onConsumeReserve: () => {
@@ -7524,12 +9090,16 @@
         this.carriedPowerUp = (this.player && this.player.activePowerUp) || null;
         if (res.lostHeart && this.player.hearts <= 0) {
           this.loseLife(false);
+        } else if (this.player && this.player.hearts >= 1) {
+          this.syncHeartsToSlot(this.player.hearts);
         }
       }
     }
 
     loseLife(fellInPit) {
+      if (this.ghostMode) return;
       if (this.isAbductedByCheat) return;
+      if (this.isBiplaneFlightCheat) return;
       this.triggerPlayerDeath({ fellInPit: Boolean(fellInPit), timeUp: false });
     }
 
@@ -7545,7 +9115,7 @@
 
       ctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-      if (this.state === 'menu') {
+      if (this.state === 'splash' || this.state === 'menu') {
         this.renderMenu(ctx);
         ctx.restore();
         return;
@@ -7628,6 +9198,22 @@
         this.levelData && this.levelData.width
       );
 
+      // En Barri Gòtic, garantiza orden z limpio en pozos de borde a borde hasta el fondo del hueco
+      if (this.waterPits && this.waterPits.length > 0 && this.levelData && this.levelData.theme === 'gotic') {
+        const pitCleanGrad = ctx.createLinearGradient(0, 458, 0, LOGICAL_H);
+        pitCleanGrad.addColorStop(0, '#071124');
+        pitCleanGrad.addColorStop(1, '#030712');
+        ctx.save();
+        for (let i = 0; i < this.waterPits.length; i++) {
+          const pit = this.waterPits[i];
+          const sx = pit.x - this.cameraX;
+          if (sx + pit.w < -16 || sx > LOGICAL_W + 16) continue;
+          ctx.fillStyle = pitCleanGrad;
+          ctx.fillRect(sx, 460, pit.w, LOGICAL_H - 460);
+        }
+        ctx.restore();
+      }
+
       if (this.waterPits && this.waterPits.length > 0) {
         this.bgRenderer.drawWaterPits(
           ctx,
@@ -7636,7 +9222,10 @@
           LOGICAL_W,
           LOGICAL_H,
           this.globalAnimTime,
-          { pass: 'back', stormy: this.hasStormWaves }
+          Object.assign(
+            { pass: 'back', stormy: this.hasStormWaves },
+            { waterTone: this.isRosarioParanaWater() ? 'parana' : 'ocean' }
+          )
         );
       }
 
@@ -7664,6 +9253,18 @@
       }
       for (let i = 0; i < this.overheadHazards.length; i++) {
         this.overheadHazards[i].draw(ctx, this.sprites, this.cameraX);
+      }
+
+      if (this.roseTunnels && this.roseTunnels.length > 0) {
+        this.bgRenderer.drawRetiroRoseTunnels(
+          ctx,
+          this.roseTunnels,
+          this.cameraX,
+          LOGICAL_W,
+          LOGICAL_H,
+          this.globalAnimTime,
+          'back'
+        );
       }
 
       // 3. Bandera de meta HD + Boca de Metro (BCN/MAD) o Parada de Autobús EMT (Palma)
@@ -7734,6 +9335,12 @@
       for (let i = 0; i < this.royalGuards.length; i++) {
         this.royalGuards[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
       }
+      for (let i = 0; i < this.peacocks.length; i++) {
+        this.peacocks[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
+      }
+      for (let i = 0; i < this.crazyCyclists.length; i++) {
+        this.crazyCyclists[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
+      }
       for (let i = 0; i < this.greenParakeets.length; i++) {
         this.greenParakeets[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
       }
@@ -7757,6 +9364,12 @@
       }
       for (let i = 0; i < this.gallotias.length; i++) {
         this.gallotias[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
+      }
+      for (let i = 0; i < this.garajonayFoxes.length; i++) {
+        this.garajonayFoxes[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
+      }
+      if (this.gaudiLizard && !this.gaudiLizard.dead) {
+        this.gaudiLizard.draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
       }
       for (let i = 0; i < this.abubillas.length; i++) {
         this.abubillas[i].draw(ctx, this.sprites, this.cameraX);
@@ -7782,6 +9395,7 @@
       for (let i = 0; i < this.scooters.length; i++) {
         this.scooters[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
       }
+
       for (let i = 0; i < this.trapitos.length; i++) {
         this.trapitos[i].draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
       }
@@ -7931,18 +9545,56 @@
         }
       }
 
+      // Z-Order estricto de formación: Tina (fondo) -> Acompañante (medio) -> Líder (frente)
       if (!hidePartyForBus) {
         this.tina.draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
         this.partner.draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
         this.player.draw(ctx, this.sprites, this.cameraX, this.solids, this.movingPlatforms);
       }
 
+      if (this.roseTunnels && this.roseTunnels.length > 0) {
+        this.bgRenderer.drawRetiroRoseTunnels(
+          ctx,
+          this.roseTunnels,
+          this.cameraX,
+          LOGICAL_W,
+          LOGICAL_H,
+          this.globalAnimTime,
+          'front'
+        );
+      }
+
+      if (
+        this.levelData &&
+        this.levelData.theme === 'canarias_garajonay' &&
+        typeof this.bgRenderer.drawGarajonayBridgeForeground === 'function'
+      ) {
+        this.bgRenderer.drawGarajonayBridgeForeground(
+          ctx,
+          this.solids,
+          this.cameraX,
+          LOGICAL_W,
+          this.globalAnimTime
+        );
+      }
+
       if (this.isAbductedByCheat) {
         this.drawEtHomeAbduction(ctx);
       }
 
+      if (this.isBiplaneFlightCheat) {
+        this.drawBiplaneTourFlight(ctx);
+      }
+
       if (isTeideCable) {
         if (this.state === 'level_cinematic' && !this.cinematicCableCarExited) {
+          const isDocked = this.cinematicTimer >= 2.15 && this.cinematicTimer < 3.15;
+          const swayAngle = isDocked
+            ? Math.sin(this.globalAnimTime * 2.0) * 0.008
+            : Math.sin(this.globalAnimTime * 2.5) * 0.028;
+          const cableAngle = Number.isFinite(this.cinematicCableCarAngle)
+            ? this.cinematicCableCarAngle
+            : Math.atan2(736, 1188);
           this.sprites.drawCableCarCabinHD(
             ctx,
             this.cinematicCableCarX - this.cameraX,
@@ -7950,7 +9602,8 @@
             this.globalAnimTime,
             this.cinematicCableCarDoorsOpen,
             this.cinematicPartyHidden,
-            Math.sin(this.globalAnimTime * 2.5) * 0.04
+            swayAngle,
+            cableAngle
           );
         }
       } else if (!isBusOrGuagua) {
@@ -7973,7 +9626,10 @@
           LOGICAL_W,
           LOGICAL_H,
           this.globalAnimTime,
-          { pass: 'front', stormy: this.hasStormWaves }
+          Object.assign(
+            { pass: 'front', stormy: this.hasStormWaves },
+            { waterTone: this.isRosarioParanaWater() ? 'parana' : 'ocean' }
+          )
         );
       }
 
@@ -7996,60 +9652,135 @@
         ctx.restore();
       }
 
-      if (this.hasStormWaves) {
+      // 8b. Olas de tormenta en primer plano (Palma 4 y Ushuaia 4), recortadas exclusivamente a los pozos abiertos
+      if (this.hasStormWaves && this.waterPits && this.waterPits.length > 0) {
         ctx.save();
-        ctx.fillStyle = 'rgba(2, 132, 199, 0.28)';
         ctx.beginPath();
-        ctx.moveTo(0, LOGICAL_H);
-        for (let wx = 0; wx <= LOGICAL_W; wx += 18) {
-          const wy = 486 + Math.sin((wx + this.cameraX * 0.85) * 0.048 + this.globalAnimTime * 5.8) * 12;
-          ctx.lineTo(wx, wy);
+        let hasVisiblePit = false;
+        for (let i = 0; i < this.waterPits.length; i++) {
+          const pit = this.waterPits[i];
+          const sx = Math.max(0, pit.x - this.cameraX);
+          const ex = Math.min(LOGICAL_W, pit.x + pit.w - this.cameraX);
+          if (ex > sx) {
+            ctx.rect(sx, 456, ex - sx, LOGICAL_H - 456);
+            hasVisiblePit = true;
+          }
         }
-        ctx.lineTo(LOGICAL_W, LOGICAL_H);
-        ctx.closePath();
-        ctx.fill();
+        if (hasVisiblePit) {
+          ctx.clip();
+          ctx.fillStyle = 'rgba(2, 132, 199, 0.28)';
+          ctx.beginPath();
+          ctx.moveTo(0, LOGICAL_H);
+          for (let wx = 0; wx <= LOGICAL_W; wx += 18) {
+            const wy = 486 + Math.sin((wx + this.cameraX * 0.85) * 0.048 + this.globalAnimTime * 5.8) * 12;
+            ctx.lineTo(wx, wy);
+          }
+          ctx.lineTo(LOGICAL_W, LOGICAL_H);
+          ctx.closePath();
+          ctx.fill();
+        }
         ctx.restore();
       }
 
-      // 9. Banner compacto superior al comenzar cada nivel (desaparece solo)
+      // 9. Banner compacto superior al comenzar cada nivel (ancho/alto dinámicos para nunca desbordar)
       if (this.levelBannerTimer > 0 && this.state === 'playing') {
         ctx.save();
         const alpha = Math.min(1, this.levelBannerTimer);
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = 'rgba(9, 13, 22, 0.80)';
+        const padX = 26;
+        const maxBoxW = Math.min(760, LOGICAL_W - 40);
+        const maxContentW = maxBoxW - padX * 2;
+        const titleFont = 'bold 14px "Segoe UI", system-ui, sans-serif';
+        const subFont = '11px "Segoe UI", system-ui, sans-serif';
+        const titleText = String((this.levelData && this.levelData.name) || '');
+        const subRaw =
+          this.levelData && this.levelData.subtitle
+            ? this.formatControlHintText(this.levelData.subtitle)
+            : '';
+
+        ctx.font = titleFont;
+        const titleLines = this.wrapBannerText(ctx, titleText, maxContentW);
+        let titleMaxW = 0;
+        for (let i = 0; i < titleLines.length; i++) {
+          titleMaxW = Math.max(titleMaxW, ctx.measureText(titleLines[i]).width);
+        }
+
+        ctx.font = subFont;
+        const subLines = this.wrapBannerText(ctx, subRaw, maxContentW);
+        let subMaxW = 0;
+        for (let i = 0; i < subLines.length; i++) {
+          subMaxW = Math.max(subMaxW, ctx.measureText(subLines[i]).width);
+        }
+
+        const boxW = Math.min(
+          maxBoxW,
+          Math.max(240, Math.ceil(Math.max(titleMaxW, subMaxW) + padX * 2))
+        );
+        const padY = 7;
+        const titleLineH = 16;
+        const subLineH = 14;
+        const gapBetween = subLines.length > 0 ? 3 : 0;
+        const boxH = padY * 2 + titleLines.length * titleLineH + gapBetween + subLines.length * subLineH;
+        const boxX = LOGICAL_W * 0.5 - boxW * 0.5;
+        const boxY = 60;
+
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.84)';
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.roundRect(LOGICAL_W * 0.5 - 190, 60, 380, 42, 10);
+        ctx.roundRect(boxX, boxY, boxW, boxH, 10);
         ctx.fill();
         ctx.stroke();
 
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fbbf24';
-        ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(this.levelData.name, LOGICAL_W * 0.5, 78);
-        ctx.fillStyle = '#e2e8f0';
-        ctx.font = '11px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(this.levelData.subtitle, LOGICAL_W * 0.5, 95);
+        ctx.font = titleFont;
+        let cursorY = boxY + padY + 11;
+        for (let i = 0; i < titleLines.length; i++) {
+          ctx.fillText(titleLines[i], LOGICAL_W * 0.5, cursorY, boxW - padX * 2);
+          cursorY += titleLineH;
+        }
+        if (subLines.length > 0) {
+          cursorY += gapBetween - 1;
+          ctx.fillStyle = '#e2e8f0';
+          ctx.font = subFont;
+          for (let i = 0; i < subLines.length; i++) {
+            ctx.fillText(subLines[i], LOGICAL_W * 0.5, cursorY, boxW - padX * 2);
+            cursorY += subLineH;
+          }
+        }
         ctx.restore();
       } else if (this.activeHintTimer > 0 && this.activeHintText && this.state === 'playing') {
-        // 9b. Cartel tutorial chico y discreto arriba (desaparece automáticamente tras 3 segundos)
+        // 9b. Cartel tutorial discreto arriba (~3.8s visibles tras el banner del título, con fade-out suave)
         ctx.save();
-        const alpha = Math.min(1, this.activeHintTimer * 1.4);
+        const alpha = Math.min(1, this.activeHintTimer / 0.65);
         ctx.globalAlpha = alpha;
         ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
-        const textW = Math.min(LOGICAL_W - 60, Math.max(220, ctx.measureText(this.activeHintText).width + 28));
+        const hintDisplayText = this.formatControlHintText(this.activeHintText);
+        const padX = 24;
+        const maxBoxW = Math.min(760, LOGICAL_W - 40);
+        const maxContentW = maxBoxW - padX * 2;
+        const hintLines = this.wrapBannerText(ctx, hintDisplayText, maxContentW);
+        let hintMaxW = 0;
+        for (let i = 0; i < hintLines.length; i++) {
+          hintMaxW = Math.max(hintMaxW, ctx.measureText(hintLines[i]).width);
+        }
+        const textW = Math.min(maxBoxW, Math.max(220, Math.ceil(hintMaxW + padX * 2)));
+        const lineH = 14;
+        const boxH = 12 + Math.max(1, hintLines.length) * lineH;
         ctx.fillStyle = 'rgba(9, 13, 22, 0.78)';
         ctx.strokeStyle = 'rgba(251, 191, 36, 0.75)';
         ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.roundRect(LOGICAL_W * 0.5 - textW * 0.5, 60, textW, 24, 8);
+        ctx.roundRect(LOGICAL_W * 0.5 - textW * 0.5, 60, textW, boxH, 8);
         ctx.fill();
         ctx.stroke();
 
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fef08a';
-        ctx.fillText(this.activeHintText, LOGICAL_W * 0.5, 76);
+        for (let i = 0; i < hintLines.length; i++) {
+          ctx.fillText(hintLines[i], LOGICAL_W * 0.5, 60 + 17 + i * lineH, textW - padX * 2);
+        }
         ctx.restore();
       }
 
@@ -8075,19 +9806,22 @@
         );
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+        const kSwarmTina = this.getControlKeyBadge('tina', true, 'X');
         const swarmText = this.isHorneroSwarm
-          ? '¡BANDADA DE HORNEROS TELEDIRIGIDOS! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!'
+          ? `¡BANDADA DE HORNEROS TELEDIRIGIDOS! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
+          : this.isMosquitoSwarm
+          ? `¡NUBE DE MOSQUITOS DEL PARANÁ! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
           : this.isCormorantSwarm
-          ? '¡20 CORMORANES AUSTRALES EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!'
+          ? `¡20 CORMORANES AUSTRALES EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
           : this.isFrigateSwarm
-          ? '¡20 FRAGATAS DEL PACÍFICO EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!'
+          ? `¡20 FRAGATAS DEL PACÍFICO EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
           : this.isCanariasSwarm
-          ? '¡20 ABUBILLAS CANARIAS EN PICADA! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!'
+          ? `¡20 ABUBILLAS CANARIAS EN PICADA! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
           : this.isPalmaSwarm
-          ? '¡20 GAVIOTAS REALES EN TORMENTA! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!'
+          ? `¡20 GAVIOTAS REALES EN TORMENTA! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
           : this.isMadridSwarm
-          ? '¡20 COTORRAS EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!'
-          : '¡20 PALOMAS AGRESIVAS! ¡ACTIVÁ EL LADRIDO DE LA TINA [X] AHORA!';
+          ? `¡20 COTORRAS EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
+          : `¡20 PALOMAS AGRESIVAS! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`;
         ctx.fillText(swarmText, LOGICAL_W * 0.5, 123);
         ctx.restore();
       }
@@ -8509,54 +10243,52 @@
       ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(`RÉCORD: ${this.highScore}`, 804, 32);
 
-      // 6. Indicador del ÚNICO Power-Up Equipado debajo del HUD
+      // 6. Pastilla minimalista del Poder Equipado debajo del HUD (solo ícono + 1 palabra)
       let badgeY = 64;
-      if (this.player.hasAngelWings()) {
-        const jumpsLeft = Math.max(0, 3 - this.player.jumpsUsed);
-        ctx.fillStyle = 'rgba(9, 13, 22, 0.88)';
-        ctx.strokeStyle = '#fef08a';
-        ctx.lineWidth = 2;
+      const activePowerPill = this.player.hasAngelWings()
+        ? { label: '🪽 ALAS', stroke: 'rgba(56, 189, 248, 0.78)', color: '#bae6fd' }
+        : this.player.hasPlant()
+        ? { label: '🌿 PLANTA', stroke: 'rgba(74, 222, 128, 0.78)', color: '#bbf7d0' }
+        : this.player.activePowerUp
+        ? {
+            label: `✨ ${String(this.player.activePowerUp).split('_')[0].toUpperCase()}`,
+            stroke: 'rgba(148, 163, 184, 0.78)',
+            color: '#e2e8f0'
+          }
+        : null;
+
+      if (activePowerPill) {
+        const pillH = 22;
+        const padX = 9;
+        ctx.save();
+        ctx.font = 'bold 10.5px "Segoe UI", system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+        const pillW = Math.ceil(ctx.measureText(activePowerPill.label).width) + padX * 2;
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.84)';
+        ctx.strokeStyle = activePowerPill.stroke;
+        ctx.lineWidth = 1.25;
         ctx.beginPath();
-        ctx.roundRect(16, badgeY, 275, 26, 7);
+        ctx.roundRect(16, badgeY, pillW, pillH, 6);
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = '#fef08a';
-        ctx.font = 'bold 12px "Segoe UI", sans-serif';
-        ctx.fillText(`🪽 EQUIPADO: ALAS DE ÁNGEL (${jumpsLeft}/3 SALTOS)`, 26, badgeY + 17);
-        badgeY += 32;
-      } else if (this.player.hasPlant()) {
-        ctx.fillStyle = 'rgba(9, 13, 22, 0.88)';
-        ctx.strokeStyle = '#4ade80';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.roundRect(16, badgeY, 330, 26, 7);
-        ctx.fill();
-        ctx.stroke();
-        const kPlantBadge = this.getControlKeyBadge('shoot', true, 'Z');
-        ctx.fillStyle = '#bef264';
-        ctx.font = 'bold 12px "Segoe UI", sans-serif';
-        ctx.fillText(
-          kPlantBadge === 'Z'
-            ? '🌿 EQUIPADO: PLANTA [Z] (RECTO Y DIAGONAL 45°)'
-            : `🌿 EQUIPADO: PLANTA [${kPlantBadge}] (RECTO Y DIAGONAL 45°)`,
-          26,
-          badgeY + 17
-        );
-        badgeY += 32;
+        ctx.fillStyle = activePowerPill.color;
+        ctx.fillText(activePowerPill.label, 16 + padX, badgeY + pillH * 0.5 + 0.5);
+        ctx.restore();
+        badgeY += pillH + 6;
       }
 
       if (this.player.hasSmoothie()) {
         ctx.fillStyle = 'rgba(9, 13, 22, 0.88)';
         ctx.strokeStyle = '#ec4899';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
-        ctx.roundRect(16, badgeY, 250, 26, 7);
+        ctx.roundRect(16, badgeY, 210, 24, 6);
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = '#f472b6';
-        ctx.font = 'bold 12px "Segoe UI", sans-serif';
-        ctx.fillText(`🥤 BATIDO TURBO: ${this.player.smoothieTimer.toFixed(1)}s`, 26, badgeY + 17);
-        badgeY += 32;
+        ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText(`🥤 BATIDO TURBO: ${this.player.smoothieTimer.toFixed(1)}s`, 25, badgeY + 16);
+        badgeY += 30;
       }
 
       if (this.hasWind && this.windActive && this.state === 'playing') {
@@ -8570,6 +10302,42 @@
         ctx.fillStyle = '#bae6fd';
         ctx.font = 'bold 12px "Segoe UI", sans-serif';
         ctx.fillText('🌬️ VIENTO COSTERO ◀◀', 26, badgeY + 17);
+      }
+
+      if (this.ghostMode) {
+        ctx.save();
+        const bx = LOGICAL_W - 172;
+        const by = 62;
+        ctx.fillStyle = 'rgba(8, 28, 44, 0.88)';
+        ctx.strokeStyle = '#67e8f9';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(bx, by, 156, 24, 8);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#a5f3fc';
+        ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('👻 MODO FANTASMA', bx + 78, by + 16);
+        ctx.restore();
+      }
+
+      if (this.ghostToastTimer > 0 && this.ghostToastText) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, this.ghostToastTimer * 1.6);
+        const toastY = this.levelBannerTimer > 0 ? 110 : 62;
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
+        ctx.strokeStyle = this.ghostToastColor || '#67e8f9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(LOGICAL_W * 0.5 - 150, toastY, 300, 30, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = this.ghostToastColor || '#67e8f9';
+        ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText(this.ghostToastText, LOGICAL_W * 0.5, toastY + 19);
+        ctx.restore();
       }
 
       ctx.restore();

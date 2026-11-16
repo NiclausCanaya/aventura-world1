@@ -89,16 +89,24 @@
      * Bocadillo de texto cómic reutilizable (con cola apuntando hacia abajo)
      */
     static drawComicSpeechBubble(ctx, x, y, text, opts = {}) {
-      const font = opts.font || 'bold 9.5px "Segoe UI", sans-serif';
+      const font = opts.font || 'bold 10px "Segoe UI", sans-serif';
       const fill = opts.fill || 'rgba(255, 255, 255, 0.97)';
       const stroke = opts.stroke || '#0f172a';
       const textColor = opts.textColor || '#0f172a';
       ctx.save();
+      if (typeof ctx.getTransform === 'function') {
+        const tr = ctx.getTransform();
+        if (tr && tr.a === 1 && tr.b === 0 && tr.c === 0 && tr.d === 1) {
+          ctx.translate(Math.round(tr.e) - tr.e, Math.round(tr.f) - tr.f);
+        }
+      }
       ctx.font = font;
-      const bw = Math.max(44, ctx.measureText(text).width + 14);
-      const bh = opts.height || 18;
-      const bx = x - bw * 0.5;
-      const by = y;
+      let bw = Math.ceil(Math.max(44, ctx.measureText(text).width + 16));
+      if (bw % 2 !== 0) bw += 1;
+      const bh = Math.round(opts.height || 19);
+      const cx = Math.round(x);
+      const bx = Math.round(cx - bw * 0.5);
+      const by = Math.round(y);
       ctx.fillStyle = fill;
       ctx.strokeStyle = stroke;
       ctx.lineWidth = 1.8;
@@ -109,22 +117,22 @@
 
       // Triángulo indicador inferior
       ctx.beginPath();
-      ctx.moveTo(x - 4, by + bh - 0.5);
-      ctx.lineTo(x + 4, by + bh - 0.5);
-      ctx.lineTo(x, by + bh + 5);
+      ctx.moveTo(cx - 4, by + bh - 0.5);
+      ctx.lineTo(cx + 4, by + bh - 0.5);
+      ctx.lineTo(cx, by + bh + 5);
       ctx.closePath();
       ctx.fillStyle = fill;
       ctx.fill();
       ctx.beginPath();
-      ctx.moveTo(x - 4, by + bh);
-      ctx.lineTo(x, by + bh + 5);
-      ctx.lineTo(x + 4, by + bh);
+      ctx.moveTo(cx - 4, by + bh);
+      ctx.lineTo(cx, by + bh + 5);
+      ctx.lineTo(cx + 4, by + bh);
       ctx.stroke();
 
       ctx.fillStyle = textColor;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(text, x, by + bh - 5);
+      ctx.fillText(text, cx, by + bh - 5);
       ctx.restore();
     }
 
@@ -152,6 +160,35 @@
     // ========================================================================
     // RENDERIZADO HD DE PERSONAJES (NICO Y ANDREA) CON ARTICULACIÓN FLUIDA
     // ========================================================================
+    drawHangingArmHD(ctx, sx, sy, elbowX, elbowY, handX, handY, skinCol, withRedBracelet = false) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(elbowX, elbowY, handX, handY);
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 8.8;
+      ctx.stroke();
+      ctx.strokeStyle = skinCol;
+      ctx.lineWidth = 4.8;
+      ctx.stroke();
+
+      if (withRedBracelet) {
+        const wx = elbowX + (handX - elbowX) * 0.78;
+        const wy = elbowY + (handY - elbowY) * 0.78;
+        ctx.beginPath();
+        ctx.arc(wx, wy, 3.4, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, '#e11d48', '#881337', 1.3);
+      }
+
+      // Mano cerrada sujetando firmemente la soga/cable por encima de la cabeza
+      ctx.beginPath();
+      ctx.arc(handX, handY, 2.9, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, skinCol, '#0f172a', 1.7);
+      ctx.restore();
+    }
+
     drawCharacterHD(ctx, charKey, x, y, facing, animState, animTimer, hasWings, wingFlapTimer) {
       ctx.save();
       ctx.translate(x + 12, y + 22);
@@ -159,13 +196,41 @@
         ctx.scale(-1, 1);
       }
 
+      const isHangMoving = animState === 'hang_move';
+      const isHangingPose =
+        isHangMoving ||
+        animState === 'hang' ||
+        animState === 'isHanging' ||
+        animState === 'onCable' ||
+        animState === 'onZipline' ||
+        animState === 'onVine';
+
       // Calcular ángulos de articulación según estado de animación a 60 FPS
       let legSwing = 0;
       let armSwing = 0;
       let bodyBob = 0;
       let torsoTilt = 0;
+      let backHandX = 0;
+      let backHandY = -32;
+      let frontHandX = 6;
+      let frontHandY = -32;
+      let hangPhase = 0;
 
-      if (animState === 'run' || animState === 'entering_metro') {
+      if (isHangingPose) {
+        hangPhase = animTimer * 13;
+        const swingCycle = isHangMoving ? Math.sin(hangPhase) : Math.sin(animTimer * 2.6);
+        const stepSwing = isHangMoving ? Math.sin(hangPhase) : 0;
+        const frontLift = isHangMoving ? Math.max(0, Math.cos(hangPhase)) * 2.8 : 0;
+        const backLift = isHangMoving ? Math.max(0, -Math.cos(hangPhase)) * 2.8 : 0;
+        // Manos alineadas a localY = -32 (y + 22 - 32 = y - 10) para coincidir con el cable sin tocar la cabeza
+        backHandX = -3 - stepSwing * 4.5;
+        backHandY = -32 + backLift;
+        frontHandX = 6 + stepSwing * 4.5;
+        frontHandY = -32 + frontLift;
+        legSwing = isHangMoving ? swingCycle * 0.34 - 0.12 : swingCycle * 0.12;
+        bodyBob = 0;
+        torsoTilt = isHangMoving ? -0.045 + swingCycle * 0.04 : swingCycle * 0.025;
+      } else if (animState === 'run' || animState === 'entering_metro') {
         const phase = animTimer * 13;
         legSwing = Math.sin(phase) * 0.65;
         armSwing = -Math.sin(phase) * 0.6;
@@ -229,13 +294,20 @@
       }
 
       // 2. Brazo trasero
-      const backArmX = -3 + Math.sin(-armSwing) * 8;
-      const backArmY = 3 + Math.cos(-armSwing) * 9;
-      SpriteBank.drawCapsule(ctx, -2, -5, backArmX, backArmY, 3.2, skinShadow);
+      if (isHangingPose) {
+        const backElbowX = -9.5 - (isHangMoving ? Math.sin(hangPhase) * 2.0 : 0);
+        this.drawHangingArmHD(ctx, -2.5, -7, backElbowX, -19, backHandX, backHandY, skinShadow, false);
+      } else {
+        const backArmX = -3 + Math.sin(-armSwing) * 8;
+        const backArmY = 3 + Math.cos(-armSwing) * 9;
+        SpriteBank.drawCapsule(ctx, -2, -5, backArmX, backArmY, 3.2, skinShadow);
+      }
 
       // 3. Pierna trasera y zapatilla
-      const backLegX = -3 + Math.sin(-legSwing) * 9;
-      const backLegY = 18 + Math.cos(-legSwing) * 3;
+      const backLegSwing = isHangingPose && !isHangMoving ? legSwing - 0.08 : -legSwing;
+      const frontLegSwing = isHangingPose && !isHangMoving ? legSwing + 0.08 : legSwing;
+      const backLegX = -3 + Math.sin(backLegSwing) * 9;
+      const backLegY = 18 + Math.cos(backLegSwing) * 3;
       SpriteBank.drawCapsule(ctx, -2, 6, backLegX, backLegY, 3.8, jeansGrad);
       this.drawSneakerHD(ctx, backLegX, backLegY + 2, isNico);
 
@@ -274,8 +346,8 @@
       }
 
       // 6. Pierna delantera y zapatilla
-      const frontLegX = 2 + Math.sin(legSwing) * 9;
-      const frontLegY = 18 + Math.cos(legSwing) * 3;
+      const frontLegX = 2 + Math.sin(frontLegSwing) * 9;
+      const frontLegY = 18 + Math.cos(frontLegSwing) * 3;
       SpriteBank.drawCapsule(ctx, 2, 6, frontLegX, frontLegY, 4.0, jeansGrad);
       this.drawSneakerHD(ctx, frontLegX, frontLegY + 2, isNico);
 
@@ -370,24 +442,29 @@
       ctx.restore();
 
       // 8. Brazo delantero (+ Pulsera roja de Andrea o puño sísmico de Nico)
-      const frontArmX = 3 + Math.sin(armSwing) * 9;
-      const frontArmY = 3 + Math.cos(armSwing) * 9;
-      SpriteBank.drawCapsule(ctx, 2, -5, frontArmX, frontArmY, 3.4, skinColor);
+      if (isHangingPose) {
+        const frontElbowX = 11.5 + (isHangMoving ? Math.sin(hangPhase) * 2.5 : 0);
+        this.drawHangingArmHD(ctx, 2.5, -7, frontElbowX, -19, frontHandX, frontHandY, skinColor, !isNico);
+      } else {
+        const frontArmX = 3 + Math.sin(armSwing) * 9;
+        const frontArmY = 3 + Math.cos(armSwing) * 9;
+        SpriteBank.drawCapsule(ctx, 2, -5, frontArmX, frontArmY, 3.4, skinColor);
 
-      if (!isNico) {
-        // Pulsera roja característica de Andrea en su muñeca
-        ctx.beginPath();
-        ctx.arc(frontArmX, frontArmY - 1, 3.6, 0, Math.PI * 2);
-        SpriteBank.fillAndStroke(ctx, '#e11d48', '#881337', 1.4);
-      } else if (animState === 'groundPound') {
-        // Aura dorada en el puño de Nico durante el Terremoto
-        const fistGlow = ctx.createRadialGradient(frontArmX, frontArmY, 1, frontArmX, frontArmY, 12);
-        fistGlow.addColorStop(0, 'rgba(251, 191, 36, 0.95)');
-        fistGlow.addColorStop(1, 'rgba(251, 191, 36, 0)');
-        ctx.fillStyle = fistGlow;
-        ctx.beginPath();
-        ctx.arc(frontArmX, frontArmY, 12, 0, Math.PI * 2);
-        ctx.fill();
+        if (!isNico) {
+          // Pulsera roja característica de Andrea en su muñeca
+          ctx.beginPath();
+          ctx.arc(frontArmX, frontArmY - 1, 3.6, 0, Math.PI * 2);
+          SpriteBank.fillAndStroke(ctx, '#e11d48', '#881337', 1.4);
+        } else if (animState === 'groundPound') {
+          // Aura dorada en el puño de Nico durante el Terremoto
+          const fistGlow = ctx.createRadialGradient(frontArmX, frontArmY, 1, frontArmX, frontArmY, 12);
+          fistGlow.addColorStop(0, 'rgba(251, 191, 36, 0.95)');
+          fistGlow.addColorStop(1, 'rgba(251, 191, 36, 0)');
+          ctx.fillStyle = fistGlow;
+          ctx.beginPath();
+          ctx.arc(frontArmX, frontArmY, 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
       ctx.restore();
@@ -903,7 +980,53 @@
         ctx.fill();
 
         this.drawOrchidPotGraphic(ctx, 1.0);
-      } else if (type === 'golden_bone' || type === '1up_bone') {
+      } else if (type === 'extra_life_heart' || type === '1up_heart') {
+        // ÍTEM ESPECIAL DE 1 VIDA EXTRA (Corazón luminoso + halo dorado + insignia 1UP)
+        ctx.translate(cx, cy);
+        const pulse = 1 + Math.sin(timer * 2.2) * 0.08;
+        ctx.scale(pulse, pulse);
+
+        const aura = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
+        aura.addColorStop(0, 'rgba(254, 240, 138, 0.96)');
+        aura.addColorStop(0.45, 'rgba(251, 113, 133, 0.65)');
+        aura.addColorStop(1, 'rgba(244, 63, 94, 0)');
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI * 2);
+        ctx.fill();
+
+        const heartGrad = ctx.createLinearGradient(0, -11, 0, 11);
+        heartGrad.addColorStop(0, '#fda4af');
+        heartGrad.addColorStop(0.45, '#f43f5e');
+        heartGrad.addColorStop(1, '#be123c');
+        ctx.beginPath();
+        ctx.moveTo(0, 10.5);
+        ctx.bezierCurveTo(-13.5, 2.5, -13.5, -9.5, -6, -9.5);
+        ctx.bezierCurveTo(-1.8, -9.5, 0, -5.8, 0, -4.4);
+        ctx.bezierCurveTo(0, -5.8, 1.8, -9.5, 6, -9.5);
+        ctx.bezierCurveTo(13.5, -9.5, 13.5, 2.5, 0, 10.5);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, heartGrad, '#fbbf24', 2.0);
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 1.1;
+        ctx.stroke();
+
+        // Brillo especular sobre el lóbulo izquierdo
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+        ctx.beginPath();
+        ctx.ellipse(-4.5, -4.8, 2.4, 1.4, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Etiqueta nítida '1UP' sobre el corazón
+        ctx.font = '900 7.5px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 2.4;
+        ctx.strokeStyle = '#090d16';
+        ctx.strokeText('1UP', 0, 0.8);
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText('1UP', 0, 0.8);
+      } else if (type === 'golden_bone' || type === '1up_bone' || type === 'tina_golden_bone') {
         // HUESITO DORADO DE LA TINA (1-UP): Brillo dorado animado + destellos ✨ + contorno definido
         ctx.translate(cx, cy);
 
@@ -1638,7 +1761,18 @@
     // MADRID: GATO CALLEJERO (reemplaza a las gaviotas en Madrid / Emboscador)
     // Soporta: Patrulla, Emboscada agazapada/picada, y Salto Defensivo con Zarpazo
     // ========================================================================
-    drawMadridCatHD(ctx, x, y, facing, animTimer, isDisabled, isAmbush = false, ambushState = 'patrol') {
+    drawMadridCatHD(
+      ctx,
+      x,
+      y,
+      facing,
+      animTimer,
+      isDisabled,
+      isAmbush = false,
+      ambushState = 'patrol',
+      vy = 0,
+      onGround = true
+    ) {
       ctx.save();
       ctx.translate(x + 17, y + 12);
       if (facing === 'left') {
@@ -1648,14 +1782,42 @@
       const isPerched = isAmbush && ambushState === 'perched';
       const isDiving = isAmbush && ambushState === 'diving';
       const isLeaping = ambushState === 'leaping';
+      const isAttackLeap = ambushState === 'attack_leap';
+      const isCrouchUp = ambushState === 'crouch_up';
+      const isCrouchingWindup = isCrouchUp || ambushState === 'crouch_down' || ambushState === 'attack_crouch';
+      const isClimbJump = ambushState === 'climbing_jump';
+      const isDropJump = ambushState === 'drop_jump';
+      const isFalling = !onGround && !isClimbJump && !isLeaping && !isAttackLeap && !isDropJump && !isDiving && vy > 40;
 
-      if (isDiving) {
+      if (isCrouchingWindup) {
+        // Anticipación breve agachada (telegraph de salto vertical o ataque frontal)
+        if (ambushState === 'attack_crouch') {
+          ctx.translate(Math.sin(animTimer * 48) * 1.1, 3.6);
+          ctx.scale(1.16, 0.74);
+        } else {
+          ctx.translate(0, 3.2);
+          ctx.scale(1.12, 0.78);
+        }
+      } else if (isClimbJump) {
+        // Pose estirada de salto felino siguiendo el arco parabólico
+        const climbTilt = vy <= 0 ? -0.34 : 0.22;
+        ctx.rotate(climbTilt);
+        ctx.scale(1.14, 0.90);
+      } else if (isDropJump) {
+        ctx.rotate(vy <= 0 ? -0.10 : 0.26);
+        ctx.scale(1.08, 0.94);
+      } else if (isAttackLeap) {
+        ctx.rotate(Math.max(-0.26, Math.min(0.38, vy * 0.0008)));
+        ctx.scale(1.16, 0.88);
+      } else if (isDiving) {
         ctx.rotate(Math.PI * 0.25); // Inclinación en picada vertical
       } else if (isLeaping) {
         ctx.rotate(-Math.PI * 0.24); // Salto defensivo hacia arriba al acecho aéreo
+      } else if (isFalling) {
+        ctx.rotate(0.20); // Caída libre natural por gravedad fuera de la viga
       }
 
-      const walk = isDisabled || isPerched ? 0 : Math.sin(animTimer * 13) * 2.4;
+      const walk = isDisabled || isPerched || isCrouchingWindup || !onGround ? 0 : Math.sin(animTimer * 13) * 2.4;
 
       // Cola erguida y curva
       const tailSway = isDisabled ? 0 : Math.sin(animTimer * 5) * 3;
@@ -1670,8 +1832,16 @@
       ctx.lineWidth = 2.6;
       ctx.stroke();
 
-      // Patas / Garras extendidas con Zarpazo Frontal
-      if (isLeaping) {
+      // Patas / Garras extendidas según fase del salto
+      if (isClimbJump) {
+        // Patas delanteras alcanzando hacia arriba y traseras extendidas en impulso
+        SpriteBank.drawCapsule(ctx, 5, 1, 16, -3, 2.2, '#d97706', '#090d16', 1.3);
+        SpriteBank.drawCapsule(ctx, -6, 3, -15, 10, 2.2, '#d97706', '#090d16', 1.3);
+      } else if (isCrouchingWindup) {
+        // Patas comprimidas sobre el suelo listas para despegar
+        SpriteBank.drawCapsule(ctx, -6, 4, -8, 9, 2.3, '#d97706', '#090d16', 1.3);
+        SpriteBank.drawCapsule(ctx, 6, 4, 7, 9, 2.3, '#d97706', '#090d16', 1.3);
+      } else if (isLeaping || isAttackLeap) {
         // Garras delanteras estiradas al frente listas para el zarpazo
         SpriteBank.drawCapsule(ctx, 4, 2, 18, 5, 2.5, '#d97706', '#090d16', 1.4);
         SpriteBank.drawCapsule(ctx, 4, -3, 17, -5, 2.5, '#d97706', '#090d16', 1.4);
@@ -1680,7 +1850,7 @@
 
         // Estela de zarpazo aéreo (Slash) en arco amarillo/dorado
         ctx.save();
-        ctx.strokeStyle = '#fde047';
+        ctx.strokeStyle = isAttackLeap ? '#fb923c' : '#fde047';
         ctx.lineWidth = 2.4;
         ctx.shadowColor = '#fbbf24';
         ctx.shadowBlur = 8;
@@ -1688,8 +1858,8 @@
         ctx.arc(14, 0, 14, -0.6, 0.6);
         ctx.stroke();
         ctx.restore();
-      } else if (isDiving) {
-        // Garras extendidas en emboscada hacia abajo
+      } else if (isDiving || isDropJump || isFalling) {
+        // Garras extendidas en caída hacia abajo
         SpriteBank.drawCapsule(ctx, -6, 3, -8, 12, 2.2, '#d97706', '#090d16', 1.3);
         SpriteBank.drawCapsule(ctx, 7, 3, 9, 12, 2.2, '#d97706', '#090d16', 1.3);
       } else if (isPerched) {
@@ -1734,7 +1904,8 @@
       });
 
       // Ojos (en espiral de hipnosis/aturdido si está deshabilitado, rojos si ataca/salta)
-      ctx.fillStyle = isDisabled ? '#f43f5e' : (isDiving || isLeaping ? '#ef4444' : '#4ade80');
+      const isAlertEyes = isDiving || isLeaping || isAttackLeap || isCrouchingWindup || isClimbJump || isDropJump;
+      ctx.fillStyle = isDisabled ? '#f43f5e' : (isAlertEyes ? '#ef4444' : '#4ade80');
       ctx.beginPath();
       ctx.ellipse(10.8, -3.6, 1.5, 2.0, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -2123,9 +2294,10 @@
     }
 
     // ========================================================================
-    // MADRID: COTORRA VERDE (Vuelo sinusoidal rápido / Escapada ante ladridos)
+    // MADRID Y BARCELONA: COTORRA VERDE (Vuelo ondulante / Variante Pecho Gris)
     // ========================================================================
-    drawGreenParakeetHD(ctx, x, y, facing, animTimer, isDisabled, isScaredFlying = false, isSwarm = false) {
+    drawGreenParakeetHD(ctx, x, y, facing, animTimer, isDisabled, isScaredFlying = false, isSwarm = false, variant = 'madrid') {
+      const isBcn = variant === 'barcelona';
       ctx.save();
       ctx.translate(x + 14, y + 11);
       if (facing === 'left') {
@@ -2142,15 +2314,16 @@
       const flapFreq = isScaredFlying ? 26 : (isSwarm ? 22 : 16);
       const wingFlap = Math.sin(animTimer * flapFreq) * 11;
 
-      // 1. Cola larga y afilada (azul y verde esmeralda característica)
+      // 1. Cola larga y afilada (esmeralda/azul característica)
       ctx.beginPath();
       ctx.moveTo(-7, 2);
-      ctx.lineTo(-24, 6 + (isScaredFlying ? -4 : 0));
-      ctx.lineTo(-7, 4);
-      ctx.fillStyle = '#0284c7';
+      ctx.lineTo(isBcn ? -27 : -24, 6 + (isScaredFlying ? -4 : 0));
+      ctx.lineTo(-7, 4.4);
+      ctx.closePath();
+      ctx.fillStyle = isBcn ? '#059669' : '#0284c7';
       ctx.fill();
       ctx.strokeStyle = '#090d16';
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.3;
       ctx.stroke();
 
       // 2. Ala trasera (visible en aleteo)
@@ -2159,50 +2332,63 @@
         ctx.moveTo(-1, -3);
         ctx.lineTo(-9, -15 + wingFlap);
         ctx.lineTo(4, -3);
-        ctx.fillStyle = '#15803d';
+        ctx.fillStyle = isBcn ? '#047857' : '#15803d';
         ctx.fill();
         ctx.strokeStyle = '#090d16';
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
 
-      // 3. Cuerpo verde brillante con pecho amarillento
+      // 3. Cuerpo verde brillante (Madrid: esmeralda-lima / Barcelona: esmeralda con pecho gris claro)
       const bodyGrad = ctx.createLinearGradient(-8, -6, 10, 8);
-      bodyGrad.addColorStop(0, '#4ade80');
-      bodyGrad.addColorStop(0.5, '#22c55e');
-      bodyGrad.addColorStop(1, '#16a34a');
+      bodyGrad.addColorStop(0, isBcn ? '#34d399' : '#4ade80');
+      bodyGrad.addColorStop(0.5, isBcn ? '#10b981' : '#22c55e');
+      bodyGrad.addColorStop(1, isBcn ? '#059669' : '#16a34a');
       ctx.beginPath();
       ctx.ellipse(0, 1, 10.5, 6.8, 0.15, 0, Math.PI * 2);
       SpriteBank.fillAndStroke(ctx, bodyGrad, '#090d16', 1.8);
 
-      // Pecho verde lima / amarillento
-      ctx.fillStyle = '#bef264';
+      // Pecho (Barcelona: gris claro Myiopsitta monachus; Madrid: lima amarillento)
+      ctx.fillStyle = isBcn ? '#e2e8f0' : '#bef264';
       ctx.beginPath();
-      ctx.ellipse(4, 3, 5, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(4.2, 3, 5.4, 4.1, 0, 0, Math.PI * 2);
       ctx.fill();
+      if (isBcn) {
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.ellipse(3.6, 4.2, 4.2, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
-      // 4. Ala frontal principal con plumas azules en la punta
+      // 4. Ala frontal principal
       ctx.beginPath();
       ctx.moveTo(-2, -1);
       ctx.quadraticCurveTo(-7, -8 + wingFlap, -14, -4 + wingFlap * 1.3);
       ctx.lineTo(-2, 4);
       ctx.closePath();
       const wingGrad = ctx.createLinearGradient(-14, -8, 2, 4);
-      wingGrad.addColorStop(0, '#0284c7');
-      wingGrad.addColorStop(0.4, '#16a34a');
-      wingGrad.addColorStop(1, '#22c55e');
+      wingGrad.addColorStop(0, isBcn ? '#0d9488' : '#0284c7');
+      wingGrad.addColorStop(0.45, isBcn ? '#059669' : '#16a34a');
+      wingGrad.addColorStop(1, isBcn ? '#10b981' : '#22c55e');
       SpriteBank.fillAndStroke(ctx, wingGrad, '#090d16', 1.6);
 
-      // 5. Cabeza redondeada y pico ganchudo naranja
+      // 5. Cabeza redondeada y pico curvo anaranjado
       ctx.beginPath();
       ctx.arc(8, -2.5, 5.4, 0, Math.PI * 2);
-      SpriteBank.fillAndStroke(ctx, '#22c55e', '#090d16', 1.6);
+      SpriteBank.fillAndStroke(ctx, isBcn ? '#10b981' : '#22c55e', '#090d16', 1.6);
+      if (isBcn) {
+        // Frente y mejilla gris perla suave típica de la cotorra argentina/barcelonesa
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.arc(10.6, -1.0, 2.5, -Math.PI * 0.35, Math.PI * 0.75);
+        ctx.fill();
+      }
 
-      // Pico ganchudo fuerte naranja/coral
+      // Pico ganchudo / curvo anaranjado
       ctx.beginPath();
-      ctx.moveTo(12, -4);
-      ctx.lineTo(17.5, -1.8);
-      ctx.lineTo(12, 1.2);
+      ctx.moveTo(12, -4.2);
+      ctx.quadraticCurveTo(18.2, -3.4, 17.4, 0.2);
+      ctx.quadraticCurveTo(14.5, 0.8, 12, 1.0);
       ctx.closePath();
       SpriteBank.fillAndStroke(ctx, '#f97316', '#090d16', 1.4);
 
@@ -2458,7 +2644,7 @@
     }
 
     /**
-     * Proyectil Rectilíneo y Diagonal (Gravedad Cero) del Power-Up Botánico:
+     * Proyectil Parabólico de Gravedad Progresiva del Power-Up Botánico:
      * Orquídea con su flor (pétalos rosados/fucsias) plantada en una pequeña maceta de terracota.
      */
     drawPlantProjectileHD(ctx, x, y, vx = 500, vy = 0, animTimer = 0) {
@@ -3769,190 +3955,221 @@
 
       // Base de piedra volcánica basáltica con franja de seguridad amarilla
       ctx.beginPath();
-      ctx.roundRect(-24, -14, 152, 14, 4);
+      ctx.roundRect(-56, -14, 212, 14, 4);
       SpriteBank.fillAndStroke(ctx, '#334155', '#0f172a', 2.2);
       ctx.fillStyle = '#facc15';
-      for (let sx = -18; sx < 120; sx += 16) {
+      for (let sx = -50; sx < 148; sx += 16) {
         ctx.fillRect(sx, -13, 8, 3.5);
       }
 
-      // Columnas metálicas de celosía de la estación
-      SpriteBank.drawCapsule(ctx, -10, -140, -10, -14, 4.5, '#64748b', '#0f172a', 2.0);
-      SpriteBank.drawCapsule(ctx, 114, -152, 114, -14, 4.5, '#64748b', '#0f172a', 2.0);
+      // Columnas metálicas de celosía de la estación (amplio despeje para cabina 1.6x)
+      SpriteBank.drawCapsule(ctx, -42, -140, -42, -14, 4.5, '#64748b', '#0f172a', 2.0);
+      SpriteBank.drawCapsule(ctx, 126, -152, 126, -14, 4.5, '#64748b', '#0f172a', 2.0);
 
       // Brazo superior y pórtico de rodillos para los cables
       ctx.beginPath();
-      ctx.roundRect(-20, -154, 146, 16, 4);
+      ctx.roundRect(-50, -154, 194, 16, 4);
       SpriteBank.fillAndStroke(ctx, '#1e293b', '#0f172a', 2.2);
 
       // Franja canaria blanco / azul / amarillo en el pórtico
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(-14, -151, 14, 10);
+      ctx.fillRect(-44, -151, 14, 10);
       ctx.fillStyle = '#0284c7';
-      ctx.fillRect(0, -151, 14, 10);
+      ctx.fillRect(-30, -151, 14, 10);
       ctx.fillStyle = '#facc15';
-      ctx.fillRect(14, -151, 14, 10);
+      ctx.fillRect(-16, -151, 14, 10);
 
       // Rótulo TELEFÉRICO DEL TEIDE
       ctx.fillStyle = '#f8fafc';
       ctx.font = '900 10px "Segoe UI", system-ui, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText('TELEFÉRICO · 3.555m', 34, -143);
+      ctx.fillText('TELEFÉRICO · 3.555m', 6, -143);
 
       // Indicador LED de embarque activo
       const ledOn = !waiting || Math.sin(time * 9) > 0;
       ctx.fillStyle = waiting ? (ledOn ? '#facc15' : '#38bdf8') : '#22c55e';
       ctx.beginPath();
-      ctx.arc(118, -146, 3.6, 0, Math.PI * 2);
+      ctx.arc(132, -146, 3.6, 0, Math.PI * 2);
       ctx.fill();
 
-      // Cables tractores y portadores inclinados hacia la cumbre
+      // Cables tractores y portadores prolongados fuera del borde superior izquierdo y superior derecho
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 3.2;
       ctx.beginPath();
-      ctx.moveTo(-260, -255);
+      ctx.moveTo(-1120, -886);
       ctx.lineTo(68, -150);
-      ctx.lineTo(360, -290);
+      ctx.lineTo(1068, -950);
       ctx.stroke();
 
       ctx.strokeStyle = '#94a3b8';
       ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.moveTo(-260, -248);
+      ctx.moveTo(-1120, -880);
       ctx.lineTo(68, -144);
-      ctx.lineTo(360, -284);
+      ctx.lineTo(1068, -944);
       ctx.stroke();
 
-      // Barandilla de embarque frontal
+      // Barandilla de embarque frontal en acceso izquierdo
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 2.6;
-      ctx.strokeRect(-14, -42, 46, 28);
+      ctx.strokeRect(-54, -42, 42, 28);
       ctx.fillStyle = '#0284c7';
-      ctx.fillRect(-12, -39, 42, 8);
+      ctx.fillRect(-52, -39, 38, 8);
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 7px "Segoe UI", sans-serif';
-      ctx.fillText('EMBARQUE', -8, -33);
+      ctx.font = 'bold 6.5px "Segoe UI", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('EMBARQUE', -33, -33);
 
       ctx.restore();
     }
 
     /**
-     * Cabina panorámica del Teleférico del Teide suspendida en cable
+     * Cabina panorámica 1.6x del Teleférico del Teide suspendida en cable
+     * Anclada en su base inferior (y = floorY) con brazo alargado hasta polea (y - 168)
      */
-    drawCableCarCabinHD(ctx, x, y, time, doorsOpen = false, hasPassengers = false, swayAngle = 0) {
+    drawCableCarCabinHD(ctx, x, y, time, doorsOpen = false, hasPassengers = false, swayAngle = 0, cableAngle = 0) {
       ctx.save();
       ctx.translate(x, y);
 
-      // Carro de poleas superior enganchado al cable (y - 98)
+      // Carro de poleas superior enganchado al cable (y - 168), alineado con la pendiente del cable
+      ctx.save();
+      ctx.translate(80, -168);
+      ctx.rotate(cableAngle);
+      ctx.translate(-80, 168);
       ctx.beginPath();
-      ctx.roundRect(22, -104, 58, 12, 5);
-      SpriteBank.fillAndStroke(ctx, '#475569', '#0f172a', 2.0);
-      [30, 51, 72].forEach((px) => {
+      ctx.roundRect(42, -176, 76, 16, 6);
+      SpriteBank.fillAndStroke(ctx, '#475569', '#0f172a', 2.2);
+      [54, 80, 106].forEach((px) => {
         ctx.fillStyle = '#facc15';
         ctx.beginPath();
-        ctx.arc(px, -98, 4.2, 0, Math.PI * 2);
+        ctx.arc(px, -168, 5.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 1.3;
+        ctx.lineWidth = 1.4;
         ctx.stroke();
       });
+      ctx.restore();
 
-      // Brazo articulado de suspensión con leve balanceo
+      // Brazo articulado de suspensión alargado desde la polea (-160) hasta techo cabina (-94)
       ctx.save();
-      ctx.translate(51, -92);
+      ctx.translate(80, -160);
       ctx.rotate(swayAngle);
-      ctx.translate(-51, 92);
+      ctx.translate(-80, 160);
 
-      SpriteBank.drawCapsule(ctx, 51, -92, 51, -68, 3.6, '#64748b', '#0f172a', 1.8);
-      SpriteBank.drawCapsule(ctx, 36, -78, 66, -78, 2.4, '#94a3b8', '#0f172a', 1.4);
-
-      // Cabina principal (roja y amarilla volcánica con faldón azul)
+      SpriteBank.drawCapsule(ctx, 80, -160, 80, -138, 4.4, '#64748b', '#0f172a', 1.8);
+      SpriteBank.drawCapsule(ctx, 76, -138, 60, -94, 3.8, '#64748b', '#0f172a', 1.8);
+      SpriteBank.drawCapsule(ctx, 84, -138, 100, -94, 3.8, '#64748b', '#0f172a', 1.8);
+      SpriteBank.drawCapsule(ctx, 56, -118, 104, -118, 2.8, '#94a3b8', '#0f172a', 1.5);
+      // Yugo de anclaje en el techo de la cabina
       ctx.beginPath();
-      ctx.roundRect(10, -70, 82, 58, [10, 10, 8, 8]);
-      SpriteBank.fillAndStroke(ctx, '#dc2626', '#0f172a', 2.4);
+      ctx.roundRect(48, -98, 64, 8, 3);
+      SpriteBank.fillAndStroke(ctx, '#475569', '#0f172a', 1.8);
 
-      // Banda amarilla canaria inferior + rótulo TEIDE
+      // Cabina principal 1.6x (132 x 94 px, roja y amarilla canaria con banda azul)
+      ctx.beginPath();
+      ctx.roundRect(14, -94, 132, 94, [14, 14, 10, 10]);
+      SpriteBank.fillAndStroke(ctx, '#dc2626', '#0f172a', 2.8);
+
+      // Banda amarilla canaria inferior + franja azul + rótulo TEIDE · CANARIAS
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(11.5, -28, 79, 15, [0, 0, 7, 7]);
+      ctx.roundRect(16, -32, 128, 30, [0, 0, 9, 9]);
       ctx.clip();
       ctx.fillStyle = '#facc15';
-      ctx.fillRect(10, -28, 82, 16);
+      ctx.fillRect(14, -32, 132, 32);
       ctx.fillStyle = '#0284c7';
-      ctx.fillRect(10, -28, 82, 4);
+      ctx.fillRect(14, -32, 132, 6);
       ctx.restore();
 
       ctx.fillStyle = '#0f172a';
-      ctx.font = '900 8px "Segoe UI", system-ui, sans-serif';
+      ctx.font = '900 11.5px "Segoe UI", system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('TEIDE · CANARIAS', 51, -16.5);
+      ctx.fillText('TEIDE · CANARIAS', 80, -10.5);
 
-      // Amplio ventanal panorámico acristalado
+      // Amplio ventanal panorámico acristalado (116 x 50 px) con capacidad cómoda para los 3 héroes
       ctx.beginPath();
-      ctx.roundRect(16, -63, 70, 32, 5);
-      const glassGrad = ctx.createLinearGradient(0, -63, 0, -31);
+      ctx.roundRect(22, -85, 116, 50, 7);
+      const glassGrad = ctx.createLinearGradient(0, -85, 0, -35);
       glassGrad.addColorStop(0, '#bae6fd');
       glassGrad.addColorStop(1, '#0284c7');
-      SpriteBank.fillAndStroke(ctx, glassGrad, '#0f172a', 1.8);
+      SpriteBank.fillAndStroke(ctx, glassGrad, '#0f172a', 2.0);
 
-      // Pasajeros celebrando en el cristal del teleférico
+      // Montantes verticales sutiles del ventanal panorámico
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillRect(58, -85, 3, 50);
+      ctx.fillRect(99, -85, 3, 50);
+
+      // Pasajeros (Nico, Andrea y La Tina) celebrando cómodamente tras el cristal del teleférico
       if (hasPassengers) {
-        // Nico
+        // Nico (izquierda)
+        ctx.fillStyle = '#1d4ed8';
+        ctx.beginPath();
+        ctx.roundRect(33, -49, 18, 13, 4);
+        ctx.fill();
         ctx.fillStyle = '#f5cfa0';
         ctx.beginPath();
-        ctx.arc(33, -44, 5.5, 0, Math.PI * 2);
+        ctx.arc(42, -57, 8.2, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#3b2416';
         ctx.beginPath();
-        ctx.arc(33, -47.5, 5.8, Math.PI, Math.PI * 2);
+        ctx.arc(42, -61.5, 8.6, Math.PI, Math.PI * 2);
         ctx.fill();
 
-        // Andrea
+        // Andrea (centro)
+        ctx.fillStyle = '#db2777';
+        ctx.beginPath();
+        ctx.roundRect(71, -48, 18, 12, 4);
+        ctx.fill();
         ctx.fillStyle = '#fde0c2';
         ctx.beginPath();
-        ctx.arc(49, -43.5, 5.2, 0, Math.PI * 2);
+        ctx.arc(80, -56.5, 7.8, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#78350f';
         ctx.beginPath();
-        ctx.arc(49, -47, 5.6, Math.PI, Math.PI * 2);
+        ctx.arc(80, -61, 8.4, Math.PI, Math.PI * 2);
         ctx.fill();
 
-        // La Tina
+        // La Tina (derecha, mirando orgullosa por la ventana)
         ctx.fillStyle = '#0f172a';
         ctx.beginPath();
-        ctx.arc(68, -42.5, 5.2, 0, Math.PI * 2);
+        ctx.roundRect(108, -46, 16, 10, 3);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(116, -54.5, 7.8, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#cbd5e1';
         ctx.beginPath();
-        ctx.arc(70, -41, 2.3, 0, Math.PI * 2);
+        ctx.arc(118.5, -52.5, 3.6, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#f43f5e';
-        ctx.fillRect(69, -37.5, 2, 2.5);
+        ctx.fillRect(117.5, -47, 3, 4);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(110, -45.5, 12, 2.5);
       }
 
       // Reflejo diagonal en el ventanal
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.30)';
       ctx.beginPath();
-      ctx.moveTo(20, -61);
-      ctx.lineTo(31, -61);
-      ctx.lineTo(23, -33);
-      ctx.lineTo(17, -33);
+      ctx.moveTo(27, -82);
+      ctx.lineTo(44, -82);
+      ctx.lineTo(31, -38);
+      ctx.lineTo(24, -38);
       ctx.closePath();
       ctx.fill();
 
-      // Puerta central corrediza (destello dorado al abrir)
+      // Amplia puerta central corrediza a ras de acceso (translúcida al abrir para ver entrar andando)
       if (doorsOpen) {
-        ctx.fillStyle = 'rgba(254, 240, 138, 0.78)';
-        ctx.fillRect(39, -62, 24, 34);
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.42)';
+        ctx.fillRect(58, -86, 44, 82);
         ctx.strokeStyle = '#facc15';
-        ctx.lineWidth = 1.6;
-        ctx.strokeRect(39, -62, 24, 34);
+        ctx.lineWidth = 2.2;
+        ctx.strokeRect(58, -86, 44, 82);
       } else {
         ctx.strokeStyle = 'rgba(15, 23, 42, 0.55)';
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 2.0;
         ctx.beginPath();
-        ctx.moveTo(51, -63);
-        ctx.lineTo(51, -31);
+        ctx.moveTo(80, -85);
+        ctx.lineTo(80, -35);
         ctx.stroke();
       }
 
@@ -4074,6 +4291,175 @@
       }
 
       ctx.restore();
+    }
+
+    /**
+     * EVENTO ÚNICO PARK GÜELL: La Salamandra / Lagartija de Trencadís de Gaudí ("El Drac")
+     * Mosaicos multicolor en azul cobalto, turquesa, naranja, amarillo dorado y blanco con contorno nítido.
+     */
+    drawGaudiLizardHD(ctx, enemy, time) {
+      const w = enemy.w || 56;
+      const h = enemy.h || 30;
+      const facingRight = enemy.facing !== 'left';
+      const isEscaping = enemy.state === 'escaping';
+      const runFreq = isEscaping ? 34 : 26;
+      const legWave = Math.sin(time * runFreq + enemy.x * 0.14);
+      const tailWave = Math.sin(time * 12 + enemy.x * 0.1) * 4.2;
+
+      ctx.save();
+      ctx.translate(enemy.x + w / 2, enemy.y + h);
+      if (!facingRight) ctx.scale(-1, 1);
+
+      // Sombra y halo dorado sutil del evento especial 1UP
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, w * 0.56, 4.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Estelas de gran velocidad detrás de la salamandra
+      ctx.strokeStyle = isEscaping ? 'rgba(248, 113, 113, 0.82)' : 'rgba(250, 204, 21, 0.72)';
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      ctx.moveTo(-26, -18);
+      ctx.lineTo(-46, -19);
+      ctx.moveTo(-28, -11);
+      ctx.lineTo(-44, -11);
+      ctx.moveTo(-25, -5);
+      ctx.lineTo(-39, -5);
+      ctx.stroke();
+
+      // Cola sinuosa revestida de mortero blanco y escamas de trencadís
+      ctx.beginPath();
+      ctx.moveTo(-14, -11);
+      ctx.quadraticCurveTo(-31, -15 + tailWave, -43, -7 + tailWave * 0.75);
+      ctx.quadraticCurveTo(-29, -4 + tailWave * 0.55, -13, -5);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, '#f8fafc', '#090d16', 2.0);
+      const tailTiles = [
+        { x: -37, y: -8.5 + tailWave * 0.65, r: 3.1, c: '#2563eb' },
+        { x: -31, y: -10 + tailWave * 0.5, r: 3.4, c: '#f97316' },
+        { x: -24, y: -9.5 + tailWave * 0.35, r: 3.5, c: '#06b6d4' },
+        { x: -18, y: -8.5 + tailWave * 0.2, r: 3.4, c: '#facc15' }
+      ];
+      tailTiles.forEach((t) => {
+        ctx.fillStyle = t.c;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+      });
+
+      // Patas traseras (fondo) y delanteras articuladas con teselas azules y naranjas
+      SpriteBank.drawCapsule(ctx, -12, -8, -17 - legWave * 5, -1, 2.7, '#2563eb', '#090d16', 1.6);
+      SpriteBank.drawCapsule(ctx, 11, -8, 16 + legWave * 5, -1, 2.7, '#06b6d4', '#090d16', 1.6);
+
+      // Cuerpo escultural arqueado estilo El Drac con base cerámica blanca y contorno nítido
+      ctx.beginPath();
+      ctx.moveTo(-19, -7);
+      ctx.quadraticCurveTo(-15, -22, 0, -21);
+      ctx.quadraticCurveTo(13, -21, 18, -12);
+      ctx.lineTo(14, -4);
+      ctx.quadraticCurveTo(0, -3, -19, -7);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, '#ffffff', '#090d16', 2.1);
+
+      // Mosaicos fragmentados de trencadís multicolor (azul cobalto, turquesa, naranja, amarillo dorado y blanco)
+      const mosaicTiles = [
+        [[-14, -14], [-8, -17], [-6, -10], [-13, -8], '#2563eb'],
+        [[-7, -18], [1, -19], [2, -12], [-5, -11], '#facc15'],
+        [[2, -19], [10, -18], [9, -11], [3, -12], '#06b6d4'],
+        [[-11, -10], [-4, -10], [-3, -5], [-10, -5], '#f97316'],
+        [[-2, -11], [6, -11], [5, -5], [-2, -5], '#22d3ee'],
+        [[6, -12], [13, -13], [13, -6], [6, -6], '#facc15'],
+        [[10, -17], [16, -15], [14, -10], [9, -11], '#1d4ed8']
+      ];
+      for (let i = 0; i < mosaicTiles.length; i++) {
+        const [p0, p1, p2, p3, col] = mosaicTiles[i];
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.moveTo(p0[0], p0[1]);
+        ctx.lineTo(p1[0], p1[1]);
+        ctx.lineTo(p2[0], p2[1]);
+        ctx.lineTo(p3[0], p3[1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.05;
+        ctx.stroke();
+      }
+
+      // Cresta dorsal de escamas cerámicas doradas/naranjas/blancas
+      const spineColors = ['#facc15', '#ffffff', '#f97316', '#06b6d4', '#facc15'];
+      for (let si = 0; si < spineColors.length; si++) {
+        const sx = -10 + si * 5.2;
+        ctx.fillStyle = spineColors[si];
+        ctx.beginPath();
+        ctx.moveTo(sx - 2.3, -19);
+        ctx.lineTo(sx, -24.5);
+        ctx.lineTo(sx + 2.3, -19);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
+
+      // Cabeza icónica de salamandra modernista con teselas turquesas, cobalto y naranja
+      ctx.beginPath();
+      ctx.moveTo(12, -18);
+      ctx.quadraticCurveTo(25, -22, 30, -13);
+      ctx.quadraticCurveTo(26, -5, 13, -6);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, '#06b6d4', '#090d16', 2.0);
+
+      // Parches azul cobalto, naranja y dorado en cabeza y morro
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillRect(14, -17, 6, 5);
+      ctx.fillStyle = '#f97316';
+      ctx.fillRect(21, -15, 6, 5);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(16, -11, 5, 4);
+
+      // Ojo expresivo dorado con pupila oscura nítida
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(20.5, -14.5, 2.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#090d16';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      ctx.fillStyle = '#090d16';
+      ctx.beginPath();
+      ctx.arc(21.1, -14.5, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Patas frontales alternadas (superpuestas) con garras blancas
+      SpriteBank.drawCapsule(ctx, -9, -7, -6 + legWave * 5.5, -0.5, 2.6, '#f97316', '#090d16', 1.5);
+      SpriteBank.drawCapsule(ctx, 13, -7, 17 - legWave * 5.5, -0.5, 2.6, '#facc15', '#090d16', 1.5);
+
+      ctx.restore();
+
+      // Indicador nítido de pasadas restantes sobre la salamandra mientras corre
+      if (enemy.state === 'running' && !enemy.dead) {
+        const curPass = Math.min(enemy.maxPasses || 3, (enemy.passesCompleted || 0) + 1);
+        const cx = enemy.x + w * 0.5;
+        const cy = enemy.y - 12;
+        ctx.save();
+        ctx.font = '900 10px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+        ctx.beginPath();
+        ctx.roundRect(cx - 28, cy - 9, 56, 15, 6);
+        ctx.fill();
+        ctx.strokeStyle = '#facc15';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText(`❤️ ${curPass}/${enemy.maxPasses || 3}`, cx, cy + 2);
+        ctx.restore();
+      }
     }
 
     /**
@@ -4446,38 +4832,60 @@
       const sc = opts.scale !== undefined ? opts.scale : 1;
       const pitch = opts.pitch || 0;
       const bob = opts.bob !== undefined ? opts.bob : Math.sin(time * 5.2) * 2.2;
-      const propSpeed = opts.propSpeed !== undefined ? opts.propSpeed : 38;
+      const isTurbo = !!opts.turbo;
+      const propSpeed = opts.propSpeed !== undefined ? opts.propSpeed : (isTurbo ? 68 : 38);
       const showContrails = opts.contrails !== false;
+      const showPassengers = !!opts.passengers;
 
       ctx.save();
       ctx.translate(x, y + bob);
       ctx.scale(facing * sc, sc);
       ctx.rotate(pitch);
 
-      // 1. Estelas blancas de aire/nubes en cola y puntas de alas
+      // 1. Estelas blancas de aire/nubes en cola y puntas de alas (+ chorro turbo dorado con Shift)
       if (showContrails) {
         ctx.save();
         for (let w = 0; w < 2; w++) {
           const wy = w === 0 ? -12 : 4;
           const wx = -24;
-          const wave = Math.sin(time * 12 + w * 2.1) * 1.6;
-          const trailGrad = ctx.createLinearGradient(wx, wy, wx - 36, wy + wave);
-          trailGrad.addColorStop(0, 'rgba(255, 255, 255, 0.72)');
+          const wave = Math.sin(time * (isTurbo ? 20 : 12) + w * 2.1) * (isTurbo ? 2.2 : 1.6);
+          const trailLen = isTurbo ? 58 : 36;
+          const trailGrad = ctx.createLinearGradient(wx, wy, wx - trailLen, wy + wave);
+          trailGrad.addColorStop(0, isTurbo ? 'rgba(253, 224, 71, 0.92)' : 'rgba(255, 255, 255, 0.72)');
+          trailGrad.addColorStop(0.55, isTurbo ? 'rgba(251, 146, 60, 0.55)' : 'rgba(255, 255, 255, 0.32)');
           trailGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
           ctx.strokeStyle = trailGrad;
-          ctx.lineWidth = 2.2;
+          ctx.lineWidth = isTurbo ? 3.2 : 2.2;
           ctx.lineCap = 'round';
           ctx.beginPath();
           ctx.moveTo(wx, wy);
-          ctx.quadraticCurveTo(wx - 16, wy + wave, wx - 34, wy - wave * 0.6);
+          ctx.quadraticCurveTo(wx - trailLen * 0.45, wy + wave, wx - trailLen, wy - wave * 0.6);
           ctx.stroke();
         }
-        // Estela rizada de la cola
-        for (let i = 0; i < 3; i++) {
-          const ph = ((time * 2.8 + i * 0.33) % 1);
-          ctx.fillStyle = `rgba(255, 255, 255, ${(0.55 * (1 - ph)).toFixed(2)})`;
+        // Llama y estela rizada de la cola
+        if (isTurbo) {
+          const flameLen = 22 + Math.sin(time * 42) * 5;
+          const fGrad = ctx.createLinearGradient(-23, 0, -23 - flameLen, 0);
+          fGrad.addColorStop(0, '#ffffff');
+          fGrad.addColorStop(0.28, '#fde047');
+          fGrad.addColorStop(0.7, '#f97316');
+          fGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+          ctx.fillStyle = fGrad;
           ctx.beginPath();
-          ctx.arc(-28 - ph * 26, -3 + Math.sin(time * 9 + i) * 2.5, 2.2 + ph * 3.5, 0, Math.PI * 2);
+          ctx.moveTo(-23, -3.6);
+          ctx.lineTo(-23 - flameLen, Math.sin(time * 38) * 1.8);
+          ctx.lineTo(-23, 3.6);
+          ctx.closePath();
+          ctx.fill();
+        }
+        const puffCount = isTurbo ? 5 : 3;
+        for (let i = 0; i < puffCount; i++) {
+          const ph = ((time * (isTurbo ? 4.4 : 2.8) + i / puffCount) % 1);
+          ctx.fillStyle = isTurbo
+            ? `rgba(253, 224, 71, ${(0.72 * (1 - ph)).toFixed(2)})`
+            : `rgba(255, 255, 255, ${(0.55 * (1 - ph)).toFixed(2)})`;
+          ctx.beginPath();
+          ctx.arc(-28 - ph * (isTurbo ? 42 : 26), -3 + Math.sin(time * 9 + i) * 2.5, (isTurbo ? 2.8 : 2.2) + ph * 3.8, 0, Math.PI * 2);
           ctx.fill();
         }
         ctx.restore();
@@ -4567,9 +4975,61 @@
       ctx.roundRect(12, -6.5, 9, 12.5, 3);
       SpriteBank.fillAndStroke(ctx, metalGrad, '#0f172a', 1.8);
 
-      // 6. Cabina abierta con la cabecita de La Tinita afuera + gafas de aviador
+      // 6. Cabina abierta con Nico, Andrea (si embarcaron) y La Tinita piloto con gafas de aviador
+      if (showPassengers) {
+        // Cabina trasera para Nico & Andrea (disfrutando el paseo junto a La Tinita)
+        ctx.save();
+        ctx.translate(-9.5, -5.8);
+        ctx.fillStyle = '#451a03';
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 8.8, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pasajero trasero 1: Andrea (cabello castaño + camperita rosa)
+        ctx.beginPath();
+        ctx.roundRect(-7.5, -7.2, 7.2, 7.2, 2.5);
+        SpriteBank.fillAndStroke(ctx, '#ec4899', '#090d16', 1.3);
+        ctx.beginPath();
+        ctx.arc(-4.2, -10.5, 4.3, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, '#fde68a', '#090d16', 1.3);
+        ctx.fillStyle = '#7c2d12';
+        ctx.beginPath();
+        ctx.arc(-5.4, -11.4, 3.8, Math.PI * 0.65, Math.PI * 2.05);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.roundRect(-8.0, -10.8, 3.2, 5.2, 1.4);
+        ctx.fill();
+        ctx.fillStyle = '#38bdf8';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.arc(-2.5, -10.6, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Pasajero trasero 2: Nico (cabello oscuro + buzo azul)
+        ctx.beginPath();
+        ctx.roundRect(0.2, -7.5, 7.5, 7.5, 2.5);
+        SpriteBank.fillAndStroke(ctx, '#2563eb', '#090d16', 1.3);
+        ctx.beginPath();
+        ctx.arc(4.0, -10.8, 4.4, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, '#fed7aa', '#090d16', 1.3);
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.arc(3.6, -12.4, 4.1, Math.PI * 0.9, Math.PI * 2.15);
+        ctx.fill();
+        ctx.fillStyle = '#7dd3fc';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.0;
+        ctx.beginPath();
+        ctx.arc(5.8, -10.8, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
       ctx.save();
-      ctx.translate(1, -6);
+      ctx.translate(showPassengers ? 5.5 : 1, -6);
       // Borde acolchado de cuero de la cabina
       ctx.fillStyle = '#451a03';
       ctx.beginPath();
@@ -4693,8 +5153,8 @@
     // ------------------------------------------------------------------------
     drawTrapitoHD(ctx, e, time) {
       ctx.save();
-      const cx = e.x + e.w * 0.5;
-      const by = e.y + e.h;
+      const cx = Math.round(e.x + e.w * 0.5);
+      const by = Math.round(e.y + e.h);
       const facing = e.facing === 'left' ? -1 : 1;
       const fleeing = Boolean(e.scaredFleeing);
       const bob = fleeing ? Math.abs(Math.sin(time * 12)) * -2.8 : Math.sin(time * 5) * 1.4;
@@ -4772,18 +5232,18 @@
       if (fleeing) {
         const showAlert = e.scareAlertTimer > 0;
         if (showAlert) {
-          SpriteBank.drawScaredAlertIcon(ctx, 0, -56 + bob, time);
+          SpriteBank.drawScaredAlertIcon(ctx, 0, Math.round(-56 + bob), time);
         }
         SpriteBank.drawComicSpeechBubble(
           ctx,
           0,
-          (showAlert ? -92 : -72) + bob,
+          showAlert ? -94 : -74,
           '¡Tranquilo amigo, no pasa nada!',
           { fill: '#fef9c3', font: 'bold 10px "Segoe UI", sans-serif', height: 19 }
         );
       } else if (e.bubbleTimer === undefined || Math.sin(time * 2.1 + e.x * 0.02) > -0.35) {
-        // Bocadillo icónico: "¡Una monedita, loco!"
-        SpriteBank.drawComicSpeechBubble(ctx, 0, -66 + bob, '¡Una monedita, loco!');
+        // Bocadillo icónico: "¡Una monedita, loco!" centrado y fijo en píxeles enteros
+        SpriteBank.drawComicSpeechBubble(ctx, 0, -68, '¡Una monedita, loco!');
       }
 
       ctx.restore();
@@ -5470,21 +5930,20 @@
         ctx.stroke();
         ctx.restore();
 
-        // Brazo libre arrojando botellas hacia abajo/adelante
-        const throwAng = e.throwAnim > 0 ? 0.55 : 0.25 + Math.sin(time * 3.2) * 0.12;
-        ctx.save();
-        ctx.translate(-8 * (facing < 0 ? 1 : 0.5), -28);
-        ctx.scale(facing, 1);
-        ctx.rotate(throwAng);
-        SpriteBank.drawCapsule(ctx, 0, 0, 11, 4, 2.7, '#fdba74', '#090d16', 1.4);
-        if (e.throwAnim <= 0) {
-          ctx.beginPath();
-          ctx.roundRect(9, -6, 5, 13, 2);
-          SpriteBank.fillAndStroke(ctx, '#92400e', '#090d16', 1.2);
-          ctx.fillStyle = '#facc15';
-          ctx.fillRect(10, -8, 3, 3);
-        }
-        ctx.restore();
+        // Brazo libre arrojando botellas hacia abajo/adelante (con breve preparación previa)
+        this.drawRockeroBottleArm(ctx, e, time, {
+          ox: -8 * (facing < 0 ? 1 : 0.5),
+          oy: -28,
+          scaleX: facing,
+          ax: 11,
+          ay: 4,
+          bx: 9,
+          by: -6,
+          bh: 13,
+          releaseAngle: 0.55,
+          windupAngle: -0.92,
+          idleAngle: 0.25 + Math.sin(time * 3.2) * 0.12
+        });
 
         ctx.restore();
         ctx.restore();
@@ -5543,21 +6002,47 @@
       ctx.quadraticCurveTo(4, -34.4, 6, -36.4);
       ctx.stroke();
 
-      // Brazo que sostiene / arroja el porrón
-      const throwPose = e.throwAnim > 0 ? -1.25 : -0.25 + Math.sin(time * 3) * 0.12;
+      // Brazo que sostiene / arroja el porrón (con breve preparación previa)
+      this.drawRockeroBottleArm(ctx, e, time, {
+        ox: 7,
+        oy: -28,
+        ax: 10,
+        ay: -3,
+        bx: 8,
+        by: -16,
+        bh: 14,
+        releaseAngle: -1.25,
+        windupAngle: -1.85,
+        idleAngle: -0.25 + Math.sin(time * 3) * 0.12
+      });
+
+      ctx.restore();
+    }
+
+    /** Dibuja el brazo con botella del Rockero, incluyendo gesto de preparación y lanzamiento. */
+    drawRockeroBottleArm(ctx, e, time, opts) {
+      const windup = e.throwWindup > 0;
+      const angle = e.throwAnim > 0 ? opts.releaseAngle : windup ? opts.windupAngle : opts.idleAngle;
       ctx.save();
-      ctx.translate(7, -28);
-      ctx.rotate(throwPose);
-      SpriteBank.drawCapsule(ctx, 0, 0, 10, -3, 2.7, '#fdba74', '#090d16', 1.4);
+      ctx.translate(opts.ox, opts.oy);
+      if (opts.scaleX !== undefined) ctx.scale(opts.scaleX, 1);
+      ctx.rotate(angle);
+      SpriteBank.drawCapsule(ctx, 0, 0, opts.ax, opts.ay, 2.7, '#fdba74', '#090d16', 1.4);
       if (e.throwAnim <= 0) {
+        if (windup) {
+          const pulse = (0.55 + Math.sin(time * 28) * 0.35).toFixed(2);
+          ctx.strokeStyle = `rgba(250, 204, 21, ${pulse})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(opts.bx + 2.5, opts.by + 4, 9.5, -Math.PI * 0.85, Math.PI * 0.25);
+          ctx.stroke();
+        }
         ctx.beginPath();
-        ctx.roundRect(8, -16, 5, 14, 2);
+        ctx.roundRect(opts.bx, opts.by, 5, opts.bh, 2);
         SpriteBank.fillAndStroke(ctx, '#92400e', '#090d16', 1.2);
         ctx.fillStyle = '#facc15';
-        ctx.fillRect(9, -18, 3, 3);
+        ctx.fillRect(opts.bx + 1, opts.by - 2, 3, 3);
       }
-      ctx.restore();
-
       ctx.restore();
     }
 
@@ -5991,33 +6476,69 @@
         return;
       }
 
-      // Estructura superior del pórtico ferroviario
+      // Estructura metálica superior del pórtico ferroviario
+      const hangerX = x + haz.w * 0.5;
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(hangerX - 4, 0, 8, haz.y + 4);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(hangerX - 2, 0, 2, haz.y + 2);
+      // Celosía horizontal de refuerzo del pórtico en la parte alta
       ctx.fillStyle = '#475569';
-      ctx.fillRect(x + haz.w * 0.5 - 4, 0, 8, haz.y + 4);
+      ctx.fillRect(hangerX - 18, 0, 36, 8);
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(hangerX - 12, 8);
+      ctx.lineTo(hangerX - 3, 22);
+      ctx.moveTo(hangerX + 12, 8);
+      ctx.lineTo(hangerX + 3, 22);
+      ctx.stroke();
+      // Ménsula de sujeción justo encima del cartel/semáforo
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(hangerX - 9, haz.y - 5, 18, 6);
 
       if (haz.kind === 'signal') {
-        // Semáforo ferroviario del Mitre
+        // Semáforo ferroviario del Mitre con viseras protectoras
         ctx.beginPath();
         ctx.roundRect(x, haz.y, haz.w, haz.h, 8);
         SpriteBank.fillAndStroke(ctx, '#0f172a', '#cbd5e1', 2.2);
         const blink = Math.sin(time * 8) > 0;
+        const rCx = x + haz.w * 0.32;
+        const yCx = x + haz.w * 0.68;
+        const cySig = haz.y + haz.h * 0.5;
         ctx.fillStyle = blink ? '#ef4444' : '#7f1d1d';
         ctx.beginPath();
-        ctx.arc(x + haz.w * 0.32, haz.y + haz.h * 0.5, 6.5, 0, Math.PI * 2);
+        ctx.arc(rCx, cySig, 6.5, 0, Math.PI * 2);
         ctx.fill();
+        if (blink) {
+          ctx.fillStyle = 'rgba(248, 113, 113, 0.35)';
+          ctx.beginPath();
+          ctx.arc(rCx, cySig, 10, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.fillStyle = '#facc15';
         ctx.beginPath();
-        ctx.arc(x + haz.w * 0.68, haz.y + haz.h * 0.5, 5.5, 0, Math.PI * 2);
+        ctx.arc(yCx, cySig, 5.5, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(rCx, cySig, 7.6, Math.PI * 1.1, Math.PI * 1.9);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(yCx, cySig, 6.6, Math.PI * 1.1, Math.PI * 1.9);
+        ctx.stroke();
       } else {
-        // Cartel ferroviario elevado ("RETIRO / MITRE")
+        // Cartel ferroviario oficial Trenes Argentinos ("TIGRE · RETIRO / BELGRANO R / EXPRESS RETIRO")
         ctx.beginPath();
         ctx.roundRect(x, haz.y, haz.w, haz.h, 5);
         SpriteBank.fillAndStroke(ctx, '#1e3a8a', '#f8fafc', 2.2);
+        ctx.fillStyle = '#0ea5e9';
+        ctx.fillRect(x + 3, haz.y + 3, haz.w - 6, 4.5);
         ctx.fillStyle = '#f8fafc';
         ctx.font = 'bold 10px "Segoe UI", sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(haz.label || 'RETIRO ▶', x + haz.w * 0.5, haz.y + haz.h * 0.64);
+        ctx.fillText(haz.label || 'RETIRO ▶', x + haz.w * 0.5, haz.y + haz.h * 0.68);
       }
       ctx.restore();
     }
@@ -6035,19 +6556,35 @@
         ctx.rotate(nest.rotation || 0);
         ctx.translate(-cx, -(y + nest.h * 0.5));
       } else {
-        // Poste/ménsula de madera o luminaria elevada sosteniendo el horno de barro
+        // Poste/ménsula de madera o luminaria elevada sosteniendo el horno de barro sobre suelo/andén firme
+        const poleBottomY = Number.isFinite(nest.poleBaseY) ? nest.poleBaseY : 460;
+        const poleTopY = y + nest.h - 4;
+        const poleH = Math.max(24, poleBottomY - poleTopY);
         ctx.fillStyle = '#5c4033';
         ctx.strokeStyle = '#1e1b18';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.rect(cx - 4, y + nest.h - 4, 8, Math.max(24, 460 - (y + nest.h - 4)));
+        ctx.rect(cx - 4, poleTopY, 8, poleH);
         ctx.fill();
         ctx.stroke();
+
+        // Base de anclaje firme sobre andén o suelo ferroviario detrás del tren
+        if (poleBottomY < 460) {
+          ctx.fillStyle = '#475569';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.roundRect(cx - 9, poleBottomY - 6, 18, 6, 2);
+          ctx.fill();
+          ctx.stroke();
+        }
 
         // Travesaño superior de apoyo
         ctx.beginPath();
         ctx.roundRect(cx - 22, y + nest.h - 6, 44, 7, 3);
         ctx.fillStyle = '#78350f';
+        ctx.strokeStyle = '#1e1b18';
+        ctx.lineWidth = 2;
         ctx.fill();
         ctx.stroke();
       }
@@ -6711,7 +7248,7 @@
     }
 
     /**
-     * Estela hiperespacial a velocidad de la luz y destello de eyección del OVNI del Cerro Uritorco (cheat 'ethome').
+     * Estela hiperespacial a velocidad de la luz y destello de eyección del OVNI del Cerro Uritorco.
      */
     drawUfoLightspeedTrailHD(ctx, u, cameraX, time, warpIntensity = 1, isFacingRight = true) {
       if (!u || warpIntensity <= 0.01) return;
@@ -7118,6 +7655,313 @@
       ctx.ellipse(14.8, -7.2, 0.9, 1.6, 0, 0, Math.PI * 2);
       ctx.fill();
 
+      ctx.restore();
+    }
+
+    /**
+     * ENEMIGO EXCLUSIVO GARAJONAY: El Zorrito de Laurisilva (bosque enemigo.jfif).
+     * Silueta orgánica y sombreado de 16 bits acorde al estilo visual de La Tina:
+     * - Cabeza afilada expresiva con hocico puntiagudo blanco, trufa negra, ojos vivos y 2 orejas triangulares erguidas con interior claro
+     * - Cuerpo esbelto y ágil de lomo curvado en rojizo-anaranjado cálido y pardo + pecho blanco esponjoso
+     * - Cuatro patas finas con animación fluida de carrera y salto
+     * - Cola larga, curva y muy esponjosa rojiza con punta blanca bien definida
+     */
+    drawGarajonayFoxHD(ctx, e, cameraX, time) {
+      if (e.dead) return;
+      const sx = e.x - cameraX;
+      if (sx < -100 || sx > 1060) return;
+
+      const disabled = e.isDisabled && e.isDisabled();
+      const isCrouching =
+        e.aiState === 'crouch_up' ||
+        e.aiState === 'crouch_down' ||
+        e.aiState === 'attack_crouch';
+      const isClimbJump = e.aiState === 'climbing_jump';
+      const isDropJump = e.aiState === 'drop_jump';
+      const isAttackLeap = e.aiState === 'attack_leap' || e.aiState === 'dodge_jump';
+      const inAir = !e.onGround;
+      const isMoving = !disabled && !isCrouching && Math.abs(e.vx || 0) > 8;
+
+      const stridePhase = time * 19;
+      const stride = isMoving && !inAir ? Math.sin(stridePhase) : 0;
+      const legSwing = stride * 5.2;
+      const bounceY = isMoving && !inAir
+        ? -Math.abs(Math.cos(stridePhase)) * 2.0
+        : (isCrouching ? 2.8 : 0);
+
+      const cx = sx + e.w * 0.5;
+      const cy = e.y + e.h - 13.5;
+
+      ctx.save();
+      ctx.translate(cx, cy + bounceY);
+      if (e.facing === 'left') ctx.scale(-1, 1);
+
+      if (isCrouching) {
+        const shake = e.aiState === 'attack_crouch' ? Math.sin(time * 42) * 0.8 : 0;
+        ctx.translate(shake, 0);
+        ctx.scale(1.10, 0.79);
+      } else if (isClimbJump) {
+        ctx.rotate((e.vy || 0) <= 0 ? -0.30 : 0.20);
+        ctx.scale(1.09, 0.92);
+      } else if (isDropJump) {
+        ctx.rotate((e.vy || 0) <= 0 ? -0.08 : 0.24);
+      } else if (isAttackLeap) {
+        ctx.rotate(Math.max(-0.24, Math.min(0.28, (e.vy || 0) * 0.0005)));
+        ctx.scale(1.09, 0.93);
+      } else if (inAir) {
+        ctx.rotate(Math.max(-0.22, Math.min(0.24, (e.vy || 0) * 0.00045)));
+      }
+
+      const outline = '#090d16';
+      const rufousHi = disabled ? '#cbd5e1' : '#fb923c';
+      const rufous = disabled ? '#94a3b8' : '#ea580c';
+      const rufousDark = disabled ? '#64748b' : '#c2410c';
+      const pardoBack = disabled ? '#64748b' : '#6b5b4e';
+      const pardoDeep = disabled ? '#475569' : '#4a3f37';
+      const whiteFur = '#ffffff';
+      const creamFur = '#f1f5f9';
+      const innerEar = disabled ? '#cbd5e1' : '#fed7aa';
+
+      // 1. Cola larga, curva y esponjosa rojiza con punta blanca bien definida
+      ctx.save();
+      ctx.translate(-10.5, 0.2);
+      const tailRot = inAir
+        ? ((e.vy || 0) < 0 ? 0.16 : -0.26)
+        : (isCrouching ? -0.16 : Math.sin(time * 10.5) * 0.17 - 0.06);
+      ctx.rotate(tailRot);
+
+      const traceTailBrush = () => {
+        ctx.beginPath();
+        ctx.moveTo(0, -2.2);
+        ctx.bezierCurveTo(-8.5, -8.5, -19.5, -14.2, -27.2, -8.0);
+        ctx.quadraticCurveTo(-30.0, -4.6, -26.8, -1.2);
+        ctx.bezierCurveTo(-18.5, 3.0, -7.5, 3.4, 0, 2.2);
+        ctx.closePath();
+      };
+      const tailGrad = ctx.createLinearGradient(-2, -10, -26, 2);
+      tailGrad.addColorStop(0, rufousDark);
+      tailGrad.addColorStop(0.5, rufous);
+      tailGrad.addColorStop(1, rufousHi);
+
+      ctx.save();
+      traceTailBrush();
+      ctx.fillStyle = tailGrad;
+      ctx.fill();
+      ctx.clip();
+      // Matiz pardo suave en el lomo del penacho de la cola
+      ctx.fillStyle = pardoBack;
+      ctx.beginPath();
+      ctx.ellipse(-10, -4.5, 8.5, 3.0, 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      // Punta blanca bien definida con borde orgánico de mechones
+      ctx.fillStyle = whiteFur;
+      ctx.beginPath();
+      ctx.moveTo(-18.8, -10.5);
+      ctx.lineTo(-20.2, -6.5);
+      ctx.lineTo(-18.4, -3.5);
+      ctx.lineTo(-20.6, 0.2);
+      ctx.lineTo(-29.5, 2.5);
+      ctx.lineTo(-31.5, -11.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = creamFur;
+      ctx.beginPath();
+      ctx.ellipse(-25.5, -2.5, 5.2, 2.8, 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      traceTailBrush();
+      SpriteBank.fillAndStroke(ctx, null, outline, 1.65);
+      ctx.restore();
+
+      // Helper para dibujar cada pata fina con pezuña / garra oscura
+      const drawFoxLeg = (hx, hy, fx, fy, legCol) => {
+        SpriteBank.drawCapsule(ctx, hx, hy, fx, fy, 1.9, legCol, outline, 1.3);
+        ctx.beginPath();
+        ctx.ellipse(fx + 1.0, fy + 0.4, 2.1, 1.2, 0, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, '#1c1917', outline, 1.0);
+      };
+
+      // Posiciones de las 4 patas según corrida, salto o agache
+      let bhx = -7.5, bfx = -8.5 - legSwing, bfy = 13.0 - Math.max(0, stride) * 2.0;
+      let fhx = 6.5, ffx = 7.5 + legSwing, ffy = 13.0 - Math.max(0, -stride) * 2.0;
+      let bh2x = -6.0, bf2x = -6.5 + legSwing * 0.85, bf2y = 13.0 - Math.max(0, -stride) * 1.8;
+      let fh2x = 8.5, ff2x = 9.0 - legSwing * 0.85, ff2y = 13.0 - Math.max(0, stride) * 1.8;
+
+      if (inAir) {
+        if (isClimbJump || isAttackLeap || (e.vy || 0) < 0) {
+          bfx = -14.2; bfy = 11.8;
+          bf2x = -12.0; bf2y = 12.6;
+          ffx = 14.5; ffy = isAttackLeap ? 4.8 : 3.8;
+          ff2x = 15.8; ff2y = isAttackLeap ? 6.6 : 6.0;
+        } else {
+          bfx = -10.2; bfy = 13.6;
+          bf2x = -7.8; bf2y = 13.8;
+          ffx = 10.5; ffy = 13.4;
+          ff2x = 12.5; ff2y = 13.2;
+        }
+      } else if (isCrouching) {
+        bfx = -8.5; bfy = 11.2;
+        bf2x = -6.2; bf2y = 11.4;
+        ffx = 7.2; ffy = 11.2;
+        ff2x = 9.4; ff2y = 11.4;
+      }
+
+      // 2. Patas finas lejanas (detrás del torso)
+      drawFoxLeg(bh2x, 3.2, bf2x, bf2y, rufousDark);
+      drawFoxLeg(fh2x, 3.2, ff2x, ff2y, rufousDark);
+
+      // 3. Cuerpo esbelto y ágil: lomo curvado cálido rojizo/pardo + pecho blanco esponjoso
+      const traceTorso = () => {
+        ctx.beginPath();
+        ctx.moveTo(-12.2, 0.8);
+        ctx.bezierCurveTo(-9.2, -8.2, 3.2, -8.6, 10.6, -4.0);
+        ctx.bezierCurveTo(13.6, 0.2, 10.2, 6.2, 3.2, 6.2);
+        ctx.bezierCurveTo(-4.8, 6.4, -12.2, 4.6, -12.2, 0.8);
+        ctx.closePath();
+      };
+      const bodyGrad = ctx.createLinearGradient(-10, -8, 10, 7);
+      bodyGrad.addColorStop(0, rufousHi);
+      bodyGrad.addColorStop(0.55, rufous);
+      bodyGrad.addColorStop(1, rufousDark);
+
+      ctx.save();
+      traceTorso();
+      ctx.fillStyle = bodyGrad;
+      ctx.fill();
+      ctx.clip();
+
+      // Lomo superior pardo cálido siguiendo la curva dorsal
+      const dorsalGrad = ctx.createLinearGradient(-10, -8, 4, 0);
+      dorsalGrad.addColorStop(0, pardoBack);
+      dorsalGrad.addColorStop(1, pardoDeep);
+      ctx.fillStyle = dorsalGrad;
+      ctx.beginPath();
+      ctx.moveTo(-12, -1);
+      ctx.bezierCurveTo(-8, -9, 2, -9, 8, -4.5);
+      ctx.quadraticCurveTo(0, -2.5, -12, 1.5);
+      ctx.closePath();
+      ctx.fill();
+
+      // Pecho y vientre delantero blanco esponjoso
+      const chestGrad = ctx.createLinearGradient(5, -3, 12, 6);
+      chestGrad.addColorStop(0, whiteFur);
+      chestGrad.addColorStop(1, creamFur);
+      ctx.fillStyle = chestGrad;
+      ctx.beginPath();
+      ctx.moveTo(6.2, -3.2);
+      ctx.bezierCurveTo(13.5, -1.0, 12.8, 5.2, 7.2, 6.5);
+      ctx.lineTo(3.5, 6.5);
+      ctx.quadraticCurveTo(5.6, 4.2, 4.4, 2.2);
+      ctx.quadraticCurveTo(6.5, 0.2, 6.2, -3.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      traceTorso();
+      SpriteBank.fillAndStroke(ctx, null, outline, 1.75);
+
+      // 4. Patas finas cercanas (delante del torso)
+      drawFoxLeg(bhx, 3.0, bfx, bfy, rufous);
+      drawFoxLeg(fhx, 2.8, ffx, ffy, rufousHi);
+
+      // 5. Cabeza expresiva y afilada con 2 orejas triangulares erguidas y hocico puntiagudo blanco
+      ctx.save();
+      ctx.translate(10.2, -5.8);
+      if (isCrouching) ctx.rotate(0.10);
+      else if (inAir) ctx.rotate((e.vy || 0) < 0 ? -0.08 : 0.08);
+
+      // Oreja trasera triangular erguida con interior claro
+      const drawFoxEar = (bx, by, tx, ty, rx, ry, outerCol) => {
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo((bx + tx) * 0.5 - 0.6, (by + ty) * 0.5, tx, ty);
+        ctx.quadraticCurveTo((tx + rx) * 0.5 + 0.6, (ty + ry) * 0.5, rx, ry);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, outerCol, outline, 1.45);
+        // Interior claro triangular
+        ctx.fillStyle = innerEar;
+        ctx.beginPath();
+        ctx.moveTo(bx + (rx - bx) * 0.25, by - 0.8);
+        ctx.lineTo(tx, ty + 2.4);
+        ctx.lineTo(rx - (rx - bx) * 0.22, ry - 0.5);
+        ctx.closePath();
+        ctx.fill();
+      };
+      drawFoxEar(-3.2, -4.4, -3.6, -13.2, 1.4, -5.2, rufousDark);
+
+      // Silueta orgánica curva de la cabeza + hocico afilado
+      const traceHead = () => {
+        ctx.beginPath();
+        ctx.moveTo(-4.8, 0.6);
+        ctx.bezierCurveTo(-4.0, -6.8, 3.8, -7.8, 7.6, -3.0);
+        ctx.quadraticCurveTo(11.4, -1.8, 14.4, -0.1);
+        ctx.quadraticCurveTo(11.2, 2.6, 6.2, 3.4);
+        ctx.bezierCurveTo(2.4, 4.8, -2.5, 4.4, -4.8, 0.6);
+        ctx.closePath();
+      };
+      const headGrad = ctx.createLinearGradient(-4, -7, 10, 4);
+      headGrad.addColorStop(0, rufousHi);
+      headGrad.addColorStop(0.55, rufous);
+      headGrad.addColorStop(1, rufousDark);
+
+      ctx.save();
+      traceHead();
+      ctx.fillStyle = headGrad;
+      ctx.fill();
+      ctx.clip();
+
+      // Hocico puntiagudo blanco + mejillas claras esponjosas
+      ctx.fillStyle = whiteFur;
+      ctx.beginPath();
+      ctx.moveTo(-1.2, 2.2);
+      ctx.quadraticCurveTo(2.2, 0.8, 6.0, 0.0);
+      ctx.quadraticCurveTo(10.8, 0.0, 14.6, 0.2);
+      ctx.lineTo(14.0, 4.6);
+      ctx.lineTo(-4.0, 4.8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = creamFur;
+      ctx.beginPath();
+      ctx.ellipse(2.2, 2.6, 3.2, 1.4, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      traceHead();
+      SpriteBank.fillAndStroke(ctx, null, outline, 1.7);
+
+      // Oreja delantera triangular erguida con interior claro
+      drawFoxEar(0.2, -4.2, 1.2, -13.8, 5.2, -4.8, rufous);
+
+      // Trufa negra húmeda con brillo en la punta del hocico afilado
+      ctx.fillStyle = outline;
+      ctx.beginPath();
+      ctx.ellipse(14.1, 0.1, 1.75, 1.35, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = whiteFur;
+      ctx.beginPath();
+      ctx.arc(13.8, -0.4, 0.45, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ojo ambarino vivo expresivo con pupila vertical y punto de luz
+      ctx.fillStyle = outline;
+      ctx.beginPath();
+      ctx.ellipse(5.5, -2.0, 2.0, 1.8, -0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = disabled ? '#cbd5e1' : '#fde047';
+      ctx.beginPath();
+      ctx.ellipse(5.6, -2.0, 1.45, 1.3, -0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = outline;
+      ctx.beginPath();
+      ctx.ellipse(5.8, -2.0, 0.6, 1.1, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = whiteFur;
+      ctx.beginPath();
+      ctx.arc(5.1, -2.6, 0.55, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
       ctx.restore();
     }
 
@@ -7801,12 +8645,13 @@
       ctx.restore();
     }
 
-    /** Peligro marino/volcánico vertical (pez volador / piraña del Pacífico / pez magma). */
+    /** Peligro marino/volcánico vertical (pez volador / piraña del Pacífico / pez austral / pez magma). */
     drawPacificJumpHazardHD(ctx, haz, cameraX, time) {
       const sx = haz.x - cameraX;
       if (sx + haz.w < -60 || sx > 1020) return;
       const isMagma = haz.kind === 'magma_piranha';
       const isFlyFish = haz.kind === 'flying_fish';
+      const isBeagle = haz.kind === 'beagle_fish';
 
       ctx.save();
       // Espuma o burbujeo de alerta en la línea de agua / magma
@@ -7834,8 +8679,8 @@
       ctx.translate(sx + haz.w * 0.5, haz.y + haz.h * 0.5);
       ctx.rotate(haz.isDescending ? 0.55 : -0.55);
 
-      const bodyColor = isMagma ? '#ef4444' : isFlyFish ? '#0ea5e9' : '#0284c7';
-      const finColor = isMagma ? '#fde047' : isFlyFish ? '#7dd3fc' : '#f43f5e';
+      const bodyColor = isMagma ? '#ef4444' : isFlyFish ? '#0ea5e9' : isBeagle ? '#0369a1' : '#0284c7';
+      const finColor = isMagma ? '#fde047' : isFlyFish ? '#7dd3fc' : isBeagle ? '#bae6fd' : '#f43f5e';
       // Aletas
       ctx.beginPath();
       ctx.moveTo(0, 6);
@@ -7858,6 +8703,14 @@
       ctx.beginPath();
       ctx.ellipse(0, 0, 11.5, 13.5, 0, 0, Math.PI * 2);
       SpriteBank.fillAndStroke(ctx, bodyColor, '#0f172a', 1.8);
+
+      if (isBeagle) {
+        // Vientre plateado austral de aguas frías del Canal Beagle
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.ellipse(2.5, 1.5, 6.2, 10.5, 0, -Math.PI * 0.45, Math.PI * 0.45);
+        ctx.fill();
+      }
 
       // Ojo feroz y dientes blancos
       ctx.fillStyle = '#fde047';
@@ -8113,7 +8966,694 @@
 
       ctx.restore();
     }
+
+    drawPeacockHD(ctx, x, y, facing, animTimer, isDisabled, tailOpen = false, hitFlash = false, hp = 2) {
+      ctx.save();
+      ctx.translate(x + 19, y + 46);
+      if (facing === 'left') ctx.scale(-1, 1);
+
+      const flashOn = hitFlash && Math.floor(animTimer * 36) % 2 === 0;
+      const walkCycle = isDisabled || tailOpen ? 0 : Math.sin(animTimer * 10);
+      const bob = isDisabled ? 0 : tailOpen ? Math.sin(animTimer * 28) * 0.7 : Math.abs(walkCycle) * 1.4;
+
+      // 1. Cola (Plegada elegante vs Abanico semicircular gigante zamarreándose)
+      if (tailOpen) {
+        const shakeX = isDisabled ? 0 : Math.sin(animTimer * 42) * 2.4;
+        const shakeRot = isDisabled ? 0 : Math.sin(animTimer * 36) * 0.055;
+        ctx.save();
+        ctx.translate(-3 + shakeX, -22);
+        ctx.rotate(shakeRot);
+
+        const fanGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, 32);
+        fanGrad.addColorStop(0, isDisabled ? '#475569' : '#065f46');
+        fanGrad.addColorStop(0.55, isDisabled ? '#64748b' : '#059669');
+        fanGrad.addColorStop(0.85, isDisabled ? '#94a3b8' : '#10b981');
+        fanGrad.addColorStop(1, isDisabled ? '#cbd5e1' : '#14b8a6');
+
+        // Abanico principal con borde festoneado de plumas
+        ctx.beginPath();
+        ctx.moveTo(0, 4);
+        const rimSteps = 14;
+        for (let s = 0; s <= rimSteps; s++) {
+          const ang = Math.PI * (0.94 + (s / rimSteps) * 1.12);
+          const scallop = s % 2 === 0 ? 32.5 : 29.8;
+          ctx.lineTo(Math.cos(ang) * scallop, Math.sin(ang) * scallop);
+        }
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, fanGrad, '#064e3b', 1.6);
+
+        // Nervaduras radiantes de plumas verdes
+        ctx.strokeStyle = isDisabled ? '#cbd5e1' : 'rgba(110, 231, 183, 0.55)';
+        ctx.lineWidth = 1.1;
+        for (let r = 0; r <= 10; r++) {
+          const ang = Math.PI * (1.02 + (r / 10) * 0.96);
+          ctx.beginPath();
+          ctx.moveTo(0, 1);
+          ctx.lineTo(Math.cos(ang) * 28, Math.sin(ang) * 28);
+          ctx.stroke();
+        }
+
+        // Ocelos radiantes azules y dorados en 2 arcos concéntricos (7 exteriores + 4 interiores)
+        const drawOcelo = (ox, oy, rx, ry) => {
+          ctx.fillStyle = isDisabled ? '#94a3b8' : '#fbbf24';
+          ctx.beginPath();
+          ctx.ellipse(ox, oy, rx, ry, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = isDisabled ? '#64748b' : '#0ea5e9';
+          ctx.beginPath();
+          ctx.ellipse(ox, oy, rx * 0.68, ry * 0.68, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#1e1b4b';
+          ctx.beginPath();
+          ctx.ellipse(ox, oy + ry * 0.08, rx * 0.36, ry * 0.42, 0, 0, Math.PI * 2);
+          ctx.fill();
+        };
+
+        for (let i = 0; i < 7; i++) {
+          const ang = Math.PI * (1.04 + (i / 6) * 0.92);
+          drawOcelo(Math.cos(ang) * 23.5, Math.sin(ang) * 23.5, 3.2, 2.7);
+        }
+        for (let i = 0; i < 4; i++) {
+          const ang = Math.PI * (1.16 + (i / 3) * 0.68);
+          drawOcelo(Math.cos(ang) * 14.5, Math.sin(ang) * 14.5, 2.7, 2.3);
+        }
+        ctx.restore();
+      } else {
+        // Estado Pasivo: larga cola verde esmeralda plegada hacia atrás
+        const tailSway = isDisabled ? 0 : Math.sin(animTimer * 8) * 1.8;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(-4, -18 - bob);
+        ctx.quadraticCurveTo(-20, -14 + tailSway * 0.5, -37, -7 + tailSway);
+        ctx.quadraticCurveTo(-24, -4 + tailSway * 0.7, -5, -11 - bob);
+        ctx.closePath();
+        const trainGrad = ctx.createLinearGradient(-37, -14, -4, -10);
+        trainGrad.addColorStop(0, isDisabled ? '#64748b' : '#10b981');
+        trainGrad.addColorStop(1, isDisabled ? '#475569' : '#047857');
+        SpriteBank.fillAndStroke(ctx, trainGrad, '#064e3b', 1.4);
+
+        // 4 ocelos dorados y azules sobre la cola plegada
+        const trailSpots = [
+          [-14, -12.5 + tailSway * 0.25],
+          [-21, -10.5 + tailSway * 0.45],
+          [-28, -9 + tailSway * 0.7],
+          [-33.5, -7.8 + tailSway * 0.9]
+        ];
+        for (const [sx, sy] of trailSpots) {
+          ctx.fillStyle = isDisabled ? '#94a3b8' : '#fbbf24';
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, 2.3, 1.6, -0.2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#1d4ed8';
+          ctx.beginPath();
+          ctx.arc(sx, sy, 1.0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // 2. Patas finas articuladas
+      const stride = walkCycle * 4.2;
+      SpriteBank.drawCapsule(ctx, -3, -12, -4 - stride, -2, 1.5, '#d97706', '#0f172a', 1.1);
+      SpriteBank.drawCapsule(ctx, 4, -12, 5 + stride, -2, 1.5, '#f59e0b', '#0f172a', 1.1);
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(-6 - stride, -2.2, 4.5, 2.0);
+      ctx.fillRect(3 + stride, -2.2, 4.5, 2.0);
+
+      // 3. Cuerpo erguido y ala plegada en azul cobalto brillante
+      const bodyGrad = ctx.createLinearGradient(0, -28 - bob, 0, -10 - bob);
+      bodyGrad.addColorStop(0, isDisabled ? '#64748b' : '#2563eb');
+      bodyGrad.addColorStop(0.55, isDisabled ? '#475569' : '#1d4ed8');
+      bodyGrad.addColorStop(1, '#1e3a8a');
+      ctx.beginPath();
+      ctx.ellipse(1, -17 - bob, 10.5, 7.6, -0.2, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, bodyGrad, '#0f172a', 1.7);
+
+      // Ala lateral turquesa/cobre con textura
+      ctx.beginPath();
+      ctx.ellipse(-2, -16 - bob, 7.2, 4.4, 0.12, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, isDisabled ? '#64748b' : '#0f766e', '#0f172a', 1.3);
+
+      // 4. Cuello en S, cabeza cobalto, parche facial blanco, pico ámbar y penacho real
+      ctx.beginPath();
+      ctx.moveTo(4, -22 - bob);
+      ctx.quadraticCurveTo(10, -29 - bob, 8.5, -36.5 - bob);
+      ctx.lineTo(4.2, -36.5 - bob);
+      ctx.quadraticCurveTo(5, -28 - bob, 0, -21 - bob);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, isDisabled ? '#64748b' : '#1d4ed8', '#0f172a', 1.5);
+
+      // Cabeza
+      ctx.beginPath();
+      ctx.arc(6.8, -37.2 - bob, 5.2, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, isDisabled ? '#94a3b8' : '#2563eb', '#0f172a', 1.6);
+
+      // Parche facial blanco y ojo
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.ellipse(8.0, -37.0 - bob, 2.6, 1.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.arc(8.5, -37.2 - bob, 1.25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(8.7, -37.9 - bob, 0.6, 0.6);
+
+      // Pico ámbar agudo
+      ctx.beginPath();
+      ctx.moveTo(11.3, -37.8 - bob);
+      ctx.lineTo(16.2, -35.8 - bob);
+      ctx.lineTo(11.2, -34.6 - bob);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, '#f59e0b', '#0f172a', 1.2);
+
+      // Penacho / corona real en la cabeza (4 plumas con borla azul cobalto/oro)
+      for (let c = 0; c < 4; c++) {
+        const fan = -0.35 + c * 0.22;
+        const tx = 5.5 + Math.sin(fan) * 6.5;
+        const ty = -41.5 - bob - Math.cos(fan) * 6.2;
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(6.2, -41.5 - bob);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        ctx.fillStyle = c % 2 === 0 ? '#38bdf8' : '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(tx, ty, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Indicador visual sutil cuando queda 1/2 HP o destello de impacto
+      if (hp === 1 && !isDisabled) {
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(1, -24 - bob, 2.0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (flashOn) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.58)';
+        ctx.beginPath();
+        ctx.ellipse(2, -23, 18, 20, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    drawCrazyCyclistHD(ctx, x, y, facing, animTimer, isDisabled = false) {
+      ctx.save();
+      ctx.translate(x + 21, y + 44);
+      if (facing === 'left') ctx.scale(-1, 1);
+
+      const wheelAngle = isDisabled ? 0 : animTimer * 24;
+      const pedalAngle = isDisabled ? 0 : animTimer * 20;
+      const bob = isDisabled ? 0 : Math.sin(animTimer * 20) * 1.1;
+
+      // Líneas de velocidad cuando pedalea
+      if (!isDisabled) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(-27, -28);
+        ctx.lineTo(-18, -28);
+        ctx.moveTo(-30, -18);
+        ctx.lineTo(-21, -18);
+        ctx.stroke();
+      }
+
+      // Ruedas rápidas con rayos giratorios
+      const drawWheel = (wx, wy) => {
+        ctx.beginPath();
+        ctx.arc(wx, wy, 9.6, 0, Math.PI * 2);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 3.6;
+        ctx.stroke();
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        // Rayos giratorios
+        ctx.strokeStyle = 'rgba(226, 232, 240, 0.85)';
+        ctx.lineWidth = 1.0;
+        for (let s = 0; s < 3; s++) {
+          const a = wheelAngle + (s * Math.PI) / 3;
+          ctx.beginPath();
+          ctx.moveTo(wx + Math.cos(a) * 8, wy + Math.sin(a) * 8);
+          ctx.lineTo(wx - Math.cos(a) * 8, wy - Math.sin(a) * 8);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#475569';
+        ctx.beginPath();
+        ctx.arc(wx, wy, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      drawWheel(-13, -10);
+      drawWheel(13, -10);
+
+      // Cuadro deportivo rojo/naranja de bicicleta
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 4.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const drawFramePath = () => {
+        ctx.beginPath();
+        ctx.moveTo(-13, -10);
+        ctx.lineTo(-1, -10);
+        ctx.lineTo(8, -22);
+        ctx.lineTo(-4, -22);
+        ctx.closePath();
+        ctx.moveTo(-1, -10);
+        ctx.lineTo(-5, -25);
+        ctx.moveTo(8, -22);
+        ctx.lineTo(13, -10);
+        ctx.moveTo(8, -22);
+        ctx.lineTo(10, -26.5);
+      };
+      drawFramePath();
+      ctx.stroke();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2.4;
+      drawFramePath();
+      ctx.stroke();
+
+      // Manubrio curvo y asiento
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(9, -26.5);
+      ctx.lineTo(13, -26.5);
+      ctx.quadraticCurveTo(15.5, -25, 13.5, -22.5);
+      ctx.stroke();
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-8.5, -26.5, 7, 2.5);
+
+      // Pierna trasera pedaleando
+      const px2 = -1 + Math.cos(pedalAngle + Math.PI) * 4.5;
+      const py2 = -10 + Math.sin(pedalAngle + Math.PI) * 4.5;
+      SpriteBank.drawCapsule(ctx, -4, -25 + bob, -1 + (px2 + 1) * 0.4, -17 + bob * 0.5, 2.4, '#1e293b', '#0f172a', 1.2);
+      SpriteBank.drawCapsule(ctx, -1 + (px2 + 1) * 0.4, -17 + bob * 0.5, px2, py2, 2.1, '#d9a78b', '#0f172a', 1.1);
+
+      // Mochila pequeña & Torso inclinado con maillot colorido (amarillo/cian)
+      ctx.beginPath();
+      ctx.roundRect(-8.5, -35 + bob, 6, 8, 2);
+      SpriteBank.fillAndStroke(ctx, '#0284c7', '#0f172a', 1.2);
+
+      SpriteBank.drawCapsule(ctx, -4.5, -26 + bob, 5, -34 + bob, 4.6, '#facc15', '#0f172a', 1.6);
+      // Franja turquesa del maillot
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-2, -28 + bob);
+      ctx.lineTo(3, -32 + bob);
+      ctx.stroke();
+
+      // Pierna delantera pedaleando rápido
+      const px1 = -1 + Math.cos(pedalAngle) * 4.5;
+      const py1 = -10 + Math.sin(pedalAngle) * 4.5;
+      SpriteBank.drawCapsule(ctx, -3, -25 + bob, 1 + (px1 + 1) * 0.3, -17 + bob * 0.5, 2.5, '#1e293b', '#0f172a', 1.3);
+      SpriteBank.drawCapsule(ctx, 1 + (px1 + 1) * 0.3, -17 + bob * 0.5, px1, py1, 2.2, '#f3cfb6', '#0f172a', 1.2);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(px1 - 2.5, py1 - 1.5, 5.2, 2.6);
+
+      // Brazo extendido agarrando el manubrio
+      SpriteBank.drawCapsule(ctx, 4.5, -33 + bob, 12.2, -25.8, 2.0, '#f3cfb6', '#0f172a', 1.2);
+
+      // Cabeza, gafas de sol deportivas y casco aerodinámico
+      ctx.beginPath();
+      ctx.arc(6.8, -38.5 + bob, 5.2, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, '#f3cfb6', '#0f172a', 1.5);
+
+      // Gafas deportivas cian/oscuras
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(7.4, -39.8 + bob, 5.0, 2.4);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(8.4, -39.5 + bob, 3.2, 1.3);
+
+      // Casco aerodinámico azul cobalto + franja roja
+      ctx.beginPath();
+      ctx.ellipse(6.0, -41.4 + bob, 6.8, 3.8, -0.1, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, '#2563eb', '#0f172a', 1.5);
+      ctx.fillStyle = '#f43f5e';
+      ctx.fillRect(3.2, -43.5 + bob, 6.2, 1.5);
+
+      ctx.restore();
+    }
+
+    /**
+     * Formaciones eléctricas CSR del Tren Mitre (Trenes Argentinos) fieles a tren mitre 1.jfif y 2.jfif:
+     * - Techo gris/plateado con equipos de aire acondicionado/ventilación grises
+     * - Carrocería celeste brillante y blanca con franja azul oscura inferior
+     * - Puertas dobles celestes, ventanas oscuras redondeadas y fuelles de acople
+     * - Cabinas frontales aerodinámicas celestes con parabrisas amplio, visor M04/RETIRO,
+     *   faros delanteros iluminados, pollera negra inferior y enganche amarillo característico
+     */
+    static drawTrenMitreCarHD(ctx, p, x, y, w, h, cameraX = 0, time = 0) {
+      if (!ctx || !p || w <= 0 || h <= 0) return;
+      ctx.save();
+
+      if (h < 60) {
+        // Pasarela móvil / puente ferroviario estilo Tren Mitre (18 px)
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(x + 2, y + 2, Math.max(0, w - 4), 4);
+        ctx.fillStyle = '#0ea5e9';
+        ctx.fillRect(x + 2, y + 6, Math.max(0, w - 4), Math.max(2, h - 10));
+        ctx.fillStyle = '#1e3a8a';
+        ctx.fillRect(x + 3, y + Math.max(8, h - 4.5), Math.max(0, w - 6), 3);
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(x + 3, y + 3, 5, Math.max(4, h - 6));
+        ctx.fillRect(x + w - 8, y + 3, 5, Math.max(4, h - 6));
+        ctx.restore();
+        return;
+      }
+
+      const cabLeft = !!p.cabLeft;
+      const cabRight = !!p.cabRight;
+      const cabW = 64;
+      const visBottom = y + Math.min(h, 80); // 460..540 (100% visible dentro de 540p)
+      const chasisY = y + 65;
+
+      // 1. Equipos grises de aire acondicionado / ventilación sobre el techo (tren mitre 1.jfif)
+      const acStep = w < 240 ? 95 : 138;
+      for (let acX = x + (cabLeft ? cabW + 14 : 26); acX < x + w - (cabRight ? cabW + 40 : 48); acX += acStep) {
+        const podW = Math.min(44, Math.max(24, w - 40));
+        ctx.fillStyle = '#94a3b8';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(acX, y - 3.5, podW, 6.5, 2.5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#e2e8f0';
+        ctx.fillRect(acX + 3, y - 2.5, podW - 6, 2);
+        ctx.fillStyle = '#475569';
+        for (let lx = acX + 6; lx < acX + podW - 6; lx += 7) {
+          ctx.fillRect(lx, y + 0.2, 4, 1.8);
+        }
+      }
+
+      // 2. Bandas horizontales de librea oficial Trenes Argentinos dentro del cuerpo del coche
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x + 1, y + 1, Math.max(0, w - 2), Math.max(0, h - 2), 5);
+      ctx.clip();
+
+      // Techo curvo claro plateado/blanco
+      const roofGrad = ctx.createLinearGradient(x, y, x, y + 9);
+      roofGrad.addColorStop(0, '#f8fafc');
+      roofGrad.addColorStop(0.65, '#cbd5e1');
+      roofGrad.addColorStop(1, '#94a3b8');
+      ctx.fillStyle = roofGrad;
+      ctx.fillRect(x, y, w, 9);
+
+      // Franja superior celeste brillante (ventanas y puertas)
+      const skyBlueGrad = ctx.createLinearGradient(x, y + 9, x, y + 40);
+      skyBlueGrad.addColorStop(0, '#38bdf8');
+      skyBlueGrad.addColorStop(0.28, '#0ea5e9');
+      skyBlueGrad.addColorStop(1, '#0284c7');
+      ctx.fillStyle = skyBlueGrad;
+      ctx.fillRect(x, y + 9, w, 31);
+
+      // Cuerpo bajo blanco luminoso + filete celeste + banda inferior azul oscuro
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, y + 40, w, 18);
+      ctx.fillStyle = '#0ea5e9';
+      ctx.fillRect(x, y + 42.5, w, 2.5);
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillRect(x, y + 58, w, 7.5);
+
+      // Chasis / zona de bogies oscura visible en y + 65..80
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(x, chasisY, w, Math.max(0, h - 65));
+
+      // 3. Módulos de ventanas oscuras redondeadas y puertas dobles celestes
+      const bodyStart = x + (cabLeft ? cabW : 16);
+      const bodyEnd = x + w - (cabRight ? cabW : 16);
+      const drawCoachDoorsAndWindows = (spanX0, spanX1) => {
+        const spanW = spanX1 - spanX0;
+        if (spanW < 40) return;
+        let cur = spanX0 + 8;
+        let bayIdx = 0;
+        while (cur + 30 < spanX1 - 6) {
+          const isDoor = bayIdx % 3 === 1 && cur + 38 <= spanX1 - 6;
+          if (isDoor) {
+            // Puertas dobles celestes con doble ventanilla vertical y sello central oscuro
+            const dw = 34;
+            ctx.fillStyle = '#0284c7';
+            ctx.strokeStyle = '#075985';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(cur, y + 11, dw, 45, 2.5);
+            ctx.fill();
+            ctx.stroke();
+
+            // Línea divisoria entre ambas hojas de la puerta doble
+            ctx.fillStyle = '#082f49';
+            ctx.fillRect(cur + dw * 0.5 - 0.9, y + 12, 1.8, 43);
+
+            // Cristales oscuros redondeados de cada hoja
+            for (let leaf = 0; leaf < 2; leaf++) {
+              const gx = cur + 4 + leaf * (dw * 0.5);
+              ctx.fillStyle = '#0f172a';
+              ctx.strokeStyle = '#1e293b';
+              ctx.lineWidth = 1.1;
+              ctx.beginPath();
+              ctx.roundRect(gx, y + 14.5, 10.5, 22, 2.5);
+              ctx.fill();
+              ctx.stroke();
+              ctx.fillStyle = 'rgba(186, 230, 253, 0.24)';
+              ctx.fillRect(gx + 2, y + 16, 3.2, 14);
+            }
+            // Insignia "Trenes Argentinos" sobre la banda blanca junto a puertas
+            if (cur + dw + 38 < spanX1 - 6) {
+              ctx.fillStyle = '#0284c7';
+              ctx.font = 'bold 5.5px "Segoe UI", sans-serif';
+              ctx.textAlign = 'left';
+              ctx.fillText('Trenes Argentinos', cur + dw + 4, y + 53);
+            }
+            cur += dw + 10;
+          } else {
+            // Ventana oscura panorámica con marco redondeado y parante superior
+            const ww = Math.min(34, spanX1 - 6 - cur);
+            if (ww >= 18) {
+              ctx.fillStyle = '#1e293b';
+              ctx.beginPath();
+              ctx.roundRect(cur - 1, y + 14.5, ww + 2, 20.5, 4.5);
+              ctx.fill();
+              ctx.fillStyle = '#090d16';
+              ctx.beginPath();
+              ctx.roundRect(cur, y + 15.5, ww, 18.5, 4);
+              ctx.fill();
+              // Travesaño horizontal + reflejo celeste de cielo
+              ctx.fillStyle = '#334155';
+              ctx.fillRect(cur + 1, y + 20.5, ww - 2, 1.4);
+              ctx.fillStyle = 'rgba(186, 230, 253, 0.22)';
+              ctx.beginPath();
+              ctx.moveTo(cur + 3, y + 17);
+              ctx.lineTo(cur + ww * 0.56, y + 17);
+              ctx.lineTo(cur + 3, y + 30);
+              ctx.closePath();
+              ctx.fill();
+            }
+            cur += ww + 8;
+          }
+          bayIdx++;
+        }
+      };
+
+      // Divisores internos (fuelles entre coches dentro de tramos largos > 440 px)
+      const splitPoints = [];
+      if (w >= 440) {
+        const numCoaches = Math.max(2, Math.round(w / 320));
+        const coachStep = w / numCoaches;
+        for (let ci = 1; ci < numCoaches; ci++) {
+          splitPoints.push(x + ci * coachStep);
+        }
+      }
+      let prevSpan = bodyStart;
+      splitPoints.forEach((spX) => {
+        drawCoachDoorsAndWindows(prevSpan, spX - 9);
+        // Fuelle de acople oscuro corrugado entre coches
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(spX - 8, y + 9, 16, 56);
+        ctx.fillStyle = '#334155';
+        for (let fy = y + 12; fy < y + 63; fy += 6) {
+          ctx.fillRect(spX - 6, fy, 12, 2.5);
+        }
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(spX - 1, y + 10, 2, 54);
+        prevSpan = spX + 9;
+      });
+      drawCoachDoorsAndWindows(prevSpan, bodyEnd);
+
+      // 4. Bogies y ruedas giratorias visibles dentro de y + 66..79 (por encima de 540px)
+      const wheelRot = -(cameraX * 0.055 + time * 10);
+      for (let bx = x + 36; bx < x + w - 42; bx += 148) {
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 1.2;
+        ctx.fillRect(bx - 16, chasisY + 2, 32, 6);
+        [-10, 10].forEach((wo) => {
+          const rx = bx + wo;
+          const ry = visBottom - 7.5;
+          ctx.fillStyle = '#334155';
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(rx, ry, 5.8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.lineWidth = 1.1;
+          ctx.beginPath();
+          ctx.moveTo(rx + Math.cos(wheelRot) * 4.2, ry + Math.sin(wheelRot) * 4.2);
+          ctx.lineTo(rx - Math.cos(wheelRot) * 4.2, ry - Math.sin(wheelRot) * 4.2);
+          ctx.stroke();
+        });
+      }
+      ctx.restore();
+
+      // 5. Fuelles de acople en los extremos no-cabina del tramo (gap transitions)
+      const drawEndFuelle = (fx) => {
+        ctx.fillStyle = '#090d16';
+        ctx.strokeStyle = '#334155';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(fx, y + 10, 9, 55, 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#475569';
+        for (let py = y + 13; py < y + 62; py += 6) {
+          ctx.fillRect(fx + 1.5, py, 6, 2);
+        }
+      };
+      if (p.fuelleLeft && !cabLeft) drawEndFuelle(x - 3);
+      if (p.fuelleRight && !cabRight) drawEndFuelle(x + w - 6);
+
+      // 6. Cabinas frontales aerodinámicas Tren Mitre (tren mitre 1.jfif y 2.jfif)
+      const drawEndCab = (dir) => {
+        ctx.save();
+        const noseEdgeX = dir === 1 ? x + w : x;
+        ctx.translate(noseEdgeX, y);
+        if (dir === -1) ctx.scale(-1, 1);
+
+        // Frente aerodinámico celeste inclinado (x local: -cabW .. +2)
+        const cabGrad = ctx.createLinearGradient(-cabW, 4, 2, 54);
+        cabGrad.addColorStop(0, '#38bdf8');
+        cabGrad.addColorStop(0.55, '#0ea5e9');
+        cabGrad.addColorStop(1, '#0284c7');
+        ctx.beginPath();
+        ctx.moveTo(-cabW, 2);
+        ctx.lineTo(-10, 2);
+        ctx.quadraticCurveTo(-2, 4, 1, 22);
+        ctx.lineTo(2, 56);
+        ctx.lineTo(-cabW, 56);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, cabGrad, '#090d16', 2.0);
+
+        // Contorno blanco en el frente y faldón inferior blanco "Trenes Argentinos"
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(-48, 39);
+        ctx.lineTo(1, 39);
+        ctx.lineTo(1, 56);
+        ctx.lineTo(-cabW, 56);
+        ctx.lineTo(-cabW, 41);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#0284c7';
+        ctx.font = 'bold 5.5px "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Trenes Argentinos', -28, 52);
+
+        // Visor LED superior de destino (M04 / RETIRO)
+        ctx.fillStyle = '#090d16';
+        ctx.beginPath();
+        ctx.roundRect(-42, 6, 30, 8.5, 2);
+        ctx.fill();
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 6.2px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.destCode || 'M04', -27, 12.6);
+
+        // Parabrisas amplio negro panorámico con reflejo diagonal y limpiaparabrisas
+        ctx.beginPath();
+        ctx.roundRect(-44, 16, 39, 19, 3.5);
+        SpriteBank.fillAndStroke(ctx, '#090d16', '#f8fafc', 1.5);
+        ctx.fillStyle = 'rgba(186, 230, 253, 0.28)';
+        ctx.beginPath();
+        ctx.moveTo(-40, 18);
+        ctx.lineTo(-22, 18);
+        ctx.lineTo(-40, 32);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-24, 34);
+        ctx.lineTo(-19, 22);
+        ctx.stroke();
+
+        // Ventanilla lateral del motorman
+        ctx.fillStyle = '#090d16';
+        ctx.beginPath();
+        ctx.roundRect(-60, 15, 13, 18, 2.5);
+        ctx.fill();
+
+        // Faros delanteros iluminados inclinados
+        ctx.fillStyle = '#e2e8f0';
+        ctx.strokeStyle = '#090d16';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(-14, 38, 12, 8, 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#fef9c3';
+        ctx.beginPath();
+        ctx.arc(-7, 42, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+        const beamGrad = ctx.createRadialGradient(-3, 42, 1, 14, 42, 24);
+        beamGrad.addColorStop(0, 'rgba(254, 249, 195, 0.55)');
+        beamGrad.addColorStop(1, 'rgba(254, 249, 195, 0)');
+        ctx.fillStyle = beamGrad;
+        ctx.beginPath();
+        ctx.arc(4, 42, 22, -0.5, 0.5);
+        ctx.lineTo(-3, 42);
+        ctx.closePath();
+        ctx.fill();
+
+        // Pollera negra aerodinámica inferior
+        ctx.fillStyle = '#090d16';
+        ctx.beginPath();
+        ctx.roundRect(-cabW, 56, cabW + 3, 18, 3);
+        ctx.fill();
+        ctx.fillStyle = '#1e293b';
+        ctx.fillRect(-cabW + 6, 58, cabW - 8, 4);
+
+        // Paragolpes / enganche amarillo característico en el morro bajo (tren mitre 1.jfif y 2.jfif)
+        ctx.beginPath();
+        ctx.roundRect(-6, 59, 11, 10, 2);
+        SpriteBank.fillAndStroke(ctx, '#facc15', '#090d16', 1.6);
+        ctx.fillStyle = '#ca8a04';
+        ctx.fillRect(-3, 62, 5, 4);
+
+        ctx.restore();
+      };
+
+      if (cabLeft) drawEndCab(-1);
+      if (cabRight) drawEndCab(1);
+
+      ctx.restore();
+    }
   }
+
+  SpriteBank.drawPeacockHD = function (...args) {
+    return SpriteBank.prototype.drawPeacockHD.apply(this, args);
+  };
+  SpriteBank.drawCrazyCyclistHD = function (...args) {
+    return SpriteBank.prototype.drawCrazyCyclistHD.apply(this, args);
+  };
 
   global.SpriteBank = SpriteBank;
 })(window);
