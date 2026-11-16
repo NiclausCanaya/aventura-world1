@@ -52,6 +52,17 @@
     );
   }
 
+  function isCountryTempLocked(countryOrCityKey) {
+    if (typeof global.isCountryLocked === 'function') {
+      return global.isCountryLocked(countryOrCityKey);
+    }
+    const flags = global.LOCKED_COUNTRIES || {};
+    const k = String(countryOrCityKey || '').trim().toLowerCase();
+    if (k === 'chile' || isChileCityTag(k)) return !!flags.chile;
+    if (k === 'venezuela') return !!flags.venezuela;
+    return false;
+  }
+
   function isSouthAmericaCityTag(tagOrKey) {
     const tag = toSlotCityTag(tagOrKey);
     return (
@@ -133,6 +144,7 @@
         lastPlayedZone: 1,
         highScore: 0,
         lives: 3,
+        hearts: 3,
         barcelonaFirstEntryDone: false,
         animatedPaths: {
           pathAnimated_barcelona_1: true
@@ -322,6 +334,8 @@
       base.barcelonaFirstEntryDone = !!(raw.barcelonaFirstEntryDone || hasAnyProgress);
       const rawLives = Number(raw.lives);
       base.lives = Number.isFinite(rawLives) && rawLives >= 1 ? Math.min(99, Math.floor(rawLives)) : 3;
+      const rawHearts = Number(raw.hearts);
+      base.hearts = Number.isFinite(rawHearts) && rawHearts >= 1 ? Math.max(1, Math.min(3, Math.floor(rawHearts))) : 3;
       const rawCityTag = toSlotCityTag(raw.lastPlayedCity || 'barcelona');
       if (base.unlockedCities.includes(rawCityTag)) {
         base.lastPlayedCity = rawCityTag;
@@ -560,6 +574,7 @@
     },
 
     isUnlocked(city) {
+      if (isCountryTempLocked(city)) return false;
       const d = this.ensure();
       if (city === 'chile') {
         const ch = d.cities.chile;
@@ -597,6 +612,7 @@
     },
 
     unlock(city) {
+      if (isCountryTempLocked(city)) return false;
       const defs = global.CITY_DEFS || {};
       const d = this.ensure();
       const c = d.cities[city];
@@ -782,7 +798,7 @@
           d.unlockedZones.buenosaires = [1];
         }
       }
-      if (city === 'ushuaia') {
+      if (city === 'ushuaia' && !isCountryTempLocked('chile')) {
         if (!Array.isArray(d.unlockedContinents)) d.unlockedContinents = ['spain'];
         if (!d.unlockedContinents.includes('chile')) d.unlockedContinents.push('chile');
         if (d.cities.chile) d.cities.chile.unlocked = true;
@@ -806,7 +822,7 @@
     isContinentUnlocked(continent = 'spain') {
       const norm = continent === 'southamerica' ? 'argentina' : continent;
       if (norm === 'spain') return true;
-      if (norm === 'venezuela') return false;
+      if (norm === 'venezuela' || isCountryTempLocked(norm)) return false;
       const d = this.ensure();
       const arr = Array.isArray(d.unlockedContinents) ? d.unlockedContinents : [];
       if (norm === 'argentina') {
@@ -826,6 +842,7 @@
       const d = this.ensure();
       if (!Array.isArray(d.unlockedContinents)) d.unlockedContinents = ['spain'];
       const norm = continent === 'southamerica' ? 'argentina' : continent;
+      if (isCountryTempLocked(norm)) return false;
       const already = this.isContinentUnlocked(norm);
       if (norm === 'argentina') {
         if (!d.unlockedContinents.includes('southamerica')) d.unlockedContinents.push('southamerica');
@@ -910,23 +927,27 @@
       }
     },
 
-    /** Desbloquea todos los países jugables (España, Argentina, Chile), sus ciudades y todas sus zonas. */
+    /** Desbloquea todos los países jugables (España, Argentina, y Chile cuando no esté bloqueado temporalmente). */
     unlockAllProgress() {
       const defs = global.CITY_DEFS || {};
       const d = this.ensure();
+      const chileLocked = isCountryTempLocked('chile');
       d.barcelonaFirstEntryDone = true;
       d.spainCompleted = true;
-      d.unlockedContinents = ['spain', 'southamerica', 'argentina', 'chile'];
+      d.unlockedContinents = chileLocked
+        ? ['spain', 'southamerica', 'argentina']
+        : ['spain', 'southamerica', 'argentina', 'chile'];
       if (!d.cities) d.cities = {};
       if (!d.unlockedZones) d.unlockedZones = {};
       if (!d.completedZones) d.completedZones = {};
       if (!d.animatedPaths || typeof d.animatedPaths !== 'object') d.animatedPaths = {};
 
-      if (!d.cities.chile) d.cities.chile = { unlocked: true, completed: false, maxLevel: 0 };
-      d.cities.chile.unlocked = true;
+      if (!d.cities.chile) d.cities.chile = { unlocked: false, completed: false, maxLevel: 0 };
+      if (!chileLocked) d.cities.chile.unlocked = true;
 
       CITY_TAGS.forEach((tag) => {
         const cityKey = fromSlotCityTag(tag);
+        if (isCountryTempLocked(cityKey)) return;
         const def = defs[cityKey];
         const maxZone = def && Array.isArray(def.levels) ? def.levels.length : 4;
         const allZones = Array.from({ length: maxZone }, (_, idx) => idx + 1);
@@ -943,14 +964,16 @@
       });
 
       Object.keys(defs).forEach((cityKey) => {
-        if (cityKey === 'venezuela') return;
+        if (cityKey === 'venezuela' || isCountryTempLocked(cityKey)) return;
         const maxZone = Array.isArray(defs[cityKey].levels) ? defs[cityKey].levels.length : 4;
         if (!d.cities[cityKey]) d.cities[cityKey] = { unlocked: true, completed: false, maxLevel: maxZone };
         d.cities[cityKey].unlocked = true;
         d.cities[cityKey].maxLevel = Math.max(d.cities[cityKey].maxLevel || 0, maxZone);
       });
 
-      d.unlockedCities = CITY_TAGS.slice();
+      d.unlockedCities = chileLocked
+        ? CITY_TAGS.filter((t) => !isChileCityTag(t))
+        : CITY_TAGS.slice();
       SaveSlots.syncUnlockedCitiesArray(d);
       this.save();
       return d;
@@ -1109,6 +1132,20 @@
       return clean;
     },
 
+    getHearts() {
+      const raw = Number(this.ensure().hearts);
+      return Number.isFinite(raw) && raw >= 1 ? Math.max(1, Math.min(3, Math.floor(raw))) : 3;
+    },
+
+    setHearts(val) {
+      const d = this.ensure();
+      const raw = Number(val);
+      const clean = Number.isFinite(raw) && raw >= 1 ? Math.max(1, Math.min(3, Math.floor(raw))) : 3;
+      d.hearts = clean;
+      this.save();
+      return clean;
+    },
+
     recordLevelScore(city, levelNum, levelScore) {
       const d = this.ensure();
       const clean = Math.max(0, Math.floor(Number(levelScore) || 0));
@@ -1161,7 +1198,7 @@
     spain: { x: 522, y: 200, label: 'Europa', hidden: false },
     argentina: { x: 334, y: 392, label: 'Argentina', hidden: true },
     chile: { x: 294, y: 388, label: 'Chile', hidden: true },
-    venezuela: { x: 312, y: 292, label: '???', locked: true, hidden: true }
+    venezuela: { x: 312, y: 292, label: '?????', locked: true, hidden: true }
   };
 
   // Strictly sequential world flight graph: España ↔ Argentina ↔ Chile ↔ Venezuela
@@ -2118,9 +2155,9 @@
       this.resetConfirmOpen = false;
       this.resetConfirmCursor = 1;
       this.worldNode = 'spain';
-      if (opts.level === 'city') {
+      if (opts.level === 'city' && !isCountryTempLocked(opts.cursorCity)) {
         this.level = 'city';
-      } else if (opts.level === 'chile') {
+      } else if (opts.level === 'chile' && !isCountryTempLocked('chile')) {
         this.level = 'chile';
       } else if (opts.level === 'southamerica') {
         this.level = 'southamerica';
@@ -2966,14 +3003,16 @@
         if (this.worldNode === 'spain') {
           this.startZoom('in', 'world', 'spain');
         } else if (this.worldNode === 'chile') {
-          if (WorldProgress.isContinentUnlocked('chile')) {
+          if (isCountryTempLocked('chile')) {
+            this.denyNode('world:chile', WORLD_NODES.chile, '🔒 Chile · Próximamente');
+          } else if (WorldProgress.isContinentUnlocked('chile')) {
             WorldProgress.unlock('chile_santiago');
             this.startZoom('in', 'world', 'chile');
           } else {
             this.denyNode('world:chile', WORLD_NODES.chile, '🔒 Completa Ushuaia en Argentina');
           }
         } else if (this.worldNode === 'venezuela') {
-          this.denyNode('world:venezuela', WORLD_NODES.venezuela, '🔒 Próximamente - En desarrollo');
+          this.denyNode('world:venezuela', WORLD_NODES.venezuela, '🔒 ?????');
         } else if (WorldProgress.isContinentUnlocked('argentina')) {
           WorldProgress.unlock('buenosaires');
           this.startZoom('in', 'world', 'southamerica');
@@ -3253,11 +3292,18 @@
         if (hitKey) {
           const n = WORLD_NODES[hitKey];
           if (hitKey === 'venezuela') {
-            this.denyNode('world:venezuela', n, '🔒 Próximamente - En desarrollo');
+            this.worldNode = 'venezuela';
+            this.denyNode('world:venezuela', n, '🔒 ?????');
+          } else if (hitKey === 'chile' && isCountryTempLocked('chile')) {
+            this.worldNode = 'chile';
+            this.denyNode('world:chile', n, '🔒 Chile · Próximamente');
           } else if (this.worldNode === hitKey) {
             this.confirm();
           } else if (WorldProgress.isContinentUnlocked(hitKey)) {
-            this.startWorldFlight(this.worldNode, hitKey);
+            const fromKey = WorldProgress.isContinentUnlocked(this.worldNode)
+              ? this.worldNode
+              : (WorldProgress.isContinentUnlocked('argentina') ? 'argentina' : 'spain');
+            this.startWorldFlight(fromKey, hitKey);
           } else {
             this.worldNode = hitKey;
             const msg = hitKey === 'chile'
@@ -3513,7 +3559,15 @@
             }
           }
           if (bestKey && bestKey !== this.worldNode) {
-            this.startWorldFlight(this.worldNode, bestKey);
+            const fromFlightKey = WorldProgress.isContinentUnlocked(curKey)
+              ? curKey
+              : (saUnlocked && (curKey === 'chile' || curKey === 'venezuela') ? 'argentina' : 'spain');
+            if (bestKey === fromFlightKey) {
+              this.worldNode = bestKey;
+              this.game.sound.menuSelect();
+            } else {
+              this.startWorldFlight(fromFlightKey, bestKey);
+            }
           }
         }
       }
@@ -3555,7 +3609,10 @@
         }
       } else {
         const curKey = WORLD_NODES[this.worldNode] ? this.worldNode : 'spain';
-        const standingKey = saUnlocked && WorldProgress.isContinentUnlocked(curKey) ? curKey : 'spain';
+        const standingKey =
+          saUnlocked && WorldProgress.isContinentUnlocked(curKey)
+            ? curKey
+            : (saUnlocked && (curKey === 'chile' || curKey === 'venezuela') ? 'argentina' : 'spain');
         const dest = WORLD_NODES[standingKey] || WORLD_NODES.spain;
         const dx = dest.x - this.tina.x;
         this.tina.moving = Math.hypot(dx, dest.y - this.tina.y) > 3;
@@ -4145,18 +4202,21 @@
         radius: 13
       });
 
+      const chileTempLocked = isCountryTempLocked('chile');
+      const chileUiUnlocked = !chileTempLocked && chileUnlocked;
       const chileDone =
+        chileUiUnlocked &&
         WorldProgress.isCityCompleted('chile_santiago') &&
         WorldProgress.isCityCompleted('chile_vina') &&
         WorldProgress.isCityCompleted('chile_atacama') &&
         WorldProgress.isCityCompleted('chile_pascua');
       this.drawNode(ctx, chileNode.x + chShake, chileNode.y, {
-        locked: !chileUnlocked,
+        locked: !chileUiUnlocked,
         completed: chileDone,
-        number: chileUnlocked ? '🇨🇱' : '🔒',
+        number: chileUiUnlocked ? '🇨🇱' : '🔒',
         selected: showUi && this.worldNode === 'chile',
-        label: zoom < 1.6 ? (chileUnlocked ? (chileDone ? 'CHILE (100%)' : 'CHILE') : '???') : null,
-        sublabel: zoom < 1.6 ? (chileUnlocked ? 'Santiago • Viña • Atacama • Pascua' : 'Completa Ushuaia') : null,
+        label: zoom < 1.6 ? (chileTempLocked ? 'CHILE' : (chileUiUnlocked ? (chileDone ? 'CHILE (100%)' : 'CHILE') : '???')) : null,
+        sublabel: zoom < 1.6 ? (chileTempLocked ? 'PRÓXIMAMENTE' : (chileUiUnlocked ? 'Santiago • Viña • Atacama • Pascua' : 'Completa Ushuaia')) : null,
         labelDx: -68,
         labelDy: -8,
         fxT: chFx,
@@ -4168,9 +4228,9 @@
         completed: false,
         number: '🔒',
         selected: showUi && this.worldNode === 'venezuela',
-        label: zoom < 1.6 ? 'VENEZUELA (???)' : null,
-        sublabel: zoom < 1.6 ? 'PRÓXIMAMENTE' : null,
-        labelDy: -64,
+        label: zoom < 1.6 ? '?????' : null,
+        sublabel: null,
+        labelDy: -56,
         radius: 11
       });
 
@@ -5744,7 +5804,11 @@
           line1 = 'España • BCN - Madrid - Palma - Canarias';
           line2 = isTouch ? 'SALTAR: entrar a Europa' : 'ENTER: entrar a Europa (zoom)';
         } else if (this.worldNode === 'chile') {
-          if (WorldProgress.isContinentUnlocked('chile')) {
+          if (isCountryTempLocked('chile')) {
+            title = '🇨🇱 Chile (Próximamente)';
+            line1 = '🔒 Próximamente';
+            line2 = 'Destino en preparación';
+          } else if (WorldProgress.isContinentUnlocked('chile')) {
             const chDone =
               WorldProgress.isCityCompleted('chile_santiago') &&
               WorldProgress.isCityCompleted('chile_vina') &&
@@ -5759,9 +5823,9 @@
             line2 = 'Completa Ushuaia en Argentina';
           }
         } else if (this.worldNode === 'venezuela') {
-          title = '🇻🇪 ??? (Próximamente)';
-          line1 = '🔒 Destino en desarrollo';
-          line2 = 'Próxima gran expansión del viaje';
+          title = '🔒 ?????';
+          line1 = '?????';
+          line2 = 'Destino misterioso por descubrir';
         } else if (WorldProgress.isContinentUnlocked('argentina')) {
           const argDone =
             WorldProgress.isCityCompleted('buenosaires') &&
