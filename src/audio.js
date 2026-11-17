@@ -1248,6 +1248,144 @@
       this.playDoubleBarkSample(0.78);
     }
 
+    // --- Reliquias Coleccionables, Ultimate Biplano de La Tina y Bonus Frenético ---
+    relicPickup() {
+      if (this.muted || this.sfxSetting <= 0.005) return;
+      if (!this.ensureRunning()) return;
+      const notes = [1046.50, 1318.51, 1567.98, 1975.53, 2093.00]; // C6 -> E6 -> G6 -> B6 -> C7
+      const prevBus = this._activeMusicBus;
+      this._activeMusicBus = this.getSfxBus() || this.getBus();
+      try {
+        notes.forEach((freq, i) => {
+          const d = i * 0.058;
+          const isFinal = i === notes.length - 1;
+          this.playTone(freq, 'triangle', isFinal ? 0.44 : 0.16, isFinal ? 0.19 : 0.15, null, d);
+          this.playTone(freq * 1.5, 'sine', isFinal ? 0.36 : 0.12, 0.06, freq * 1.515, d + 0.008);
+          this.playTone(freq * 2.0, 'sine', isFinal ? 0.46 : 0.11, 0.05, null, d + 0.014);
+          if (i === 0 || i === 2 || isFinal) {
+            this.playBrassNote(freq * 0.5, isFinal ? 0.48 : 0.14, isFinal ? 0.075 : 0.05, d);
+          }
+        });
+        this.playTone(2637.02, 'sine', 0.38, 0.045, null, 0.25);
+        this.playTone(3135.96, 'sine', 0.42, 0.038, null, 0.27);
+      } finally {
+        this._activeMusicBus = prevBus || null;
+      }
+    }
+
+    tinaUltimateLaunch() {
+      if (this.muted || this.sfxSetting <= 0.005) return;
+      this.ensureRunning();
+      const prevBus = this._activeMusicBus;
+      this._activeMusicBus = this.getSfxBus() || this.getBus();
+      try {
+        if (this.ctx) {
+          // Heroic short fanfare flourish + brass launch chord
+          const flourish = [
+            { f: 523.25, d: 0.11, t: 0.00, v: 0.10 },
+            { f: 659.25, d: 0.11, t: 0.065, v: 0.10 },
+            { f: 783.99, d: 0.12, t: 0.13, v: 0.11 },
+            { f: 1046.50, d: 0.34, t: 0.19, v: 0.12 }
+          ];
+          flourish.forEach((n) => this.playBrassNote(n.f, n.d, n.v, n.t));
+          [261.63, 392.00, 523.25, 659.25].forEach((cf) => {
+            this.playBrassNote(cf, 0.36, 0.065, 0.19);
+          });
+          this.playTone(220, 'triangle', 0.26, 0.12, 660, 0);
+          this.playNoise(0.18, 0.09, 2200, 0.02);
+        }
+      } finally {
+        this._activeMusicBus = prevBus || null;
+      }
+      this.playDoubleBarkSample(0.95);
+    }
+
+    biplaneBombDrop() {
+      if (this.muted || this.sfxSetting <= 0.005) return;
+      if (!this.ensureRunning()) return;
+      // Classic Worms-style falling whistle (~980Hz -> ~340Hz over 0.35s)
+      this.playTone(980, 'sine', 0.35, 0.14, 340, 0);
+      this.playTone(1960, 'sine', 0.24, 0.025, 680, 0.01);
+    }
+
+    biplaneBombExplosion() {
+      if (this.muted || this.sfxSetting <= 0.005) return;
+      if (!this.ensureRunning()) return;
+      const bus = this.getSfxBus() || this.getBus();
+      if (!bus || !this.ctx) return;
+
+      const now = this.ctx.currentTime;
+
+      // 1. Punchy deep bass boom (sine + triangle 120Hz -> 34Hz)
+      const subOsc = this.ctx.createOscillator();
+      const subGain = this.ctx.createGain();
+      subOsc.type = 'sine';
+      subOsc.frequency.setValueAtTime(120, now);
+      subOsc.frequency.exponentialRampToValueAtTime(34, now + 0.34);
+      subGain.gain.setValueAtTime(0.001, now);
+      subGain.gain.linearRampToValueAtTime(0.28, now + 0.009);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
+      subOsc.connect(subGain);
+      subGain.connect(bus);
+      subOsc.start(now);
+      subOsc.stop(now + 0.40);
+
+      const punchOsc = this.ctx.createOscillator();
+      const punchGain = this.ctx.createGain();
+      punchOsc.type = 'triangle';
+      punchOsc.frequency.setValueAtTime(116, now);
+      punchOsc.frequency.exponentialRampToValueAtTime(34, now + 0.24);
+      punchGain.gain.setValueAtTime(0.001, now);
+      punchGain.gain.linearRampToValueAtTime(0.18, now + 0.007);
+      punchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
+      punchOsc.connect(punchGain);
+      punchGain.connect(bus);
+      punchOsc.start(now);
+      punchOsc.stop(now + 0.28);
+
+      // 2. Short lowpass-filtered noise burst for controlled blast crunch
+      const dur = 0.28;
+      const len = Math.max(128, Math.floor(this.ctx.sampleRate * dur));
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.32));
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buf;
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(980, now);
+      filter.frequency.exponentialRampToValueAtTime(175, now + dur);
+      filter.Q.setValueAtTime(0.85, now);
+
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.001, now);
+      nGain.gain.linearRampToValueAtTime(0.24, now + 0.008);
+      nGain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(bus);
+      noise.start(now);
+      noise.stop(now + dur + 0.02);
+    }
+
+    secretBonusEscape() {
+      if (this.muted || this.sfxSetting <= 0.005) return;
+      if (!this.ensureRunning()) return;
+      // Upbeat gentle arcade warp-out arpeggio (bright, positive, never punitive)
+      const arp = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98, 2093.00];
+      arp.forEach((f, i) => {
+        const d = i * 0.052;
+        const isLast = i === arp.length - 1;
+        this.playTone(f, 'sine', isLast ? 0.36 : 0.14, isLast ? 0.16 : 0.13, isLast ? f * 1.03 : null, d);
+        this.playTone(f * 0.5, 'triangle', isLast ? 0.28 : 0.11, 0.06, null, d);
+      });
+      this.playNoise(0.18, 0.045, 2600, 0.04);
+    }
+
     // --- Impacto de Proyectil / Eliminación ---
     electricZap() {
       this.playTone(880, 'sawtooth', 0.09, 0.16, 210, 0);
@@ -2042,14 +2180,30 @@
     }
 
     gameOver() {
-      const notes = [
-        { f: 392.0, d: 0.2, t: 0.0 },
-        { f: 369.99, d: 0.2, t: 0.22 },
-        { f: 349.23, d: 0.2, t: 0.44 },
-        { f: 329.63, d: 0.55, t: 0.66 }
+      // Melodía dramática de derrota estilo arcade 16-bit (solista descendente + bajo + acorde menor)
+      const leadNotes = [
+        { f: 392.0, d: 0.22, t: 0.0, type: 'sawtooth', g: 0.14 },
+        { f: 369.99, d: 0.22, t: 0.22, type: 'sawtooth', g: 0.13 },
+        { f: 349.23, d: 0.22, t: 0.44, type: 'sawtooth', g: 0.13 },
+        { f: 329.63, d: 0.30, t: 0.66, type: 'square', g: 0.12 },
+        { f: 293.66, d: 0.24, t: 0.94, type: 'sawtooth', g: 0.12 },
+        { f: 261.63, d: 0.72, t: 1.18, type: 'sawtooth', g: 0.14 }
       ];
-      notes.forEach((n) => {
-        this.playTone(n.f, 'sawtooth', n.d, 0.13, n.f * 0.96, n.t);
+      leadNotes.forEach((n) => {
+        this.playTone(n.f, n.type, n.d, n.g, n.f * 0.96, n.t);
+      });
+      const bassNotes = [
+        { f: 130.81, d: 0.42, t: 0.0 },
+        { f: 116.54, d: 0.42, t: 0.44 },
+        { f: 98.0, d: 0.26, t: 0.94 },
+        { f: 65.41, d: 0.78, t: 1.18 }
+      ];
+      bassNotes.forEach((b) => {
+        this.playTone(b.f, 'triangle', b.d, 0.18, b.f * 0.98, b.t);
+      });
+      // Acorde menor final cálido 16-bit
+      [196.0, 233.08, 311.13].forEach((cf) => {
+        this.playTone(cf, 'triangle', 0.65, 0.075, cf * 0.985, 1.18);
       });
     }
 
@@ -3008,6 +3162,129 @@
       }
     }
 
+    stepBonusTheme(theme, step) {
+      const pitchMod = this.hurryUp ? 1.05946 : 1.0;
+      const pos = step % 16;
+      const bar = Math.floor(step / 16) % 4;
+
+      if (theme === 'bonus_ibiza') {
+        // Bonus Frenético Ibiza (~150 BPM): Balearic sunset Dorian/pentatonic arpeggios + bouncy bass + crisp hats
+        const bars = [
+          {
+            bass: 146.83, // D3 (Dm9 / Fmaj7 sunset vibe)
+            pad: [293.66, 349.23, 440.0, 523.25],
+            arp: [587.33, 659.25, 783.99, 880.0, 1046.5, 880.0, 783.99, 659.25, 587.33, 783.99, 880.0, 1046.5, 1174.66, 1046.5, 880.0, 783.99]
+          },
+          {
+            bass: 98.0, // G2 (G13)
+            pad: [246.94, 293.66, 349.23, 440.0],
+            arp: [587.33, 659.25, 783.99, 987.77, 1174.66, 987.77, 783.99, 659.25, 587.33, 783.99, 987.77, 1174.66, 1318.51, 1174.66, 987.77, 880.0]
+          },
+          {
+            bass: 130.81, // C3 (Cmaj9)
+            pad: [261.63, 329.63, 392.0, 493.88],
+            arp: [523.25, 659.25, 783.99, 987.77, 1046.5, 987.77, 783.99, 659.25, 523.25, 659.25, 783.99, 1046.5, 1174.66, 1046.5, 987.77, 783.99]
+          },
+          {
+            bass: 110.0, // A2 (Am7 -> Cmaj7/A)
+            pad: [220.0, 293.66, 329.63, 392.0],
+            arp: [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 880.0, 783.99, 659.25, 783.99, 880.0, 1046.5, 1318.51, 1174.66, 1046.5, 880.0]
+          }
+        ];
+        const cur = bars[bar];
+
+        // Four-on-the-floor Balearic kick + crisp hi-hat ticks + snappy offbeat clap
+        if (pos % 4 === 0) this.playElectronicKick(0.18, 128, 42);
+        if (pos % 4 === 2) {
+          this.playFilteredNoise(0.052, 0.044, 'highpass', 6400);
+        } else if (pos % 2 === 1) {
+          this.playFilteredNoise(0.022, 0.024, 'highpass', 7800);
+        }
+        if (pos === 4 || pos === 12) {
+          this.playFilteredNoise(0.072, 0.062, 'bandpass', 2500);
+        }
+
+        // Bouncy octave bassline
+        if (pos === 0 || pos === 6 || pos === 8 || pos === 12) {
+          this.playLevelVoice(cur.bass * 0.5 * pitchMod, 'triangle', 0.14, 0.098, 0.006, 740, 0);
+        } else if (pos === 2 || pos === 10 || pos === 14) {
+          this.playLevelVoice(cur.bass * pitchMod, 'triangle', 0.11, 0.078, 0.006, 1020, 0);
+        }
+
+        // Warm sunset pad swell on bar downbeat
+        if (pos === 0) {
+          cur.pad.forEach((pf, idx) => {
+            this.playLevelVoice(pf * pitchMod, 'sine', 0.85, 0.024, 0.08, 1200, idx * 0.015);
+          });
+        }
+
+        // Driving Balearic 16th-note sunset arpeggio
+        const af = cur.arp[pos];
+        if (af > 0) {
+          this.playLevelVoice(af * pitchMod, pos % 2 === 0 ? 'triangle' : 'sine', 0.13, 0.058, 0.004, 3400, 0);
+          if (pos % 4 === 0) {
+            this.playLevelVoice(af * 1.5 * pitchMod, 'sine', 0.09, 0.024, 0.004, 4200, 0);
+          }
+        }
+        return;
+      }
+
+      if (theme === 'bonus_iguazu') {
+        // Bonus Frenético Iguazú (~153 BPM): Jungle marimba pulse + syncopated samba/chamamé bass + carnival ticks
+        const bars = [
+          {
+            bassRoot: 98.0,   // G2
+            bassFifth: 146.83, // D3
+            marimba: [783.99, 987.77, 1174.66, 0, 987.77, 1174.66, 1318.51, 1174.66, 987.77, 0, 1174.66, 987.77, 783.99, 987.77, 1174.66, 0]
+          },
+          {
+            bassRoot: 130.81, // C3
+            bassFifth: 98.0,  // G2
+            marimba: [1046.5, 1318.51, 1567.98, 0, 1318.51, 1567.98, 1318.51, 1046.5, 880.0, 0, 1046.5, 1318.51, 1567.98, 1318.51, 1046.5, 0]
+          },
+          {
+            bassRoot: 87.31,  // F2
+            bassFifth: 130.81, // C3
+            marimba: [880.0, 1046.5, 1318.51, 0, 1174.66, 1046.5, 880.0, 1046.5, 1174.66, 0, 1046.5, 880.0, 698.46, 880.0, 1046.5, 0]
+          },
+          {
+            bassRoot: 146.83, // D3
+            bassFifth: 110.0, // A2
+            marimba: [1174.66, 987.77, 880.0, 0, 1174.66, 1479.98, 1318.51, 1174.66, 987.77, 0, 1174.66, 1318.51, 1567.98, 1479.98, 1174.66, 0]
+          }
+        ];
+        const cur = bars[bar];
+
+        // Surdo / samba-chamamé kick + carnival shaker + clave/agogô ticks
+        if (pos === 0) this.playElectronicKick(0.14, 108, 42);
+        if (pos === 8 || pos === 14) this.playElectronicKick(0.18, 128, 44);
+        this.playFilteredNoise(0.022, pos % 4 === 0 ? 0.036 : 0.020, 'highpass', 6200);
+        if (pos === 2 || pos === 5 || pos === 8 || pos === 11 || pos === 14) {
+          this.playFilteredNoise(0.030, 0.052, 'bandpass', 3200);
+        }
+        if (pos === 2 || pos === 10) {
+          this.playLevelVoice(1567.98 * pitchMod, 'sine', 0.048, 0.032, 0.002, 4200, 0);
+        }
+
+        // Syncopated samba/chamamé bass
+        if (pos === 0 || pos === 8) {
+          this.playLevelVoice(cur.bassRoot * pitchMod, 'triangle', 0.16, 0.105, 0.005, 780, 0);
+        } else if (pos === 6 || pos === 12) {
+          this.playLevelVoice(cur.bassFifth * pitchMod, 'triangle', 0.14, 0.088, 0.005, 860, 0);
+        }
+
+        // Tropical jungle marimba pulse (sine body + crisp woody triangle attack)
+        const mf = cur.marimba[pos];
+        if (mf > 0) {
+          this.playLevelVoice(mf * pitchMod, 'sine', 0.13, 0.068, 0.003, 3400, 0);
+          this.playLevelVoice(mf * pitchMod, 'triangle', 0.08, 0.044, 0.003, 2800, 0);
+          if (pos === 0 || pos === 6 || pos === 10) {
+            this.playLevelVoice(mf * 1.25 * pitchMod, 'sine', 0.11, 0.032, 0.004, 3200, 0);
+          }
+        }
+      }
+    }
+
     normalizeCityTrackKey(cityKey) {
       if (!cityKey) return null;
       const key = String(cityKey).toLowerCase();
@@ -3053,6 +3330,7 @@
     }
 
     resolveMusicTracks(theme = 'level', meta = null) {
+      if (theme === 'bonus_ibiza' || theme === 'bonus_iguazu') return [];
       if (meta && meta.bgmTrack) {
         const direct = this.normalizeTrackList(meta.bgmTrack);
         if (direct.length > 0) return direct;
@@ -3175,15 +3453,27 @@
         return;
       }
       this.stopMenuMusic();
-      const resolvedMeta = this.resolveLevelMusicMeta(theme, meta);
+      const metaObj = meta && typeof meta === 'object' ? meta : null;
+      const explicitHurry = typeof meta === 'boolean'
+        ? meta
+        : (metaObj && typeof metaObj.hurry === 'boolean' ? metaObj.hurry : null);
+      const isBonusSynth = theme === 'bonus_ibiza' || theme === 'bonus_iguazu';
+      const resolvedMeta = isBonusSynth ? null : this.resolveLevelMusicMeta(theme, metaObj);
       const slotKey = resolvedMeta ? `${resolvedMeta.cityKey}:${resolvedMeta.zoneNum}` : String(theme || 'level');
       this.musicTheme = theme;
       this._activeLevelMeta = resolvedMeta;
 
-      if (this.muted) return;
+      if (this.muted) {
+        if (explicitHurry !== null) {
+          this.hurryUp = explicitHurry;
+          this.tempoMultiplier = explicitHurry ? (isBonusSynth ? 1.18 : 1.35) : 1.0;
+        }
+        return;
+      }
 
-      const levelTracks = this.resolveMusicTracks(theme, resolvedMeta);
-      if (this.musicPlaying && !this.musicPaused) {
+      const levelTracks = isBonusSynth ? [] : this.resolveMusicTracks(theme, resolvedMeta);
+      const hurryMatches = explicitHurry === null || explicitHurry === this.hurryUp;
+      if (this.musicPlaying && !this.musicPaused && hurryMatches) {
         if (this.bgmAudio && !this.bgmAudio.paused && this._activeLevelSlotKey === slotKey && this.activeMusicTheme === theme) {
           return;
         }
@@ -3193,9 +3483,13 @@
         }
       }
 
+      const preservedHurry = this._preservingHurry ? this.hurryUp : false;
       if (this.musicPlaying || this.musicTimer || this.bgmAudio || this.bgmBus) {
         this.stopMusic();
       }
+      const nextHurry = explicitHurry !== null ? explicitHurry : preservedHurry;
+      this.hurryUp = nextHurry;
+      this.tempoMultiplier = nextHurry ? (isBonusSynth ? 1.18 : 1.35) : 1.0;
       this.musicTheme = theme;
       this._activeLevelMeta = resolvedMeta;
       this._activeLevelSlotKey = slotKey;
@@ -3348,7 +3642,9 @@
         es_barcelona: 128,
         es_madrid: 132,
         es_palma: 195,
-        es_canarias: 108
+        es_canarias: 108,
+        bonus_ibiza: 100,   // ~150 BPM 16th steps (Bonus Frenético Ibiza)
+        bonus_iguazu: 98    // ~153 BPM 16th steps (Bonus Frenético Iguazú)
       };
       const isRegionalTheme = typeof theme === 'string' && Object.prototype.hasOwnProperty.call(themedStepMap, theme);
       this.activeMusicTheme = theme;
@@ -3362,7 +3658,9 @@
         try { bgmBus.gain.setValueAtTime(this.muted ? 0 : this.bgmSetting, this.ctx.currentTime); } catch (e) {}
       }
       const baseStepDuration = isRegionalTheme ? themedStepMap[theme] : (isMap ? 190 : 155);
-      const stepDurationMs = Math.round(baseStepDuration / (this.hurryUp ? 1.35 : 1.0));
+      const isBonusSynth = theme === 'bonus_ibiza' || theme === 'bonus_iguazu';
+      const hurryDiv = isBonusSynth ? 1.18 : 1.35;
+      const stepDurationMs = Math.round(baseStepDuration / (this.hurryUp ? hurryDiv : 1.0));
 
       const triggerLevelStep = () => {
         if (this.muted || !this.musicPlaying || this.musicPaused) return;
@@ -3384,6 +3682,8 @@
               this.stepUshuaiaTheme(theme, this.stepIndex);
             } else if (theme.indexOf('ch_') === 0) {
               this.stepChileTheme(theme, this.stepIndex);
+            } else if (theme.indexOf('bonus_') === 0) {
+              this.stepBonusTheme(theme, this.stepIndex);
             } else {
               this.stepSpainTheme(theme, this.stepIndex);
             }
@@ -3428,7 +3728,8 @@
     setHurryUp(hurry = true) {
       if (this.hurryUp === hurry) return;
       this.hurryUp = hurry;
-      this.tempoMultiplier = hurry ? 1.35 : 1.0;
+      const isBonusSynth = this.activeMusicTheme === 'bonus_ibiza' || this.activeMusicTheme === 'bonus_iguazu';
+      this.tempoMultiplier = hurry ? (isBonusSynth ? 1.18 : 1.35) : 1.0;
       if (this.bgmAudio) {
         try {
           this.bgmAudio.playbackRate = hurry ? 1.18 : 1.0;
@@ -3443,7 +3744,12 @@
           clearInterval(this.musicTimer);
           this.musicTimer = null;
         }
-        this.startMusic(theme, meta);
+        this._preservingHurry = true;
+        try {
+          this.startMusic(theme, meta);
+        } finally {
+          this._preservingHurry = false;
+        }
         this.stepIndex = currentStep;
       }
     }

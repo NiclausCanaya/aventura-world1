@@ -29,6 +29,7 @@
     { key: 'jump', label: 'Saltar' },
     { key: 'shoot', label: 'Planta (Disparo)' },
     { key: 'tina', label: 'La Tina' },
+    { key: 'tinaUltimate', label: 'Definitiva La Tina (Bombardeo)' },
     { key: 'skill', label: 'Habilidad Especial' },
     { key: 'reserve', label: 'Intercambio Reserva' }
   ];
@@ -44,7 +45,8 @@
       shoot: 'KeyZ',
       tina: 'KeyX',
       skill: 'KeyC',
-      reserve: 'ShiftLeft'
+      reserve: 'ShiftLeft',
+      tinaUltimate: 'KeyA'
     },
     preset_b: {
       profile: 'preset_b',
@@ -56,7 +58,8 @@
       shoot: 'KeyD',
       tina: 'KeyS',
       skill: 'KeyA',
-      reserve: 'ShiftLeft'
+      reserve: 'ShiftLeft',
+      tinaUltimate: 'KeyQ'
     }
   };
 
@@ -103,7 +106,8 @@
         right: false,
         up: false,
         down: false,
-        jumpHeld: false
+        jumpHeld: false,
+        tinaUltimate: false
       };
       this.controlScheme = this.loadControlScheme();
       this.heldJumpKeys = {
@@ -124,6 +128,8 @@
         jump: false,
         skillPressed: false,
         tinaPressed: false,
+        tinaUltimatePressed: false,
+        tinaUltimate: false,
         shootPressed: false,
         reservePressed: false,
         shiftHeld: false
@@ -145,7 +151,12 @@
             : DEFAULT_CONTROL_PRESET;
         if (prof === 'preset_b') {
           const pb = clonePreset('preset_b');
-          if (parsed.shoot !== pb.shoot || parsed.skill !== pb.skill || parsed.tina !== pb.tina) {
+          if (
+            parsed.shoot !== pb.shoot ||
+            parsed.skill !== pb.skill ||
+            parsed.tina !== pb.tina ||
+            parsed.tinaUltimate !== pb.tinaUltimate
+          ) {
             try {
               localStorage.setItem(CONTROL_STORAGE_KEY, JSON.stringify(pb));
             } catch (e) {}
@@ -157,11 +168,13 @@
         const custom = clonePreset(DEFAULT_CONTROL_PRESET);
         custom.profile = 'custom';
         const used = new Set();
+        const hasTinaUltimate = Object.prototype.hasOwnProperty.call(parsed, 'tinaUltimate');
         for (let i = 0; i < MAPPABLE_ACTIONS.length; i++) {
           const k = MAPPABLE_ACTIONS[i].key;
+          if (k === 'tinaUltimate' && !hasTinaUltimate) continue;
           const val = parsed[k];
-          if (val === null) {
-            custom[k] = null;
+          if (val === null || val === '') {
+            custom[k] = val === '' ? '' : null;
           } else if (typeof val === 'string' && val.trim()) {
             const norm = val === ' ' ? 'Space' : val.trim();
             if (!used.has(norm)) {
@@ -170,6 +183,23 @@
             } else {
               custom[k] = null;
             }
+          } else if (k !== 'tinaUltimate' && custom[k]) {
+            if (!used.has(custom[k])) {
+              used.add(custom[k]);
+            } else {
+              custom[k] = null;
+            }
+          }
+        }
+        if (!hasTinaUltimate) {
+          if (!used.has('KeyQ')) {
+            custom.tinaUltimate = 'KeyQ';
+            used.add('KeyQ');
+          } else if (!used.has('KeyA')) {
+            custom.tinaUltimate = 'KeyA';
+            used.add('KeyA');
+          } else {
+            custom.tinaUltimate = '';
           }
         }
         return custom;
@@ -247,6 +277,7 @@
       const code = scheme[actionKey];
       const kbDown = Boolean(code && this.heldCodes.has(code));
       if (actionKey === 'jump') return kbDown || !!this.touchState.jumpHeld;
+      if (actionKey === 'tinaUltimate') return kbDown || !!this.touchState.tinaUltimate;
       if (actionKey === 'left' || actionKey === 'right' || actionKey === 'up' || actionKey === 'down') {
         return kbDown || !!this.touchState[actionKey];
       }
@@ -269,6 +300,7 @@
       s.up = this.isActionDown('up');
       s.down = this.isActionDown('down');
       s.jumpHeld = this.isActionDown('jump');
+      s.tinaUltimate = this.isActionDown('tinaUltimate');
     }
 
     formatKeyCode(code, compact = false) {
@@ -282,6 +314,7 @@
       this.touchState.up = false;
       this.touchState.down = false;
       this.touchState.jumpHeld = false;
+      this.touchState.tinaUltimate = false;
       this.heldJumpKeys = {
         ArrowUp: false,
         Space: false
@@ -300,6 +333,8 @@
       s.downPressed = false;
       s.skillPressed = false;
       s.tinaPressed = false;
+      s.tinaUltimatePressed = false;
+      s.tinaUltimate = false;
       s.shootPressed = false;
       s.reservePressed = false;
       s.shiftHeld = false;
@@ -331,6 +366,7 @@
       s.downPressed = false;
       s.skillPressed = false;
       s.tinaPressed = false;
+      s.tinaUltimatePressed = false;
       s.shootPressed = false;
       s.reservePressed = false;
     }
@@ -443,6 +479,40 @@
           e.preventDefault();
         }
 
+        const isConfirm = code === 'Enter' || code === 'Space';
+        const isBackOrQuit = code === 'Backspace' || code === 'KeyQ';
+
+        // 0. Portada Inicial de Un Toque (cualquier tecla excepto F11 y modificadores solos)
+        if (game.state === 'splash') {
+          if (code === 'F11' || e.key === 'F11') {
+            return;
+          }
+          const isModifierKey =
+            code === 'ShiftLeft' ||
+            code === 'ShiftRight' ||
+            code === 'ControlLeft' ||
+            code === 'ControlRight' ||
+            code === 'AltLeft' ||
+            code === 'AltRight' ||
+            code === 'MetaLeft' ||
+            code === 'MetaRight' ||
+            code === 'CapsLock' ||
+            code === 'NumLock' ||
+            code === 'ScrollLock' ||
+            e.key === 'Shift' ||
+            e.key === 'Control' ||
+            e.key === 'Alt' ||
+            e.key === 'Meta' ||
+            e.key === 'AltGraph';
+          if (isConfirm || code === 'Escape' || code.startsWith('Arrow')) {
+            e.preventDefault();
+          }
+          if (!isModifierKey && !e.repeat && typeof game.enterMenuFromSplash === 'function') {
+            game.enterMenuFromSplash();
+          }
+          return;
+        }
+
         // Silencio rápido de sistema [M] (excepto al escribir iniciales Arcade, si KeyM está reasignada o si completa el truco OVNI)
         const typingArcadeInitials =
           game.state === 'gameover' && game.gameOverPhase === 'initials';
@@ -472,32 +542,6 @@
           !mTypingGhostCheat
         ) {
           game.sound.toggleMute();
-          return;
-        }
-
-        const isConfirm = code === 'Enter' || code === 'Space';
-        const isBackOrQuit = code === 'Backspace' || code === 'KeyQ';
-
-        // 0. Portada Inicial de Un Toque (desbloquea audio + jingle + música del Menú Principal)
-        if (game.state === 'splash') {
-          const isModifierKey =
-            code === 'ShiftLeft' ||
-            code === 'ShiftRight' ||
-            code === 'ControlLeft' ||
-            code === 'ControlRight' ||
-            code === 'AltLeft' ||
-            code === 'AltRight' ||
-            code === 'MetaLeft' ||
-            code === 'MetaRight' ||
-            code === 'CapsLock' ||
-            code === 'NumLock' ||
-            code === 'ScrollLock';
-          if (isConfirm || code === 'Escape') {
-            e.preventDefault();
-          }
-          if (!isModifierKey && !e.repeat && typeof game.enterMenuFromSplash === 'function') {
-            game.enterMenuFromSplash();
-          }
           return;
         }
 
@@ -735,60 +779,16 @@
           return;
         }
 
-        // 8. Game Over (Ingreso de Iniciales 3 letras o Top 10) o Victoria
+        // 8. Game Over dedicado (Volver al Menú Principal reseteando puntos/monedas conservando progreso) o Victoria
         if (game.state === 'gameover') {
-          if (game.gameOverPhase === 'initials') {
-            if (code === 'ArrowUp') {
-              game.stepArcadeInitial(1);
-            } else if (code === 'ArrowDown') {
-              game.stepArcadeInitial(-1);
-            } else if (code === 'ArrowLeft') {
-              game.arcadeLetterIdx = (game.arcadeLetterIdx + 2) % 3;
-              game.sound.menuSelect();
-            } else if (code === 'ArrowRight') {
-              game.arcadeLetterIdx = (game.arcadeLetterIdx + 1) % 3;
-              game.sound.menuSelect();
-            } else if (code === 'Backspace') {
-              e.preventDefault();
-              game.arcadeLetterIdx = Math.max(0, game.arcadeLetterIdx - 1);
-              game.sound.menuSelect();
-            } else if (isConfirm && !e.repeat) {
-              game.confirmArcadeInitials();
-            } else if (code === 'KeyR' && !e.repeat) {
-              game.retryCurrentZone();
-            } else if (code === 'Escape' && !e.repeat) {
-              game.lives = 3;
-              game.returnToMenu(false);
-            } else if (
-              !e.repeat &&
-              !e.ctrlKey &&
-              !e.metaKey &&
-              !e.altKey &&
-              typeof e.key === 'string' &&
-              /^[a-zA-Z]$/.test(e.key)
-            ) {
-              e.preventDefault();
-              game.typeArcadeInitial(e.key);
-            }
-            return;
-          }
           if (e.repeat) return;
-          if (isConfirm) {
-            if (typeof game.returnToLastPlayedMap === 'function') {
-              game.returnToLastPlayedMap();
+          if (isConfirm || code === 'Escape' || isBackOrQuit) {
+            if (typeof game.exitGameOverToMenu === 'function') {
+              game.exitGameOverToMenu();
             } else {
               game.lives = 3;
-              game.openMap({
-                level: 'city',
-                cursorCity: game.cityKey,
-                cursorZone: (game.levelIndex | 0) + 1
-              });
+              game.returnToMenu(true);
             }
-          } else if (code === 'KeyR') {
-            game.retryCurrentZone();
-          } else if (code === 'Escape' || isBackOrQuit) {
-            game.lives = 3;
-            game.returnToMenu(false);
           }
           return;
         }
@@ -863,6 +863,14 @@
               this.clearTransient();
               return;
             }
+            if (
+              !e.repeat &&
+              typeof game.handlePowCheatKey === 'function' &&
+              game.handlePowCheatKey(e.key, code)
+            ) {
+              this.clearTransient();
+              return;
+            }
           }
 
           const pauseBlockedByCustomBind =
@@ -896,13 +904,15 @@
             this.state.downPressed = true;
           }
 
-          if (!e.repeat && !game.isBiplaneFlightCheat) {
+          if (code && !e.repeat && !game.isBiplaneFlightCheat) {
             if (code === scheme.reserve) {
               this.state.reservePressed = true;
             } else if (code === scheme.skill) {
               this.state.skillPressed = true;
             } else if (code === scheme.tina) {
               this.state.tinaPressed = true;
+            } else if (scheme.tinaUltimate && code === scheme.tinaUltimate) {
+              this.state.tinaUltimatePressed = true;
             } else if (code === scheme.shoot) {
               this.state.shootPressed = true;
             }
@@ -941,6 +951,7 @@
           this.setJumpKeyState(code === 'ArrowUp' ? 'ArrowUp' : 'Space', false);
         }
         if (code === 'ArrowDown') this.state.down = !!this.touchState.down;
+        this.state.tinaUltimate = !!this.touchState.tinaUltimate;
       });
 
       window.addEventListener('blur', () => {
@@ -962,6 +973,14 @@
           game.handleCanvasPointerMove(cx, cy);
         }
       });
+
+      const releasePointer = () => {
+        if (typeof game.handleCanvasPointerUp === 'function') {
+          game.handleCanvasPointerUp();
+        }
+      };
+      global.addEventListener('pointerup', releasePointer);
+      global.addEventListener('pointercancel', releasePointer);
 
       game.canvas.addEventListener('click', () => {
         game.sound.init();
@@ -1276,13 +1295,29 @@
         game.triggerDynamicMobileSkill();
       });
 
-      // Franja central: Ladrido de La Tina [S] y Pausa [P]
+      // Franja central: Ladrido de La Tina [S], Definitiva La Tina [E] y Pausa [P]
       bindTouchButton('btn-tina', () => {
         if (game.state === 'playing' && typeof game.invalidateStartCheat === 'function') {
           game.invalidateStartCheat();
         }
         this.state.tinaPressed = true;
       });
+      bindTouchButton(
+        'btn-tina-ult',
+        () => {
+          if (game.state === 'playing' && typeof game.invalidateStartCheat === 'function') {
+            game.invalidateStartCheat();
+          }
+          this.touchState.tinaUltimate = true;
+          this.state.tinaUltimatePressed = true;
+          this.state.tinaUltimate = true;
+        },
+        () => {
+          this.touchState.tinaUltimate = false;
+          this.state.tinaUltimate =
+            game.state === 'playing' ? this.isActionDown('tinaUltimate') : false;
+        }
+      );
       bindTouchButton('btn-pause-touch', () => {
         if (game.state === 'playing' && typeof game.invalidateStartCheat === 'function') {
           game.invalidateStartCheat();
@@ -1300,6 +1335,10 @@
 
   global.InputManager = InputManager;
   global.Input = {
+    get state() {
+      const inst = InputManager.activeInstance;
+      return inst ? inst.state : null;
+    },
     isDown(code) {
       const inst = InputManager.activeInstance;
       return inst ? inst.isDown(code) : false;
