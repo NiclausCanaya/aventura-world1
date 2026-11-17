@@ -42,6 +42,44 @@
     'chile_pascua'
   ];
 
+  const SPAIN_RELIC_KEYS = ['barcelona', 'madrid', 'palma', 'canarias'];
+  const ARGENTINA_RELIC_KEYS = ['buenosaires', 'rosario', 'cordoba', 'ushuaia'];
+  const RELIC_CITY_KEYS = SPAIN_RELIC_KEYS.concat(ARGENTINA_RELIC_KEYS);
+  const SECRET_LEVEL_KEYS = ['secret_spain', 'secret_argentina'];
+
+  function normalizeRelicCityKey(cityKey) {
+    const raw = String(cityKey || '').trim().toLowerCase();
+    const k = raw === 'mallorca' ? 'palma' : raw;
+    return RELIC_CITY_KEYS.includes(k) ? k : null;
+  }
+
+  function normalizeSecretKey(secretKey) {
+    const k = String(secretKey || '').trim().toLowerCase();
+    return SECRET_LEVEL_KEYS.includes(k) ? k : null;
+  }
+
+  function createDefaultRelicsMap() {
+    const out = {};
+    RELIC_CITY_KEYS.forEach((k) => {
+      out[k] = false;
+    });
+    return out;
+  }
+
+  function createDefaultSecretsFlagMap() {
+    return {
+      secret_spain: false,
+      secret_argentina: false
+    };
+  }
+
+  function createDefaultSecretScoresMap() {
+    return {
+      secret_spain: 0,
+      secret_argentina: 0
+    };
+  }
+
   function isChileCityTag(tagOrKey) {
     const tag = toSlotCityTag(tagOrKey);
     return (
@@ -149,7 +187,12 @@
         animatedPaths: {
           pathAnimated_barcelona_1: true
         },
-        cities
+        cities,
+        relics: createDefaultRelicsMap(),
+        unlockedSecrets: createDefaultSecretsFlagMap(),
+        completedSecrets: createDefaultSecretsFlagMap(),
+        secretHighScores: createDefaultSecretScoresMap(),
+        tinaUltimateUnlocked: false
       };
     },
 
@@ -323,6 +366,50 @@
       base.totalCoins = Math.max(0, Math.floor(Number(raw.totalCoins) || 0));
       base.highScore = Math.max(0, Math.floor(Number(raw.highScore) || 0));
       base.postGameOver = false;
+      if (raw.goldenBones !== undefined) {
+        base.goldenBones = Array.isArray(raw.goldenBones)
+          ? raw.goldenBones.slice()
+          : (raw.goldenBones && typeof raw.goldenBones === 'object' ? Object.assign({}, raw.goldenBones) : raw.goldenBones);
+      }
+
+      // Backfill y consistencia de Reliquias, Niveles Secretos y Definitiva de La Tina
+      const rawRelics = raw.relics && typeof raw.relics === 'object' ? raw.relics : {};
+      RELIC_CITY_KEYS.forEach((ck) => {
+        base.relics[ck] = !!(rawRelics[ck] || (ck === 'palma' && rawRelics.mallorca));
+      });
+      const rawUnlockedSecrets =
+        raw.unlockedSecrets && typeof raw.unlockedSecrets === 'object' ? raw.unlockedSecrets : {};
+      const rawCompletedSecrets =
+        raw.completedSecrets && typeof raw.completedSecrets === 'object' ? raw.completedSecrets : {};
+      const rawSecretHighScores =
+        raw.secretHighScores && typeof raw.secretHighScores === 'object' ? raw.secretHighScores : {};
+      SECRET_LEVEL_KEYS.forEach((sk) => {
+        base.completedSecrets[sk] = !!rawCompletedSecrets[sk];
+        base.unlockedSecrets[sk] = !!(rawUnlockedSecrets[sk] || base.completedSecrets[sk]);
+        base.secretHighScores[sk] = Math.max(0, Math.floor(Number(rawSecretHighScores[sk]) || 0));
+      });
+      const spainCitiesCompleteForSecret = ['barcelona', 'madrid', 'palma', 'canarias'].every(
+        (k) => !!(base.cities[k] && base.cities[k].completed) || (Array.isArray(base.completedZones[k]) && base.completedZones[k].length >= 4)
+      );
+      const argCitiesCompleteForSecret = ['buenosaires', 'rosario', 'cordoba', 'ushuaia'].every(
+        (k) => !!(base.cities[k] && base.cities[k].completed) || (Array.isArray(base.completedZones[k]) && base.completedZones[k].length >= 4)
+      );
+      const allSpainRelics = SPAIN_RELIC_KEYS.every((k) => !!base.relics[k]);
+      const allArgentinaRelics = ARGENTINA_RELIC_KEYS.every((k) => !!base.relics[k]);
+      const devAllUnlocked = !!raw.devAllUnlocked;
+      base.devAllUnlocked = devAllUnlocked;
+      base.unlockedSecrets.secret_spain = !!(
+        base.completedSecrets.secret_spain ||
+        (devAllUnlocked && raw.unlockedSecrets && raw.unlockedSecrets.secret_spain) ||
+        (allSpainRelics && (base.spainCompleted || spainCitiesCompleteForSecret))
+      );
+      base.unlockedSecrets.secret_argentina = !!(
+        base.completedSecrets.secret_argentina ||
+        (devAllUnlocked && raw.unlockedSecrets && raw.unlockedSecrets.secret_argentina) ||
+        (allArgentinaRelics && argCitiesCompleteForSecret)
+      );
+      base.tinaUltimateUnlocked = !!(raw.tinaUltimateUnlocked || (allSpainRelics && allArgentinaRelics));
+
       const hasAnyProgress =
         base.spainCompleted ||
         base.unlockedCities.length > 1 ||
@@ -330,7 +417,9 @@
         base.totalCoins > 0 ||
         Object.keys(base.highScores).length > 0 ||
         (base.cities.barcelona && (base.cities.barcelona.maxLevel || 0) > 0) ||
-        CITY_TAGS.some((t) => Array.isArray(base.completedZones[t]) && base.completedZones[t].length > 0);
+        CITY_TAGS.some((t) => Array.isArray(base.completedZones[t]) && base.completedZones[t].length > 0) ||
+        RELIC_CITY_KEYS.some((k) => !!base.relics[k]) ||
+        SECRET_LEVEL_KEYS.some((sk) => !!base.completedSecrets[sk] || base.secretHighScores[sk] > 0);
       base.barcelonaFirstEntryDone = !!(raw.barcelonaFirstEntryDone || hasAnyProgress);
       const rawLives = Number(raw.lives);
       base.lives = Number.isFinite(rawLives) && rawLives >= 1 ? Math.min(99, Math.floor(rawLives)) : 3;
@@ -485,6 +574,8 @@
         lastPlayedZone: data.lastPlayedZone || 1,
         unlockedCities: data.unlockedCities.slice(),
         unlockedCount: data.unlockedCities.length,
+        relicCount: RELIC_CITY_KEYS.filter((k) => !!(data.relics && data.relics[k])).length,
+        tinaUltimateUnlocked: !!data.tinaUltimateUnlocked,
         totalScore,
         totalCoins: data.totalCoins || 0
       };
@@ -529,6 +620,9 @@
   const WorldProgress = {
     activeSlotId: null,
     data: null,
+    RELIC_CITY_KEYS: RELIC_CITY_KEYS.slice(),
+    SPAIN_RELIC_KEYS: SPAIN_RELIC_KEYS.slice(),
+    ARGENTINA_RELIC_KEYS: ARGENTINA_RELIC_KEYS.slice(),
 
     defaults() {
       return SaveSlots.createEmptyData(this.activeSlotId || 1);
@@ -807,6 +901,23 @@
           d.unlockedZones.chile_santiago = [1];
         }
       }
+      if (!d.unlockedSecrets || typeof d.unlockedSecrets !== 'object') {
+        d.unlockedSecrets = createDefaultSecretsFlagMap();
+      }
+      if (
+        SPAIN_RELIC_KEYS.includes(city) &&
+        SPAIN_RELIC_KEYS.every((k) => !!(d.relics && d.relics[k])) &&
+        SPAIN_RELIC_KEYS.every((k) => !!(d.cities[k] && d.cities[k].completed))
+      ) {
+        d.unlockedSecrets.secret_spain = true;
+      }
+      if (
+        ARGENTINA_RELIC_KEYS.includes(city) &&
+        ARGENTINA_RELIC_KEYS.every((k) => !!(d.relics && d.relics[k])) &&
+        ARGENTINA_RELIC_KEYS.every((k) => !!(d.cities[k] && d.cities[k].completed))
+      ) {
+        d.unlockedSecrets.secret_argentina = true;
+      }
       SaveSlots.syncUnlockedCitiesArray(d);
       this.save();
     },
@@ -908,6 +1019,8 @@
         if (meta && meta.completed) completedCount += 1;
       }
       if (d.spainCompleted) completedCount += 1;
+      if (d.relics && RELIC_CITY_KEYS.some((k) => !!d.relics[k])) completedCount += 1;
+      if (d.completedSecrets && SECRET_LEVEL_KEYS.some((sk) => !!d.completedSecrets[sk])) completedCount += 1;
 
       const scoreMap = d.highScores && typeof d.highScores === 'object' ? d.highScores : {};
       let mapPoints = 0;
@@ -974,6 +1087,23 @@
       d.unlockedCities = chileLocked
         ? CITY_TAGS.filter((t) => !isChileCityTag(t))
         : CITY_TAGS.slice();
+      if (!d.relics || typeof d.relics !== 'object') d.relics = createDefaultRelicsMap();
+      RELIC_CITY_KEYS.forEach((ck) => {
+        d.relics[ck] = true;
+      });
+      if (!d.unlockedSecrets || typeof d.unlockedSecrets !== 'object') {
+        d.unlockedSecrets = createDefaultSecretsFlagMap();
+      }
+      d.unlockedSecrets.secret_spain = true;
+      d.unlockedSecrets.secret_argentina = true;
+      if (!d.completedSecrets || typeof d.completedSecrets !== 'object') {
+        d.completedSecrets = createDefaultSecretsFlagMap();
+      }
+      if (!d.secretHighScores || typeof d.secretHighScores !== 'object') {
+        d.secretHighScores = createDefaultSecretScoresMap();
+      }
+      d.devAllUnlocked = true;
+      d.tinaUltimateUnlocked = true;
       SaveSlots.syncUnlockedCitiesArray(d);
       this.save();
       return d;
@@ -1175,8 +1305,208 @@
       }
     },
 
+    resetRunScoreAndCoinsOnGameOver() {
+      const d = this.ensure();
+      d.totalCoins = 0;
+      d.lives = 3;
+      d.hearts = 3;
+      this.save();
+      return d;
+    },
+
     getSlotMaxDisplayScore() {
       return SaveSlots.getTotalScore(this.ensure());
+    },
+
+    hasRelic(cityKey) {
+      const k = normalizeRelicCityKey(cityKey);
+      if (!k) return false;
+      const d = this.ensure();
+      return !!(d.relics && d.relics[k]);
+    },
+
+    getRelicCount(country = null) {
+      const d = this.ensure();
+      const relics = (d && d.relics) || {};
+      const norm = country === null || country === undefined ? null : String(country).trim().toLowerCase();
+      let keys = RELIC_CITY_KEYS;
+      if (norm === 'spain' || norm === 'europa') {
+        keys = SPAIN_RELIC_KEYS;
+      } else if (norm === 'argentina' || norm === 'southamerica' || norm === 'sudamerica') {
+        keys = ARGENTINA_RELIC_KEYS;
+      }
+      let count = 0;
+      for (let i = 0; i < keys.length; i++) {
+        if (relics[keys[i]]) count++;
+      }
+      return count;
+    },
+
+    getCollectedRelics() {
+      const d = this.ensure();
+      const relics = (d && d.relics) || {};
+      const copy = {};
+      for (let i = 0; i < RELIC_CITY_KEYS.length; i++) {
+        const k = RELIC_CITY_KEYS[i];
+        copy[k] = !!relics[k];
+      }
+      return copy;
+    },
+
+    isCountryZonesCompleted(country) {
+      const list = country === 'argentina' ? ARGENTINA_RELIC_KEYS : SPAIN_RELIC_KEYS;
+      const d = this.ensure();
+      return list.every((cityKey) => {
+        const tag = toSlotCityTag(cityKey);
+        const def = (global.CITY_DEFS || {})[cityKey];
+        const maxZone = def && Array.isArray(def.levels) ? def.levels.length : 4;
+        const comp = d.completedZones && Array.isArray(d.completedZones[tag]) ? d.completedZones[tag] : [];
+        return !!(d.cities && d.cities[cityKey] && d.cities[cityKey].completed) || comp.length >= maxZone;
+      });
+    },
+
+    collectRelic(cityKey) {
+      const k = normalizeRelicCityKey(cityKey);
+      const d = this.ensure();
+      if (!d.relics || typeof d.relics !== 'object') d.relics = createDefaultRelicsMap();
+      if (!d.unlockedSecrets || typeof d.unlockedSecrets !== 'object') {
+        d.unlockedSecrets = createDefaultSecretsFlagMap();
+      }
+      if (!k) {
+        const spainCount = this.getRelicCount('spain');
+        const argentinaCount = this.getRelicCount('argentina');
+        return {
+          newlyCollected: false,
+          totalCount: spainCount + argentinaCount,
+          spainCount,
+          argentinaCount,
+          unlockedSpainSecret: false,
+          unlockedArgentinaSecret: false,
+          unlockedTinaUltimate: false
+        };
+      }
+      const newlyCollected = !d.relics[k];
+      d.relics[k] = true;
+
+      const spainCount = SPAIN_RELIC_KEYS.filter((rk) => !!d.relics[rk]).length;
+      const argentinaCount = ARGENTINA_RELIC_KEYS.filter((rk) => !!d.relics[rk]).length;
+      const totalCount = spainCount + argentinaCount;
+
+      const wasSpainSecret = this.isSecretUnlocked('secret_spain');
+      const wasArgSecret = this.isSecretUnlocked('secret_argentina');
+      const wasUltimate = !!d.tinaUltimateUnlocked;
+
+      if (spainCount >= SPAIN_RELIC_KEYS.length && this.isCountryZonesCompleted('spain')) {
+        d.unlockedSecrets.secret_spain = true;
+      }
+      if (argentinaCount >= ARGENTINA_RELIC_KEYS.length && this.isCountryZonesCompleted('argentina')) {
+        d.unlockedSecrets.secret_argentina = true;
+      }
+      if (totalCount >= RELIC_CITY_KEYS.length) {
+        d.tinaUltimateUnlocked = true;
+      }
+
+      const unlockedSpainSecret = !wasSpainSecret && this.isSecretUnlocked('secret_spain');
+      const unlockedArgentinaSecret = !wasArgSecret && this.isSecretUnlocked('secret_argentina');
+      const unlockedTinaUltimate = !wasUltimate && !!d.tinaUltimateUnlocked;
+
+      this.save();
+      return {
+        newlyCollected,
+        totalCount,
+        spainCount,
+        argentinaCount,
+        unlockedSpainSecret,
+        unlockedArgentinaSecret,
+        unlockedTinaUltimate
+      };
+    },
+
+    unlockAllRelicsAndUltimate() {
+      const d = this.ensure();
+      if (!d.relics || typeof d.relics !== 'object') d.relics = createDefaultRelicsMap();
+      RELIC_CITY_KEYS.forEach((rk) => {
+        d.relics[rk] = true;
+      });
+      d.tinaUltimateUnlocked = true;
+      if (!d.unlockedSecrets || typeof d.unlockedSecrets !== 'object') {
+        d.unlockedSecrets = createDefaultSecretsFlagMap();
+      }
+      if (this.isCountryZonesCompleted('spain')) {
+        d.unlockedSecrets.secret_spain = true;
+      }
+      if (this.isCountryZonesCompleted('argentina')) {
+        d.unlockedSecrets.secret_argentina = true;
+      }
+      this.save();
+      return d;
+    },
+
+    isSecretUnlocked(secretKey) {
+      const sk = normalizeSecretKey(secretKey);
+      if (!sk) return false;
+      if (this.isSecretCompleted(sk)) return true;
+      const d = this.ensure();
+      if (d.devAllUnlocked && d.unlockedSecrets && d.unlockedSecrets[sk]) return true;
+      if (sk === 'secret_spain') {
+        return this.getRelicCount('spain') >= SPAIN_RELIC_KEYS.length && this.isCountryZonesCompleted('spain');
+      }
+      if (sk === 'secret_argentina') {
+        return this.getRelicCount('argentina') >= ARGENTINA_RELIC_KEYS.length && this.isCountryZonesCompleted('argentina');
+      }
+      return false;
+    },
+
+    isSpainSecretUnlocked() {
+      return this.isSecretUnlocked('secret_spain');
+    },
+
+    isArgentinaSecretUnlocked() {
+      return this.isSecretUnlocked('secret_argentina');
+    },
+
+    isSecretCompleted(secretKey) {
+      const sk = normalizeSecretKey(secretKey);
+      if (!sk) return false;
+      const d = this.ensure();
+      return !!(d.completedSecrets && d.completedSecrets[sk]);
+    },
+
+    getSecretHighScore(secretKey) {
+      const sk = normalizeSecretKey(secretKey);
+      if (!sk) return 0;
+      const d = this.ensure();
+      const raw = d.secretHighScores ? d.secretHighScores[sk] : 0;
+      return Math.max(0, Math.floor(Number(raw) || 0));
+    },
+
+    completeSecretLevel(secretKey, score = 0) {
+      const sk = normalizeSecretKey(secretKey);
+      const cleanScore = Math.max(0, Math.floor(Number(score) || 0));
+      if (!sk) return { isNewRecord: false, highScore: 0 };
+      const d = this.ensure();
+      if (!d.unlockedSecrets || typeof d.unlockedSecrets !== 'object') {
+        d.unlockedSecrets = createDefaultSecretsFlagMap();
+      }
+      if (!d.completedSecrets || typeof d.completedSecrets !== 'object') {
+        d.completedSecrets = createDefaultSecretsFlagMap();
+      }
+      if (!d.secretHighScores || typeof d.secretHighScores !== 'object') {
+        d.secretHighScores = createDefaultSecretScoresMap();
+      }
+      d.unlockedSecrets[sk] = true;
+      d.completedSecrets[sk] = true;
+      const prevBest = Math.max(0, Math.floor(Number(d.secretHighScores[sk]) || 0));
+      const isNewRecord = cleanScore > prevBest;
+      const highScore = isNewRecord ? cleanScore : prevBest;
+      d.secretHighScores[sk] = highScore;
+      this.save();
+      return { isNewRecord, highScore };
+    },
+
+    isTinaUltimateUnlocked() {
+      const d = this.ensure();
+      return !!(d.tinaUltimateUnlocked || this.getRelicCount() >= RELIC_CITY_KEYS.length);
     },
 
     reset() {
@@ -1339,12 +1669,39 @@
     portugal: { x: 360, y: 214, number: 6, anchor: 'madrid', ctrl: { x: 454, y: 212 } }
   };
 
+  // Nodos secretos de Bonus Frenético (separados de SPAIN_NODES y SA_NODES)
+  const SPAIN_SECRET_NODE = {
+    key: 'secret_spain',
+    id: 1,
+    country: 'spain',
+    anchor: 'palma',
+    x: 760,
+    y: 268,
+    title: '✨ Bonus Frenético: Atardecer en Ibiza',
+    label: 'IBIZA BONUS',
+    color: '#fbbf24',
+    radius: 22
+  };
+
   // --- Mapa de Argentina y Litoral ---
   const SA_NODES = {
     buenosaires: { x: 534, y: 314, number: 1 },
     rosario: { x: 486, y: 244, number: 2 },
     cordoba: { x: 372, y: 256, number: 3 },
     ushuaia: { x: 406, y: 416, number: 4 }
+  };
+
+  const SA_SECRET_NODE = {
+    key: 'secret_argentina',
+    id: 1,
+    country: 'argentina',
+    anchor: 'rosario',
+    x: 586,
+    y: 158,
+    title: '✨ Bonus Frenético: Cataratas del Iguazú',
+    label: 'IGUAZÚ BONUS',
+    color: '#fbbf24',
+    radius: 22
   };
 
   const SA_EDGES = [
@@ -2038,6 +2395,18 @@
       this.worldFlight = null; // vuelo bidireccional regular sobre el Atlántico
       this.pendingCityUnlock = null;
       this.pendingContinentUnlock = null;
+      this.afterAnimWorldUnlock = null;
+      this.museumOpen = false;
+      this.museumCursorIdx = 0;
+      this.museumViewerRelic = null;
+      this.museumYaw = 0.25;
+      this.museumPitch = 0.16;
+      this.museumAutoSpin = true;
+      this.museumDragging = false;
+      this.museumDragX = 0;
+      this.museumDragY = 0;
+      this.museumDragMoved = 0;
+      this.uiRects = {};
       this.worldCam = { x: W / 2, y: H / 2, zoom: 1 };
       this.cursor = { kind: 'node', node: 'barcelona', edge: 0, s: 0 };
       this.saCursor = { kind: 'node', node: 'buenosaires', edge: 0, s: 0 };
@@ -2083,6 +2452,52 @@
         const built = buildEdgePoints(e, CHILE_NODES, isChileMapWater);
         return { a: e.a, b: e.b, points: built.points, length: built.length, step: built.step };
       });
+      this.spainAllNodes = Object.assign({}, SPAIN_NODES, {
+        [SPAIN_SECRET_NODE.key]: SPAIN_SECRET_NODE
+      });
+      this.saAllNodes = Object.assign({}, SA_NODES, {
+        [SA_SECRET_NODE.key]: SA_SECRET_NODE
+      });
+      this.spainSecretEdge = (() => {
+        const built = buildEdgePoints(
+          {
+            a: SPAIN_SECRET_NODE.anchor,
+            b: SPAIN_SECRET_NODE.key,
+            waypoints: [SPAIN_NODES.palma, { x: 804, y: 222 }, SPAIN_SECRET_NODE]
+          },
+          this.spainAllNodes,
+          isSpainMapWater
+        );
+        return {
+          a: SPAIN_SECRET_NODE.anchor,
+          b: SPAIN_SECRET_NODE.key,
+          isSecret: true,
+          points: built.points,
+          length: built.length,
+          step: built.step
+        };
+      })();
+      this.saSecretEdge = (() => {
+        const built = buildEdgePoints(
+          {
+            a: SA_SECRET_NODE.anchor,
+            b: SA_SECRET_NODE.key,
+            waypoints: [SA_NODES.rosario, { x: 536, y: 200 }, SA_SECRET_NODE]
+          },
+          this.saAllNodes,
+          isSouthAmericaWater
+        );
+        return {
+          a: SA_SECRET_NODE.anchor,
+          b: SA_SECRET_NODE.key,
+          isSecret: true,
+          points: built.points,
+          length: built.length,
+          step: built.step
+        };
+      })();
+      this.spainNavEdges = this.edges.concat([this.spainSecretEdge]);
+      this.saNavEdges = this.saEdges.concat([this.saSecretEdge]);
       this.cityEdges = {};
       Object.keys(CITY_SUBMAPS).forEach((cityKey) => {
         const sub = CITY_SUBMAPS[cityKey];
@@ -2097,8 +2512,8 @@
       if (countryLevel === 'southamerica') {
         return {
           level: 'southamerica',
-          nodes: SA_NODES,
-          edges: this.saEdges,
+          nodes: this.saAllNodes,
+          edges: this.saNavEdges,
           cursorKey: 'saCursor',
           autoTargetKey: 'saAutoTarget',
           defaultCity: 'buenosaires'
@@ -2116,12 +2531,61 @@
       }
       return {
         level: 'spain',
-        nodes: SPAIN_NODES,
-        edges: this.edges,
+        nodes: this.spainAllNodes,
+        edges: this.spainNavEdges,
         cursorKey: 'cursor',
         autoTargetKey: 'autoTarget',
         defaultCity: 'barcelona'
       };
+    }
+
+    getSecretNodeForLevel(level = this.level) {
+      if (level === 'spain') return SPAIN_SECRET_NODE;
+      if (level === 'southamerica') return SA_SECRET_NODE;
+      return null;
+    }
+
+    getSecretLockedHint(secretKey) {
+      const country = secretKey === 'secret_argentina' ? 'argentina' : 'spain';
+      const label = country === 'argentina' ? 'Argentina' : 'España';
+      const hasRelics = WorldProgress.getRelicCount(country) >= 4;
+      const hasZones = WorldProgress.isCountryZonesCompleted(country);
+      if (!hasRelics && !hasZones) {
+        return `🔒 Requiere 4/4 reliquias y completar ${label}`;
+      }
+      if (!hasRelics) {
+        return `🔒 Consigue las 4 reliquias de ${label}`;
+      }
+      return `🔒 Completa todas las zonas de ${label}`;
+    }
+
+    selectCity(cityKey) {
+      const k = String(cityKey || '').trim();
+      if (!k) return false;
+      let targetLevel = null;
+      if (k === 'secret_spain' || SPAIN_NODES[k]) targetLevel = 'spain';
+      else if (k === 'secret_argentina' || SA_NODES[k]) targetLevel = 'southamerica';
+      else if (CHILE_NODES[k]) targetLevel = 'chile';
+      if (!targetLevel) return false;
+
+      const meta = this.getCountryMeta(targetLevel);
+      const node = meta.nodes[k];
+      if (!node) return false;
+
+      if (!this.displayUnlocked(k)) {
+        this.selectedLockedNode = k;
+        return false;
+      }
+      this.selectedLockedNode = null;
+      this.hoverPreviewNode = null;
+      this[meta.autoTargetKey] = null;
+      this[meta.cursorKey] = { kind: 'node', node: k, edge: 0, s: 0 };
+      if (this.level === targetLevel) {
+        this.tina.x = node.x;
+        this.tina.y = node.y;
+        this.tina.moving = false;
+      }
+      return true;
     }
 
     // ----------------------------------------------------------------------
@@ -2175,9 +2639,13 @@
       const highestChileCity = ['chile_pascua', 'chile_atacama', 'chile_vina', 'chile_santiago'].find((k) => WorldProgress.isUnlocked(k)) || 'chile_santiago';
       const highestSaCity = ['ushuaia', 'cordoba', 'rosario', 'buenosaires'].find((k) => WorldProgress.isUnlocked(k)) || 'buenosaires';
       const startCity =
-        SPAIN_NODES[preferred] && WorldProgress.isUnlocked(preferred) ? preferred : highestSpainCity;
+        preferred === 'secret_spain' && WorldProgress.isSecretUnlocked('secret_spain')
+          ? 'secret_spain'
+          : (SPAIN_NODES[preferred] && WorldProgress.isUnlocked(preferred) ? preferred : highestSpainCity);
       const startSaCity =
-        SA_NODES[preferred] && WorldProgress.isUnlocked(preferred) ? preferred : highestSaCity;
+        preferred === 'secret_argentina' && WorldProgress.isSecretUnlocked('secret_argentina')
+          ? 'secret_argentina'
+          : (SA_NODES[preferred] && WorldProgress.isUnlocked(preferred) ? preferred : highestSaCity);
       const startChileCity =
         CHILE_NODES[preferred] && WorldProgress.isUnlocked(preferred) ? preferred : highestChileCity;
       this.cursor = { kind: 'node', node: startCity, edge: 0, s: 0 };
@@ -2199,9 +2667,9 @@
         this.worldNode = WORLD_NODES[animFrom] ? animFrom : 'spain';
       } else if (isChileCityTag(preferred) && WorldProgress.isContinentUnlocked('chile')) {
         this.worldNode = 'chile';
-      } else if (SA_NODES[preferred] && WorldProgress.isContinentUnlocked('argentina')) {
+      } else if ((SA_NODES[preferred] || preferred === 'secret_argentina') && WorldProgress.isContinentUnlocked('argentina')) {
         this.worldNode = 'argentina';
-      } else if (SPAIN_NODES[preferred]) {
+      } else if (SPAIN_NODES[preferred] || preferred === 'secret_spain') {
         this.worldNode = 'spain';
       } else {
         const lc = lastTarget.continent === 'southamerica' ? 'argentina' : lastTarget.continent;
@@ -2209,6 +2677,10 @@
       }
       const initialZone = opts.cursorZone || (this.activeCity === lastTarget.cityKey ? lastTarget.zoneNum : null);
       this.syncZoneCursor(this.activeCity, initialZone);
+      this.museumOpen = false;
+      this.museumViewerRelic = null;
+      this.museumDragging = false;
+      this.afterAnimWorldUnlock = opts.afterAnimWorldUnlock || null;
 
       const inp = this.game.input;
       this.prevKeys = { left: !!inp.left, right: !!inp.right, up: !!inp.up, down: !!inp.down };
@@ -2224,7 +2696,7 @@
       } else if (cityUnlockAnim && this.level === 'spain') {
         this.startUnlockAnim(cityUnlockAnim.from, cityUnlockAnim.to, 'spain');
       } else if (contUnlockAnim && this.level === 'world') {
-        this.startWorldUnlockAnim(contUnlockAnim.from, contUnlockAnim.to);
+        this.startWorldUnlockAnim(contUnlockAnim.from, contUnlockAnim.to, contUnlockAnim);
       }
 
       if (this.level === 'city') {
@@ -2271,6 +2743,9 @@
     // ----------------------------------------------------------------------
     displayUnlocked(city) {
       if (this.anim && this.anim.scope !== 'city' && this.anim.to === city && this.anim.phase < 2) return false;
+      if (city === 'secret_spain' || city === 'secret_argentina') {
+        return WorldProgress.isSecretUnlocked(city);
+      }
       return WorldProgress.isUnlocked(city);
     }
 
@@ -2298,14 +2773,16 @@
       return WorldProgress.isContinentUnlocked(norm);
     }
 
-    startWorldUnlockAnim(from = 'spain', to = 'argentina') {
+    startWorldUnlockAnim(from = 'spain', to = 'argentina', opts = null) {
       const f = from === 'southamerica' ? 'argentina' : (WORLD_NODES[from] ? from : 'spain');
       const destKey = to === 'southamerica' ? 'argentina' : (WORLD_NODES[to] ? to : 'argentina');
+      const keepFocusOn = opts && opts.keepFocusOn && WORLD_NODES[opts.keepFocusOn] ? opts.keepFocusOn : null;
       this.worldFlight = null;
-      this.pendingContinentUnlock = { from: f, to: destKey };
+      this.pendingContinentUnlock = { from: f, to: destKey, keepFocusOn };
       this.worldAnim = {
         from: f,
         to: destKey,
+        keepFocusOn,
         phase: 0,
         t: 0,
         progress: 0,
@@ -2588,9 +3065,13 @@
         const dest = WORLD_NODES[destKey] || WORLD_NODES.argentina;
         this.moveTinaTo(dest.x, dest.y, dt);
         if (wa.t >= 2.5) {
+          const finalNode = (wa.keepFocusOn && WORLD_NODES[wa.keepFocusOn]) ? wa.keepFocusOn : destKey;
+          const focusPt = WORLD_NODES[finalNode] || WORLD_NODES.spain;
           this.worldAnim = null;
           this.pendingContinentUnlock = null;
-          this.worldNode = destKey;
+          this.worldNode = finalNode;
+          this.tina.x = focusPt.x;
+          this.tina.y = focusPt.y;
         }
       }
       this.updateWorldCam(dt);
@@ -2602,9 +3083,15 @@
       if (this.worldAnim.phase < 2) {
         this.enterWorldUnlockPhase();
       } else {
+        const keepFocus = this.worldAnim.keepFocusOn && WORLD_NODES[this.worldAnim.keepFocusOn]
+          ? this.worldAnim.keepFocusOn
+          : destKey;
+        const focusPt = WORLD_NODES[keepFocus] || WORLD_NODES.spain;
         this.worldAnim = null;
         this.pendingContinentUnlock = null;
-        this.worldNode = destKey;
+        this.worldNode = keepFocus;
+        this.tina.x = focusPt.x;
+        this.tina.y = focusPt.y;
       }
     }
 
@@ -2621,6 +3108,26 @@
     }
 
     cityDef(city) {
+      if (city === 'secret_spain') {
+        return {
+          name: SPAIN_SECRET_NODE.title,
+          shortLabel: SPAIN_SECRET_NODE.label,
+          playable: true,
+          isSecret: true,
+          country: 'spain',
+          anchor: 'palma'
+        };
+      }
+      if (city === 'secret_argentina') {
+        return {
+          name: SA_SECRET_NODE.title,
+          shortLabel: SA_SECRET_NODE.label,
+          playable: true,
+          isSecret: true,
+          country: 'argentina',
+          anchor: 'rosario'
+        };
+      }
       return (global.CITY_DEFS || {})[city] || { name: String(city || ''), playable: false };
     }
 
@@ -2842,12 +3349,24 @@
         this.updateTinaSurface(dt, false);
         const phase2Dur = isCity ? 1.1 : 1.35;
         if (a.t >= phase2Dur) {
+          const finishedScope = a.scope;
           this.anim = null;
           this.pendingCityUnlock = null;
           if (isCity) {
             this.zoneCursor = { kind: 'node', node: a.from, edge: 0, s: 0 };
           } else {
             this[meta.cursorKey] = { kind: 'node', node: a.to, edge: 0, s: 0 };
+          }
+          if (finishedScope === 'spain' && this.afterAnimWorldUnlock) {
+            const nextWorld = this.afterAnimWorldUnlock;
+            this.afterAnimWorldUnlock = null;
+            this.level = 'world';
+            this.worldNode = nextWorld.from === 'southamerica' ? 'argentina' : (nextWorld.from || 'spain');
+            const focusOrigin = WORLD_NODES[this.worldNode] || WORLD_NODES.spain;
+            this.tina.x = focusOrigin.x;
+            this.tina.y = focusOrigin.y;
+            this.syncMapMusic();
+            this.startWorldUnlockAnim(nextWorld.from, nextWorld.to, nextWorld);
           }
         }
       }
@@ -2861,6 +3380,7 @@
         this.enterUnlockPhase();
       } else {
         const isCity = this.anim.scope === 'city';
+        const finishedScope = this.anim.scope;
         const meta = !isCity ? this.getCountryMeta(this.anim.scope) : null;
         const stayNode = isCity ? this.anim.from : this.anim.to;
         if (isCity && WorldProgress.markZonePathAnimated) {
@@ -2875,6 +3395,17 @@
         }
         this.tina.inWater = false;
         this.tina.hopT = 0;
+        if (finishedScope === 'spain' && this.afterAnimWorldUnlock) {
+          const nextWorld = this.afterAnimWorldUnlock;
+          this.afterAnimWorldUnlock = null;
+          this.level = 'world';
+          this.worldNode = nextWorld.from === 'southamerica' ? 'argentina' : (nextWorld.from || 'spain');
+          const focusOrigin = WORLD_NODES[this.worldNode] || WORLD_NODES.spain;
+          this.tina.x = focusOrigin.x;
+          this.tina.y = focusOrigin.y;
+          this.syncMapMusic();
+          this.startWorldUnlockAnim(nextWorld.from, nextWorld.to, nextWorld);
+        }
       }
     }
 
@@ -2981,6 +3512,20 @@
     // ----------------------------------------------------------------------
     confirm() {
       if (this.transition) return;
+      if (this.museumOpen) {
+        if (this.museumViewerRelic) {
+          this.museumAutoSpin = !this.museumAutoSpin;
+          if (this.game && this.game.sound) this.game.sound.menuSelect();
+        } else {
+          const rKey = RELIC_CITY_KEYS[this.museumCursorIdx];
+          if (rKey && WorldProgress.hasRelic(rKey)) {
+            this.openRelicViewer(rKey);
+          } else if (this.game && this.game.sound) {
+            this.game.sound.mapDenied();
+          }
+        }
+        return;
+      }
       if (this.worldAnim) {
         this.skipWorldAnim();
         return;
@@ -3052,7 +3597,9 @@
         this.denyNode(
           lKey,
           lNode,
-          !lDef.playable ? '🔒 Próximamente - En desarrollo' : '🔒 Bloqueada: completá la ciudad anterior'
+          lDef.isSecret
+            ? this.getSecretLockedHint(lKey)
+            : (!lDef.playable ? '🔒 Próximamente - En desarrollo' : '🔒 Bloqueada: completá la ciudad anterior')
         );
         return;
       }
@@ -3068,7 +3615,15 @@
       const node = meta.nodes[city];
       this.tina.x = node.x;
       this.tina.y = node.y;
-      if (!def.playable) {
+      if (def.isSecret) {
+        if (!WorldProgress.isSecretUnlocked(city)) {
+          this.denyNode(city, node, this.getSecretLockedHint(city));
+        } else if (WorldProgress.isSecretCompleted(city)) {
+          this.denyNode(city, node, '🏅 Bonus Frenético COMPLETADO · Sellado en esta partida');
+        } else if (this.game && typeof this.game.enterSecretLevel === 'function') {
+          this.game.enterSecretLevel(city);
+        }
+      } else if (!def.playable) {
         this.denyNode(city, node, '🔒 Próximamente - En desarrollo');
       } else if (!WorldProgress.isUnlocked(city)) {
         this.denyNode(city, node, city === 'chile' ? '🔒 Bloqueada: completá Ushuaia' : '🔒 Bloqueada: completá la ciudad anterior');
@@ -3081,6 +3636,14 @@
 
     back() {
       if (this.transition) return;
+      if (this.museumOpen) {
+        if (this.museumViewerRelic) {
+          this.closeRelicViewer();
+        } else {
+          this.closeRelicMuseum();
+        }
+        return;
+      }
       if (this.anim) {
         this.skipAnim();
         return;
@@ -3247,6 +3810,12 @@
     handlePointer(cx, cy) {
       if (this.transition) return;
 
+      // Modal de Museo / Colección de Reliquias y Visor 3D 360°
+      if (this.museumOpen) {
+        this.handleMuseumPointerDown(cx, cy);
+        return;
+      }
+
       // Modal de confirmación de reinicio de progreso del slot activo
       if (this.resetConfirmOpen) {
         if (cx >= 265 && cx <= 462 && cy >= 292 && cy <= 340) {
@@ -3267,6 +3836,12 @@
       if (cx >= 14 && cx <= 124 && cy >= 10 && cy <= 42) {
         this.game.sound.menuSelect();
         this.back();
+        return;
+      }
+      // Botón "🏛️ MUSEO (X/8)" en la barra superior (disponible en TODAS las vistas del mapa)
+      const mb = (this.uiRects && this.uiRects.museumBtn) || { x: 130, y: 10, w: 122, h: 32 };
+      if (!this.worldAnim && cx >= mb.x && cx <= mb.x + mb.w && cy >= mb.y && cy <= mb.y + mb.h) {
+        this.openRelicMuseum();
         return;
       }
       if (this.anim) {
@@ -3349,8 +3924,37 @@
           }
         }
       }
+      const secNode = this.getSecretNodeForLevel(this.level);
+      if (secNode && Math.hypot(cx - secNode.x, cy - secNode.y) <= (secNode.radius || 22) + 12) {
+        if (!this.displayUnlocked(secNode.key)) {
+          this.selectedLockedNode = secNode.key;
+          this.denyNode(secNode.key, secNode, this.getSecretLockedHint(secNode.key));
+          return;
+        }
+        this.selectedLockedNode = null;
+        const curNode = this.getEffectiveNode(
+          this[meta.cursorKey],
+          meta.edges,
+          meta.nodes,
+          (cKey) => this.displayUnlocked(cKey)
+        );
+        if (curNode === secNode.key) {
+          this.confirm();
+        } else if (
+          this[meta.cursorKey].kind === 'node' &&
+          this.findEdgeIndex(this[meta.cursorKey].node, secNode.key, meta.edges) >= 0
+        ) {
+          this[meta.autoTargetKey] = secNode.key;
+          if (this.game && this.game.sound) this.game.sound.menuSelect();
+        } else {
+          this.selectCity(secNode.key);
+          if (this.game && this.game.sound) this.game.sound.menuSelect();
+        }
+        return;
+      }
       const names = Object.keys(meta.nodes);
       for (let i = 0; i < names.length; i++) {
+        if (secNode && names[i] === secNode.key) continue;
         const n = meta.nodes[names[i]];
         if (Math.hypot(cx - n.x, cy - n.y) <= 32) {
           const def = this.cityDef(names[i]);
@@ -3377,6 +3981,10 @@
     }
 
     handlePointerMove(cx, cy) {
+      if (this.museumOpen) {
+        this.handleMuseumPointerMove(cx, cy);
+        return;
+      }
       if (this.transition || this.anim || this.resetConfirmOpen) {
         this.hoverPreviewNode = null;
         return;
@@ -3396,7 +4004,12 @@
             }
           }
         }
+        const secNode = !found ? this.getSecretNodeForLevel(this.level) : null;
+        if (secNode && Math.hypot(cx - secNode.x, cy - secNode.y) <= (secNode.radius || 22) + 12) {
+          found = secNode.key;
+        }
         for (let i = 0; !found && i < names.length; i++) {
+          if (secNode && names[i] === secNode.key) continue;
           const n = meta.nodes[names[i]];
           if (Math.hypot(cx - n.x, cy - n.y) <= 34) {
             const def = this.cityDef(names[i]);
@@ -3440,6 +4053,11 @@
         f.life -= dt;
         f.y -= 14 * dt;
         if (f.life <= 0) this.floaters.splice(i, 1);
+      }
+
+      if (this.museumOpen) {
+        this.updateMuseum(dt);
+        return;
       }
 
       if (this.transition) {
@@ -4019,6 +4637,9 @@
       if (this.resetConfirmOpen) {
         this.renderResetConfirmModal(ctx);
       }
+      if (this.museumOpen) {
+        this.renderRelicMuseumModal(ctx);
+      }
 
       ctx.restore();
     }
@@ -4364,6 +4985,10 @@
       // Caminos punteados
       for (let i = 0; i < this.edges.length; i++) this.drawEdge(ctx, i);
 
+      // Camino dorado secreto Palma -> Ibiza Bonus
+      const spainSecretUnlocked = this.displayUnlocked(SPAIN_SECRET_NODE.key);
+      this.drawSecretPath(ctx, this.spainSecretEdge, spainSecretUnlocked);
+
       // Nodos de futuras expansiones europeas ("Próximamente")
       for (let i = 0; i < futureEuropeKeys.length; i++) {
         const fk = futureEuropeKeys[i];
@@ -4383,10 +5008,11 @@
       // Nodos
       const effectiveSpainNode = this.getEffectiveNode(
         this.cursor,
-        this.edges,
-        SPAIN_NODES,
+        this.spainNavEdges,
+        this.spainAllNodes,
         (cKey) => this.displayUnlocked(cKey)
       );
+      const previewSpainNode = this.hoverPreviewNode || this.selectedLockedNode;
       const names = Object.keys(SPAIN_NODES);
       for (let i = 0; i < names.length; i++) {
         const key = names[i];
@@ -4399,14 +5025,35 @@
         this.drawNode(ctx, node.x + shakeX, node.y, {
           locked: !unlocked || !def.playable,
           completed: WorldProgress.isCompleted(key),
+          relicCollected: WorldProgress.hasRelic(key),
+          relicIcon: this.getCityRelicIcon(key),
           number: node.number,
-          selected: effectiveSpainNode === key && !this.anim,
+          selected: (previewSpainNode ? previewSpainNode === key : effectiveSpainNode === key) && !this.anim,
           label: !def.playable ? `${def.name} (???)` : def.name,
           sublabel: !def.playable ? 'PRÓXIMAMENTE' : !unlocked ? 'Bloqueada' : null,
           scale: pop,
           fxT: fx ? fx.t : null
         });
       }
+
+      // Nodo Secreto: Bonus Frenético (Ibiza)
+      const spainSecShake =
+        this.shake.key === SPAIN_SECRET_NODE.key
+          ? Math.sin(this.time * 70) * 3 * (this.shake.t / 0.45)
+          : 0;
+      this.drawSecretNode(ctx, SPAIN_SECRET_NODE, {
+        unlocked: spainSecretUnlocked,
+        completed: WorldProgress.isSecretCompleted(SPAIN_SECRET_NODE.key),
+        highScore: WorldProgress.getSecretHighScore(SPAIN_SECRET_NODE.key),
+        selected:
+          (previewSpainNode
+            ? previewSpainNode === SPAIN_SECRET_NODE.key
+            : effectiveSpainNode === SPAIN_SECRET_NODE.key) && !this.anim,
+        hovered: this.hoverPreviewNode === SPAIN_SECRET_NODE.key,
+        shakeX: spainSecShake,
+        labelDx: -12,
+        labelDy: -2
+      });
 
       // La Tina en miniatura (cursor del mapa)
       const st = this.level === 'spain' && !this.transition ? this.tina : this.cursorPos('spain');
@@ -4539,10 +5186,14 @@
         this.drawEdge(ctx, i, this.saEdges[i]);
       }
 
+      // Camino dorado secreto Rosario -> Cataratas del Iguazú Bonus
+      const saSecretUnlocked = this.displayUnlocked(SA_SECRET_NODE.key);
+      this.drawSecretPath(ctx, this.saSecretEdge, saSecretUnlocked);
+
       const effectiveSaNode = this.getEffectiveNode(
         this.saCursor,
-        this.saEdges,
-        SA_NODES,
+        this.saNavEdges,
+        this.saAllNodes,
         (cKey) => this.displayUnlocked(cKey)
       );
       const previewSaNode = this.hoverPreviewNode || this.selectedLockedNode;
@@ -4558,6 +5209,8 @@
         this.drawNode(ctx, node.x + shakeX, node.y, {
           locked: !unlocked || !def.playable,
           completed: WorldProgress.isCompleted(key),
+          relicCollected: WorldProgress.hasRelic(key),
+          relicIcon: this.getCityRelicIcon(key),
           number: node.number,
           selected: (previewSaNode ? previewSaNode === key : effectiveSaNode === key) && !this.anim,
           label: def.name,
@@ -4566,6 +5219,25 @@
           fxT: fx ? fx.t : null
         });
       }
+
+      // Nodo Secreto: Bonus Frenético (Cataratas del Iguazú)
+      const saSecShake =
+        this.shake.key === SA_SECRET_NODE.key
+          ? Math.sin(this.time * 70) * 3 * (this.shake.t / 0.45)
+          : 0;
+      this.drawSecretNode(ctx, SA_SECRET_NODE, {
+        unlocked: saSecretUnlocked,
+        completed: WorldProgress.isSecretCompleted(SA_SECRET_NODE.key),
+        highScore: WorldProgress.getSecretHighScore(SA_SECRET_NODE.key),
+        selected:
+          (previewSaNode
+            ? previewSaNode === SA_SECRET_NODE.key
+            : effectiveSaNode === SA_SECRET_NODE.key) && !this.anim,
+        hovered: this.hoverPreviewNode === SA_SECRET_NODE.key,
+        shakeX: saSecShake,
+        labelDx: 82,
+        labelDy: -48
+      });
 
       const st = this.level === 'southamerica' && !this.transition ? this.tina : this.cursorPos('southamerica');
       this.drawTinaCursor(ctx, st.x, st.y, 1);
@@ -5567,6 +6239,21 @@
       if (o.icon && !o.locked) {
         ctx.font = '14px "Segoe UI Emoji", "Segoe UI", sans-serif';
         ctx.fillText(o.icon, -r * 0.85, -r * 0.85);
+      } else if (o.relicCollected && !o.locked) {
+        ctx.save();
+        ctx.translate(-r * 0.84, -r * 0.82);
+        ctx.fillStyle = '#fbbf24';
+        ctx.strokeStyle = '#451a03';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 8.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.font = '10px "Segoe UI Emoji", "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(o.relicIcon || '✨', 0, 0.5);
+        ctx.restore();
       }
 
       if (o.selected) {
@@ -5615,6 +6302,278 @@
         }
         ctx.restore();
       }
+    }
+
+    getCityRelicIcon(cityKey) {
+      const k = normalizeRelicCityKey(cityKey);
+      const defs = global.RELIC_DEFS || {};
+      if (k && defs[k] && defs[k].icon) return defs[k].icon;
+      const fallbackIcons = {
+        barcelona: '🐉',
+        madrid: '🐻',
+        palma: '🏰',
+        canarias: '🌋',
+        buenosaires: '🎭',
+        rosario: '🏛️',
+        cordoba: '🏔️',
+        ushuaia: '🐧'
+      };
+      return (k && fallbackIcons[k]) || '✨';
+    }
+
+    drawSecretPath(ctx, edgeObj, unlocked) {
+      if (!edgeObj || !Array.isArray(edgeObj.points) || edgeObj.points.length < 2) return;
+      const pts = edgeObj.points;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([6, 6]);
+      if (unlocked) {
+        const pulseGlow = 8 + 5 * Math.sin(this.time * 4.2);
+        ctx.lineDashOffset = -(this.time * 22) % 12;
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = pulseGlow;
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.55)';
+        ctx.lineWidth = 5.4;
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.34)';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.lineDashOffset = 0;
+      ctx.restore();
+    }
+
+    drawSecretNode(ctx, secretNode, opts = {}) {
+      if (!secretNode) return;
+      const x = secretNode.x + (opts.shakeX || 0);
+      const y = secretNode.y;
+      const r = secretNode.radius || 22;
+      const t = this.time;
+      const unlocked = !!opts.unlocked;
+      const completed = !!opts.completed;
+      const selected = !!opts.selected;
+      const hovered = !!opts.hovered;
+
+      ctx.save();
+      ctx.translate(x, y);
+
+      if (!unlocked) {
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.48)';
+        ctx.strokeStyle = hovered || selected ? 'rgba(253, 224, 71, 0.85)' : 'rgba(251, 191, 36, 0.50)';
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `${Math.round(r * 0.85)}px "Segoe UI Emoji", "Segoe UI", sans-serif`;
+        ctx.fillText('🔒', 0, 1);
+        ctx.textBaseline = 'alphabetic';
+
+        if (selected || hovered) {
+          ctx.save();
+          ctx.rotate(t * 1.1);
+          ctx.setLineDash([6, 6]);
+          ctx.beginPath();
+          ctx.arc(0, 0, r + 8, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(253, 224, 71, 0.88)';
+          ctx.lineWidth = 2.0;
+          ctx.stroke();
+          ctx.restore();
+        }
+        ctx.restore();
+
+        if (selected || hovered) {
+          const lx = x + (opts.labelDx || 0);
+          const ly = y + r + 16 + (opts.labelDy || 0);
+          const hintText = secretNode.country === 'argentina' ? '4/4 Reliquias Arg.' : '4/4 Reliquias Esp.';
+          ctx.save();
+          ctx.textAlign = 'center';
+          ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+          const tw = Math.max(ctx.measureText('🔒 BONUS SECRETO').width, ctx.measureText(hintText).width) + 20;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+          ctx.strokeStyle = 'rgba(251, 191, 36, 0.72)';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.roundRect(lx - tw * 0.5, ly - 14, tw, 31, 8);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#fde047';
+          ctx.fillText('🔒 BONUS SECRETO', lx, ly - 1);
+          ctx.font = 'bold 9.5px "Segoe UI", system-ui, sans-serif';
+          ctx.fillStyle = '#fca5a5';
+          ctx.fillText(hintText, lx, ly + 12);
+          ctx.restore();
+        }
+        return;
+      }
+
+      // Halo dorado pulsante (solo si aún está disponible y no sellado/completado)
+      if (!completed) {
+        const pulse = 0.55 + 0.25 * Math.sin(t * 4.4);
+        const glow = ctx.createRadialGradient(0, 0, 4, 0, 0, r + 24);
+        glow.addColorStop(0, `rgba(253, 224, 71, ${pulse})`);
+        glow.addColorStop(0.55, 'rgba(251, 191, 36, 0.26)');
+        glow.addColorStop(1, 'rgba(251, 191, 36, 0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 24, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Destellos giratorios exteriores del medallón dorado
+        ctx.save();
+        ctx.rotate(t * 0.85);
+        for (let i = 0; i < 8; i++) {
+          const ang = (i * Math.PI) / 4;
+          const rayLen = i % 2 === 0 ? r + 10 : r + 6;
+          ctx.save();
+          ctx.rotate(ang);
+          ctx.fillStyle = i % 2 === 0 ? 'rgba(254, 240, 138, 0.85)' : 'rgba(251, 191, 36, 0.65)';
+          ctx.beginPath();
+          ctx.moveTo(-2.6, -r + 2);
+          ctx.lineTo(0, -rayLen);
+          ctx.lineTo(2.6, -r + 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+
+      // Sombra y cuerpo del medallón dorado (apagado/sellado al estar completado)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
+      ctx.beginPath();
+      ctx.ellipse(2, r * 0.82, r * 0.96, r * 0.35, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      const medGrad = ctx.createRadialGradient(-r * 0.32, -r * 0.35, 2, 0, 0, r);
+      if (completed) {
+        medGrad.addColorStop(0, '#cbd5e1');
+        medGrad.addColorStop(0.52, '#64748b');
+        medGrad.addColorStop(1, '#334155');
+      } else {
+        medGrad.addColorStop(0, '#fef9c3');
+        medGrad.addColorStop(0.52, '#fbbf24');
+        medGrad.addColorStop(1, '#b45309');
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = medGrad;
+      ctx.fill();
+      ctx.lineWidth = 3.2;
+      ctx.strokeStyle = completed ? '#0f172a' : '#451a03';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, r - 3.6, 0, Math.PI * 2);
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = completed ? 'rgba(148, 163, 184, 0.7)' : 'rgba(255, 255, 255, 0.82)';
+      ctx.stroke();
+
+      // Estrella central (fija cuando está completado/sellado)
+      ctx.save();
+      if (!completed) {
+        ctx.rotate(Math.sin(t * 2.2) * 0.14);
+        const starScale = 1 + 0.06 * Math.sin(t * 5);
+        ctx.scale(starScale, starScale);
+      }
+      const outerR = r * 0.62;
+      const innerR = r * 0.28;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rad = i % 2 === 0 ? outerR : innerR;
+        const sx = Math.cos(a) * rad;
+        const sy = Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(sx, sy);
+        else ctx.lineTo(sx, sy);
+      }
+      ctx.closePath();
+      ctx.fillStyle = completed ? '#cbd5e1' : '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 2.0;
+      ctx.strokeStyle = completed ? '#1e293b' : '#78350f';
+      ctx.stroke();
+      ctx.restore();
+
+      if (completed) {
+        ctx.save();
+        ctx.translate(r * 0.78, -r * 0.78);
+        ctx.fillStyle = '#16a34a';
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, 9.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '900 11px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✓', 0, 0.5);
+        ctx.restore();
+
+        ctx.font = '13px "Segoe UI Emoji", "Segoe UI", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🔒', -r * 0.82, -r * 0.72);
+      }
+
+      if (selected) {
+        ctx.save();
+        ctx.rotate(t * 1.25);
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.arc(0, 0, r + 10, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.6;
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // Etiqueta del nodo secreto
+      ctx.save();
+      ctx.textAlign = 'center';
+      const lx = x + (opts.labelDx || 0);
+      const ly = y + r + 17 + (opts.labelDy || 0);
+      const subText = completed
+        ? (opts.highScore > 0 ? `✓ COMPLETADO · ${opts.highScore}` : '✓ COMPLETADO · SELLADO')
+        : '✨ BONUS FRENÉTICO';
+      ctx.font = '900 12.5px "Segoe UI", system-ui, sans-serif';
+      const mainW = ctx.measureText(secretNode.label).width;
+      ctx.font = 'bold 9.5px "Segoe UI", system-ui, sans-serif';
+      const subW = ctx.measureText(subText).width;
+      const tw = Math.max(mainW, subW) + 22;
+      ctx.fillStyle = completed ? 'rgba(15, 23, 42, 0.92)' : 'rgba(20, 14, 6, 0.92)';
+      ctx.strokeStyle = completed ? '#64748b' : '#fbbf24';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.roundRect(lx - tw * 0.5, ly - 15, tw, 34, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = '900 12.5px "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = completed ? '#cbd5e1' : '#fde047';
+      ctx.fillText(secretNode.label, lx, ly);
+      ctx.font = 'bold 9.5px "Segoe UI", system-ui, sans-serif';
+      ctx.fillStyle = completed ? '#4ade80' : '#fef08a';
+      ctx.fillText(subText, lx, ly + 14);
+      ctx.restore();
     }
 
     drawTinaCursor(ctx, px, py, scale) {
@@ -5755,8 +6714,25 @@
           : '◀ MENÚ';
       ctx.fillText(backLabel, 69, 31);
 
+      // Botón accesible "🏛️ MUSEO (X/8)" en TODAS las vistas del mapa
+      const mCount = WorldProgress.getRelicCount();
+      const mRect = { x: 130, y: 10, w: 122, h: 32 };
+      this.uiRects = this.uiRects || {};
+      this.uiRects.museumBtn = mRect;
+      ctx.fillStyle = mCount > 0 ? 'rgba(66, 32, 6, 0.94)' : 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = mCount >= 8 ? '#4ade80' : '#fbbf24';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.roundRect(mRect.x, mRect.y, mRect.w, mRect.h, 9);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = mCount >= 8 ? '#86efac' : '#fde047';
+      ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🏛️ MUSEO ${mCount}/8`, mRect.x + mRect.w * 0.5, 30);
+
       ctx.fillStyle = '#fde047';
-      ctx.font = '900 18px "Segoe UI", system-ui, sans-serif';
+      ctx.font = '900 17px "Segoe UI", system-ui, sans-serif';
       const slotTag = WorldProgress.activeSlotId ? ` • PARTIDA ${WorldProgress.activeSlotId}` : '';
       let centerTitle = '🌍 MAPA MUNDI';
       if (level === 'city') {
@@ -5770,7 +6746,7 @@
       } else if (level === 'spain') {
         centerTitle = '🌍 EUROPA · ESPAÑA';
       }
-      ctx.fillText(centerTitle + slotTag, 396, 33, 496);
+      ctx.fillText(centerTitle + slotTag, 466, 32, 412);
 
       ctx.textAlign = 'right';
       ctx.fillStyle = '#f8fafc';
@@ -5779,6 +6755,81 @@
       ctx.fillStyle = '#f472b6';
       ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(`RÉCORD SLOT: ${WorldProgress.getSlotMaxDisplayScore()}`, W - 18, 40);
+
+      if (!this.transition && (level === 'world' || level === 'spain' || level === 'southamerica')) {
+        this.renderRelicHudPills(ctx, level);
+      }
+      ctx.restore();
+    }
+
+    getTinaUltimateKeyLabel() {
+      const inp = this.game && this.game.input;
+      const scheme = inp && inp.controlScheme;
+      const code = scheme && scheme.tinaUltimate;
+      if (!code) return 'Q';
+      if (typeof inp.formatKeyCode === 'function') {
+        return inp.formatKeyCode(code, true);
+      }
+      return String(code).replace(/^Key/, '');
+    }
+
+    renderRelicHudPills(ctx, level) {
+      const totalRelics = WorldProgress.getRelicCount();
+      const spainRelics = WorldProgress.getRelicCount('spain');
+      const argRelics = WorldProgress.getRelicCount('argentina');
+      const ultUnlocked = WorldProgress.isTinaUltimateUnlocked();
+
+      let countrySuffix = '';
+      let countryComplete = false;
+      if (level === 'spain') {
+        countrySuffix = `  ·  🇪🇸 ${spainRelics}/4`;
+        countryComplete = spainRelics >= 4;
+      } else if (level === 'southamerica') {
+        countrySuffix = `  ·  🇦🇷 ${argRelics}/4`;
+        countryComplete = argRelics >= 4;
+      }
+
+      const relicText = `🏺 Reliquias: ${totalRelics}/8${countrySuffix}`;
+      const ultKeyLabel = this.getTinaUltimateKeyLabel();
+      const ultText = ultUnlocked
+        ? `✈️ Definitiva Lista [${ultKeyLabel}]`
+        : `✈️ Ult La Tina: 🔒 ${totalRelics}/8`;
+
+      const drawPill = (px, py, text, textColor, bgColor, borderColor, alignRight = false) => {
+        ctx.font = 'bold 11.5px "Segoe UI", system-ui, sans-serif';
+        const tw = Math.ceil(ctx.measureText(text).width) + 22;
+        const x0 = alignRight ? px - tw : px;
+        ctx.fillStyle = bgColor;
+        ctx.strokeStyle = borderColor;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(x0, py, tw, 24, 12);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = textColor;
+        ctx.fillText(text, x0 + tw * 0.5, py + 16);
+      };
+
+      ctx.save();
+      drawPill(
+        14,
+        58,
+        relicText,
+        totalRelics >= 8 || countryComplete ? '#86efac' : '#fde047',
+        'rgba(9, 13, 22, 0.88)',
+        totalRelics >= 8 || countryComplete ? '#4ade80' : '#fbbf24',
+        false
+      );
+      drawPill(
+        W - 14,
+        58,
+        ultText,
+        ultUnlocked ? '#86efac' : '#cbd5e1',
+        ultUnlocked ? 'rgba(6, 42, 28, 0.92)' : 'rgba(9, 13, 22, 0.88)',
+        ultUnlocked ? '#4ade80' : '#64748b',
+        true
+      );
       ctx.restore();
     }
 
@@ -5884,29 +6935,61 @@
           );
         if (key) {
           const def = this.cityDef(key);
-          title = `📍 ${def.name}`;
-          if (!def.playable) {
-            line1 = '🔒 Próximamente - En desarrollo';
-            line2 = def.isCountry ? 'Nuevo país en preparación' : 'Nueva aventura en preparación';
-          } else if (!WorldProgress.isUnlocked(key)) {
-            line1 = '🔒 Bloqueada';
-            line2 = 'Completá la ciudad anterior para desbloquearla';
-          } else if (def.isCountry && key === 'chile') {
-            const chCities = ['chile_santiago', 'chile_vina', 'chile_atacama', 'chile_pascua'];
-            const unlockedCh = chCities.filter((ck) => WorldProgress.isUnlocked(ck)).length;
-            const completedCh = chCities.filter((ck) => WorldProgress.isCompleted(ck)).length;
-            line1 = WorldProgress.isCompleted('chile')
-              ? `⭐ País completado · Ciudades ${completedCh}/4`
-              : `Disponible · Ciudades ${unlockedCh}/4 desbloqueadas`;
-            line2 = isTouch ? 'SALTAR: entrar a Chile' : 'ENTER / ESPACIO: entrar al mapa de Chile';
+          if (def.isSecret) {
+            const secNode = key === 'secret_spain' ? SPAIN_SECRET_NODE : SA_SECRET_NODE;
+            const countryName = key === 'secret_spain' ? 'España' : 'Argentina';
+            const countryRelics = WorldProgress.getRelicCount(secNode.country);
+            const secUnlocked = WorldProgress.isSecretUnlocked(key);
+            const secDone = WorldProgress.isSecretCompleted(key);
+            const secBest = WorldProgress.getSecretHighScore(key);
+            if (!secUnlocked) {
+              const countryZonesOk = WorldProgress.isCountryZonesCompleted(secNode.country);
+              title = `🔒 ${secNode.label}`;
+              line1 = `🔒 Reliquias ${countryName}: ${countryRelics}/4 · Zonas país: ${countryZonesOk ? '4/4 ✓' : 'pendientes'}`;
+              line1Color = '#fca5a5';
+              line2 = 'Requiere 4/4 reliquias y completar todas las zonas del país';
+            } else {
+              title = secNode.title;
+              const bestTxt = secBest > 0 ? secBest : '---';
+              if (secDone) {
+                line1 = `🏅 COMPLETADO · SELLADO · Récord: ${bestTxt}`;
+                line1Color = '#94a3b8';
+                line2 = 'Ya jugado en esta partida · Reentrada bloqueada';
+              } else {
+                line1 = `✨ ¡Desbloqueado! · Récord: ${bestTxt}`;
+                line1Color = '#fde047';
+                line2 = isTouch ? 'SALTAR: jugar Bonus Frenético' : 'ENTER / ESPACIO: jugar Bonus Frenético';
+              }
+            }
           } else {
-            const total = (def.levels || []).length;
-            const unlockedZones = WorldProgress.getUnlockedZones(key).length;
-            const completedZones = WorldProgress.getCompletedZones(key).length;
-            line1 = WorldProgress.isCompleted(key)
-              ? `⭐ Completada · Zonas ${completedZones}/${total}`
-              : `Disponible · Zonas ${unlockedZones}/${total} desbloqueadas`;
-            line2 = isTouch ? 'SALTAR: ver zonas de la ciudad' : 'ENTER / ESPACIO: abrir mapa de zonas';
+            title = `📍 ${def.name}`;
+            if (!def.playable) {
+              line1 = '🔒 Próximamente - En desarrollo';
+              line2 = def.isCountry ? 'Nuevo país en preparación' : 'Nueva aventura en preparación';
+            } else if (!WorldProgress.isUnlocked(key)) {
+              line1 = '🔒 Bloqueada';
+              line2 = 'Completá la ciudad anterior para desbloquearla';
+            } else if (def.isCountry && key === 'chile') {
+              const chCities = ['chile_santiago', 'chile_vina', 'chile_atacama', 'chile_pascua'];
+              const unlockedCh = chCities.filter((ck) => WorldProgress.isUnlocked(ck)).length;
+              const completedCh = chCities.filter((ck) => WorldProgress.isCompleted(ck)).length;
+              line1 = WorldProgress.isCompleted('chile')
+                ? `⭐ País completado · Ciudades ${completedCh}/4`
+                : `Disponible · Ciudades ${unlockedCh}/4 desbloqueadas`;
+              line2 = isTouch ? 'SALTAR: entrar a Chile' : 'ENTER / ESPACIO: entrar al mapa de Chile';
+            } else {
+              const total = (def.levels || []).length;
+              const unlockedZones = WorldProgress.getUnlockedZones(key).length;
+              const completedZones = WorldProgress.getCompletedZones(key).length;
+              const relicTag = RELIC_CITY_KEYS.includes(key)
+                ? (WorldProgress.hasRelic(key) ? ' · 🏺 ✓' : ' · 🏺 0/1')
+                : '';
+              line1 =
+                (WorldProgress.isCompleted(key)
+                  ? `⭐ Completada · Zonas ${completedZones}/${total}`
+                  : `Disponible · Zonas ${unlockedZones}/${total} desbloqueadas`) + relicTag;
+              line2 = isTouch ? 'SALTAR: ver zonas de la ciudad' : 'ENTER / ESPACIO: abrir mapa de zonas';
+            }
           }
         } else {
           title = '🐾 La Tina en camino…';
@@ -6098,8 +7181,407 @@
       }
       ctx.restore();
     }
+
+    handlePointerUp() {
+      this.museumDragging = false;
+    }
+
+    openRelicMuseum() {
+      this.museumOpen = true;
+      this.museumViewerRelic = null;
+      this.museumDragging = false;
+      const firstCollected = RELIC_CITY_KEYS.findIndex((rk) => WorldProgress.hasRelic(rk));
+      this.museumCursorIdx = firstCollected >= 0 ? firstCollected : 0;
+      const inp = this.game && this.game.input;
+      this.prevKeys = {
+        left: !!(inp && inp.left),
+        right: !!(inp && inp.right),
+        up: !!(inp && inp.up),
+        down: !!(inp && inp.down)
+      };
+      if (this.game && this.game.sound) this.game.sound.menuSelect();
+    }
+
+    closeRelicMuseum() {
+      this.museumOpen = false;
+      this.museumViewerRelic = null;
+      this.museumDragging = false;
+      if (this.game && this.game.sound) this.game.sound.menuSelect();
+    }
+
+    openRelicViewer(cityKey) {
+      if (!WorldProgress.hasRelic(cityKey)) return;
+      this.museumViewerRelic = cityKey;
+      this.museumYaw = 0.25;
+      this.museumPitch = 0.16;
+      this.museumAutoSpin = true;
+      this.museumDragging = false;
+      if (this.game && this.game.sound) this.game.sound.menuSelect();
+    }
+
+    closeRelicViewer() {
+      this.museumViewerRelic = null;
+      this.museumDragging = false;
+      if (this.game && this.game.sound) this.game.sound.menuSelect();
+    }
+
+    cycleMuseumRelic(dir) {
+      const collected = RELIC_CITY_KEYS.filter((rk) => WorldProgress.hasRelic(rk));
+      if (collected.length <= 1) return;
+      const curIdx = collected.indexOf(this.museumViewerRelic);
+      const nextIdx = (curIdx + dir + collected.length) % collected.length;
+      this.museumViewerRelic = collected[nextIdx];
+      this.museumYaw = 0.25;
+      this.museumPitch = 0.16;
+      if (this.game && this.game.sound) this.game.sound.menuSelect();
+    }
+
+    updateMuseum(dt) {
+      const inp = this.game && this.game.input;
+      if (!inp) return;
+      const justLeft = !!inp.left && !this.prevKeys.left;
+      const justRight = !!inp.right && !this.prevKeys.right;
+      const justUp = !!inp.up && !this.prevKeys.up;
+      const justDown = !!inp.down && !this.prevKeys.down;
+
+      if (this.museumViewerRelic) {
+        if (inp.left || inp.right) {
+          this.museumAutoSpin = false;
+          this.museumYaw += (inp.right ? 1 : -1) * 2.9 * dt;
+        } else if (this.museumAutoSpin && !this.museumDragging) {
+          this.museumYaw += 0.9 * dt;
+        }
+        if (inp.up || inp.down) {
+          this.museumPitch = clamp(this.museumPitch + (inp.up ? 1 : -1) * 1.45 * dt, -0.52, 0.52);
+        }
+      } else {
+        let moved = false;
+        if (justRight) {
+          this.museumCursorIdx = (this.museumCursorIdx + 1) % RELIC_CITY_KEYS.length;
+          moved = true;
+        } else if (justLeft) {
+          this.museumCursorIdx = (this.museumCursorIdx - 1 + RELIC_CITY_KEYS.length) % RELIC_CITY_KEYS.length;
+          moved = true;
+        } else if (justDown) {
+          this.museumCursorIdx = (this.museumCursorIdx + 4) % RELIC_CITY_KEYS.length;
+          moved = true;
+        } else if (justUp) {
+          this.museumCursorIdx = (this.museumCursorIdx - 4 + RELIC_CITY_KEYS.length) % RELIC_CITY_KEYS.length;
+          moved = true;
+        }
+        if (moved && this.game && this.game.sound) this.game.sound.menuSelect();
+      }
+
+      this.prevKeys = {
+        left: !!inp.left,
+        right: !!inp.right,
+        up: !!inp.up,
+        down: !!inp.down
+      };
+    }
+
+    handleMuseumPointerMove(cx, cy) {
+      if (this.museumViewerRelic && this.museumDragging) {
+        const dx = cx - this.museumDragX;
+        const dy = cy - this.museumDragY;
+        this.museumDragX = cx;
+        this.museumDragY = cy;
+        this.museumDragMoved += Math.abs(dx) + Math.abs(dy);
+        this.museumYaw += dx * 0.015;
+        this.museumPitch = clamp(this.museumPitch - dy * 0.0085, -0.52, 0.52);
+      }
+    }
+
+    handleMuseumPointerDown(cx, cy) {
+      const hitRect = (r) => r && cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h;
+      const rects = this.uiRects || {};
+
+      if (this.museumViewerRelic) {
+        if (hitRect(rects.viewerBackBtn)) {
+          this.closeRelicViewer();
+          return;
+        }
+        if (hitRect(rects.viewerCloseBtn)) {
+          this.closeRelicMuseum();
+          return;
+        }
+        if (hitRect(rects.viewerSpinBtn)) {
+          this.museumAutoSpin = !this.museumAutoSpin;
+          if (this.game && this.game.sound) this.game.sound.menuSelect();
+          return;
+        }
+        if (hitRect(rects.viewerPrevBtn)) {
+          this.cycleMuseumRelic(-1);
+          return;
+        }
+        if (hitRect(rects.viewerNextBtn)) {
+          this.cycleMuseumRelic(1);
+          return;
+        }
+        if (hitRect(rects.viewerDragZone)) {
+          this.museumDragging = true;
+          this.museumAutoSpin = false;
+          this.museumDragX = cx;
+          this.museumDragY = cy;
+          this.museumDragMoved = 0;
+          return;
+        }
+        return;
+      }
+
+      if (hitRect(rects.museumCloseBtn) || cx < 56 || cx > 904 || cy < 34 || cy > 506) {
+        this.closeRelicMuseum();
+        return;
+      }
+      const cards = Array.isArray(rects.museumCards) ? rects.museumCards : [];
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        if (cx >= card.x && cx <= card.x + card.w && cy >= card.y && cy <= card.y + card.h) {
+          this.museumCursorIdx = i;
+          if (WorldProgress.hasRelic(card.cityKey)) {
+            this.openRelicViewer(card.cityKey);
+          } else if (this.game && this.game.sound) {
+            this.game.sound.mapDenied();
+          }
+          return;
+        }
+      }
+    }
+
+    renderRelicMuseumModal(ctx) {
+      ctx.save();
+      this.uiRects = this.uiRects || {};
+      const relicDefs = global.RELIC_DEFS || {};
+      const collectedKeys = RELIC_CITY_KEYS.filter((rk) => WorldProgress.hasRelic(rk));
+
+      if (this.museumViewerRelic) {
+        // Visor interactivo 3D 360° en primer plano sobre fondo negro / foco museográfico
+        const rKey = this.museumViewerRelic;
+        const rDef = relicDefs[rKey] || {};
+        const cDef = this.cityDef(rKey) || {};
+        const isSpain = SPAIN_RELIC_KEYS.includes(rKey);
+        const bgGrad = ctx.createRadialGradient(W * 0.5, 224, 30, W * 0.5, 224, 480);
+        bgGrad.addColorStop(0, '#111827');
+        bgGrad.addColorStop(0.55, '#05070e');
+        bgGrad.addColorStop(1, '#000000');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, W, H);
+
+        // Botones superiores del visor 3D
+        const drawBtn = (rect, label, accent = '#94a3b8', fill = 'rgba(15, 23, 42, 0.92)') => {
+          ctx.fillStyle = fill;
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 9);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#f8fafc';
+          ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(label, rect.x + rect.w * 0.5, rect.y + 21);
+        };
+
+        const backBtn = { x: 24, y: 20, w: 174, h: 34 };
+        const prevBtn = { x: 208, y: 20, w: 40, h: 34 };
+        const nextBtn = { x: 254, y: 20, w: 40, h: 34 };
+        const spinBtn = { x: 642, y: 20, w: 160, h: 34 };
+        const closeBtn = { x: 812, y: 20, w: 124, h: 34 };
+        const dragZone = { x: 110, y: 68, w: 740, h: 318 };
+
+        this.uiRects.viewerBackBtn = backBtn;
+        this.uiRects.viewerPrevBtn = collectedKeys.length > 1 ? prevBtn : null;
+        this.uiRects.viewerNextBtn = collectedKeys.length > 1 ? nextBtn : null;
+        this.uiRects.viewerSpinBtn = spinBtn;
+        this.uiRects.viewerCloseBtn = closeBtn;
+        this.uiRects.viewerDragZone = dragZone;
+
+        drawBtn(backBtn, '◀ VOLVER A VITRINA', '#fbbf24');
+        if (collectedKeys.length > 1) {
+          drawBtn(prevBtn, '◀', '#38bdf8');
+          drawBtn(nextBtn, '▶', '#38bdf8');
+        }
+        drawBtn(
+          spinBtn,
+          this.museumAutoSpin ? '⟳ GIRO AUTO: ON' : '⟳ GIRO AUTO: OFF',
+          this.museumAutoSpin ? '#4ade80' : '#64748b'
+        );
+        drawBtn(closeBtn, '✕ CERRAR [ESC]', '#f87171', 'rgba(69, 10, 10, 0.85)');
+
+        const degYaw = ((Math.round((this.museumYaw * 180) / Math.PI) % 360) + 360) % 360;
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = 'bold 11.5px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`VISOR MUSEO 3D · ROTACIÓN ${degYaw}° · ARRASTRÁ PARA GIRAR 360°`, W * 0.5, 42);
+
+        if (global.Sprites && typeof global.Sprites.drawRelic3DViewerHD === 'function') {
+          global.Sprites.drawRelic3DViewerHD(
+            ctx,
+            rKey,
+            W * 0.5,
+            224,
+            188,
+            this.museumYaw,
+            this.museumPitch,
+            this.time
+          );
+        }
+
+        // Ficha museo inferior
+        ctx.fillStyle = 'rgba(10, 14, 26, 0.92)';
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(110, 396, 740, 122, 14);
+        ctx.fill();
+        ctx.stroke();
+
+        const rName = rDef.name || rKey;
+        const cLabel = this.extractNameText(cDef.name, rKey);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#fde047';
+        ctx.font = '900 22px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText(`✨ ${rName}`, W * 0.5, 430);
+
+        ctx.fillStyle = '#38bdf8';
+        ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText(`${cLabel} · ${isSpain ? '🇪🇸 España' : '🇦🇷 Argentina'}  |  Reliquia #${RELIC_CITY_KEYS.indexOf(rKey) + 1}/8`, W * 0.5, 456);
+
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = '12.5px "Segoe UI", system-ui, sans-serif';
+        const desc = rDef.description || 'Pieza histórica exclusiva de la travesía de La Tina';
+        ctx.fillText(desc, W * 0.5, 480, 700);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = 'bold 11px "Segoe UI", system-ui, sans-serif';
+        ctx.fillText('Arrastrá 360° con mouse/dedo o usá ◀ ▶ ▲ ▼ · ESPACIO: Auto-giro · ESC: Volver', W * 0.5, 504);
+
+        ctx.restore();
+        return;
+      }
+
+      // Vitrina principal de 8 reliquias
+      ctx.fillStyle = 'rgba(3, 6, 14, 0.88)';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = 'rgba(12, 18, 34, 0.97)';
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.roundRect(56, 34, 848, 472, 18);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fde047';
+      ctx.font = '900 22px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(`🏛️ VITRINA DE RELIQUIAS (${collectedKeys.length}/8)`, W * 0.5, 70);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '12.5px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Seleccioná cualquier reliquia recolectada para inspeccionarla en el Visor 3D 360°', W * 0.5, 94);
+
+      const closeBtn = { x: 766, y: 48, w: 120, h: 32 };
+      this.uiRects.museumCloseBtn = closeBtn;
+      ctx.fillStyle = 'rgba(69, 10, 10, 0.9)';
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.roundRect(closeBtn.x, closeBtn.y, closeBtn.w, closeBtn.h, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fecaca';
+      ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('✕ CERRAR [ESC]', closeBtn.x + closeBtn.w * 0.5, closeBtn.y + 20);
+
+      const x0 = 90;
+      const y0 = 118;
+      const cw = 180;
+      const ch = 160;
+      const gx = 20;
+      const gy = 18;
+      const cards = [];
+      const drawRelicFn =
+        global.Sprites && typeof global.Sprites.drawRelicHD === 'function'
+          ? global.Sprites.drawRelicHD
+          : null;
+
+      for (let i = 0; i < RELIC_CITY_KEYS.length; i++) {
+        const rKey = RELIC_CITY_KEYS[i];
+        const col = i % 4;
+        const row = Math.floor(i / 4);
+        const rx = x0 + col * (cw + gx);
+        const ry = y0 + row * (ch + gy);
+        cards.push({ x: rx, y: ry, w: cw, h: ch, cityKey: rKey });
+
+        const collected = WorldProgress.hasRelic(rKey);
+        const selected = this.museumCursorIdx === i;
+        const rDef = relicDefs[rKey] || {};
+        const cDef = this.cityDef(rKey) || {};
+        const cName = this.extractNameText(cDef.name, rKey);
+
+        ctx.fillStyle = collected
+          ? (selected ? 'rgba(54, 34, 8, 0.96)' : 'rgba(20, 28, 48, 0.95)')
+          : (selected ? 'rgba(30, 41, 59, 0.86)' : 'rgba(15, 23, 42, 0.8)');
+        ctx.strokeStyle = selected
+          ? '#ffffff'
+          : (collected ? (rDef.color || '#fbbf24') : '#475569');
+        ctx.lineWidth = selected ? 2.6 : 1.6;
+        ctx.beginPath();
+        ctx.roundRect(rx, ry, cw, ch, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // Pedestal interior
+        ctx.fillStyle = collected ? 'rgba(0, 0, 0, 0.45)' : 'rgba(9, 13, 22, 0.65)';
+        ctx.beginPath();
+        ctx.arc(rx + cw * 0.5, ry + 54, 34, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (drawRelicFn) {
+          ctx.save();
+          ctx.translate(rx + cw * 0.5, ry + 54);
+          ctx.scale(1.65, 1.65);
+          if (!collected) ctx.globalAlpha = 0.28;
+          drawRelicFn.call(global.Sprites, ctx, rKey, -14, -14, collected ? this.time : 0, !collected);
+          ctx.restore();
+        }
+
+        ctx.textAlign = 'center';
+        if (collected) {
+          ctx.fillStyle = '#fde047';
+          ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(rDef.name || rKey, rx + cw * 0.5, ry + 110, cw - 14);
+          ctx.fillStyle = '#93c5fd';
+          ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(`${cName} · ${SPAIN_RELIC_KEYS.includes(rKey) ? '🇪🇸' : '🇦🇷'}`, rx + cw * 0.5, ry + 128, cw - 14);
+          ctx.fillStyle = '#4ade80';
+          ctx.font = 'bold 10.5px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText('🔍 VER EN 3D 360°', rx + cw * 0.5, ry + 147);
+        } else {
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText('🔒 SIN HALLAR', rx + cw * 0.5, ry + 110);
+          ctx.fillStyle = '#64748b';
+          ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(`${cName} · ${SPAIN_RELIC_KEYS.includes(rKey) ? '🇪🇸' : '🇦🇷'}`, rx + cw * 0.5, ry + 128, cw - 14);
+          ctx.fillStyle = '#475569';
+          ctx.font = '10px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText('Explora sus 4 zonas', rx + cw * 0.5, ry + 147);
+        }
+      }
+      this.uiRects.museumCards = cards;
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 11.5px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText('Flechas / Click: Elegir reliquia  ·  ENTER / ESPACIO: Inspección 3D  ·  ESC: Cerrar', W * 0.5, 488);
+
+      ctx.restore();
+    }
   }
 
+  global.SPAIN_SECRET_NODE = SPAIN_SECRET_NODE;
+  global.SA_SECRET_NODE = SA_SECRET_NODE;
   global.SaveSlots = SaveSlots;
   global.WorldProgress = WorldProgress;
   global.MapScreen = MapScreen;
