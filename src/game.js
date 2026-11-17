@@ -66,8 +66,10 @@
       this.arcadeLetterIdx = 0;
       this.arcadeQualifies = false;
       this.savedArcadeEntryId = null;
-      this.gameOverPhase = 'initials';
+      this.gameOverPhase = 'gameover';
       this.gameOverScore = 0;
+      this.gameOverCoins = 0;
+      this.gameOverAnimTimer = 0;
 
       // Progreso de partida
       this.cityKey = 'barcelona';
@@ -130,13 +132,27 @@
       this.pwingBuffer = '';
       this.airTourBuffer = '';
       this.ghostBuffer = '';
+      this.powBuffer = '';
       this.ghostRescueToastCooldown = 0;
       this.isAbductedByCheat = false;
       this.abductionCheat = null;
       this.isBiplaneFlightCheat = false;
       this.biplaneFlightCheat = null;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      this.sessionRelicSpots = {};
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
+      this.eventToast = null;
+      this.eventToastQueue = [];
+      this._lastUltBtnKey = null;
       this.pendingCityUnlock = null;
       this.pendingContinentUnlock = null;
+      this.pendingSecretUnlock = null;
       this.cheatLoadTime = 0;
       this.cheatSpawnX = null;
       this.cheatIrisTimer = 0;
@@ -282,6 +298,7 @@
       this.setupAudioButton();
       this.setupSettingsModal();
       this.setupSplashOverlay();
+      this.ensureSessionRelicSpots();
       this.syncControlHintsUI();
       this.render();
       requestAnimationFrame((ts) => this.loop(ts));
@@ -359,11 +376,28 @@
     prepareGameOverScreen(scoreSnapshot = this.score) {
       this.arcadeLeaderboard = this.loadArcadeLeaderboard();
       const achievedScore = Math.max(0, Math.floor(Number(scoreSnapshot) || 0));
+      const achievedCoins = Math.max(0, Math.floor(Number(this.totalCoins) || 0));
       this.gameOverScore = achievedScore;
-      // Consecuencia justa del Game Over: reiniciar el puntaje actual de la sesión a 0
-      // manteniendo monedas acumuladas, progreso desbloqueado y último destino jugado
+      this.gameOverCoins = achievedCoins;
+      this.arcadeQualifies = this.qualifiesForLeaderboard(achievedScore);
+      // Al producirse Game Over: reiniciar a 0 los puntos acumulados y monedas de la run actual,
+      // manteniendo intacto en localStorage el progreso de niveles, ciudades, reliquias y secretos.
       this.score = 0;
       this.levelStartScore = 0;
+      this.totalCoins = 0;
+      this.runCoins = 0;
+      this.levelCoins = 0;
+      this.secretEntrySnapshot = null;
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      if (
+        global.WorldProgress &&
+        typeof global.WorldProgress.resetRunScoreAndCoinsOnGameOver === 'function'
+      ) {
+        global.WorldProgress.resetRunScoreAndCoinsOnGameOver();
+      } else if (global.WorldProgress && typeof global.WorldProgress.setTotalCoins === 'function') {
+        global.WorldProgress.setTotalCoins(0);
+      }
       const defaultTag = this.selectedCharacter === 'andrea' ? ['A', 'N', 'D'] : ['N', 'I', 'C'];
       this.arcadeInitials =
         this.lastArcadeInitials && this.lastArcadeInitials.length === 3
@@ -371,9 +405,32 @@
           : defaultTag;
       this.arcadeLetterIdx = 0;
       this.savedArcadeEntryId = null;
-      this.arcadeQualifies = this.qualifiesForLeaderboard(achievedScore);
-      this.gameOverPhase = this.arcadeQualifies ? 'initials' : 'leaderboard';
+      this.gameOverAnimTimer = 0;
+      this.gameOverPhase = 'gameover';
       this.state = 'gameover';
+      this.clearTransientInput();
+      this.syncTinaUltimateUI(true);
+    }
+
+    exitGameOverToMenu() {
+      this.score = 0;
+      this.levelStartScore = 0;
+      this.totalCoins = 0;
+      this.runCoins = 0;
+      this.levelCoins = 0;
+      this.lives = 3;
+      this.syncLivesToSlot();
+      this.savedHearts = 3;
+      this.syncHeartsToSlot(3);
+      if (
+        global.WorldProgress &&
+        typeof global.WorldProgress.resetRunScoreAndCoinsOnGameOver === 'function'
+      ) {
+        global.WorldProgress.resetRunScoreAndCoinsOnGameOver();
+      } else if (global.WorldProgress && typeof global.WorldProgress.setTotalCoins === 'function') {
+        global.WorldProgress.setTotalCoins(0);
+      }
+      this.returnToMenu(true);
     }
 
     stepArcadeInitial(delta) {
@@ -452,7 +509,7 @@
       }
       if (this.activeSlotId && global.WorldProgress) {
         const levelEarned = Math.max(0, Math.floor(this.score - (this.levelStartScore || 0)));
-        if (this.levelData) {
+        if (this.levelData && !this.isSecretBonusLevel) {
           global.WorldProgress.recordLevelScore(
             this.cityKey,
             this.levelIndex + 1,
@@ -491,8 +548,19 @@
         this.enterMenuFromSplash();
       };
 
+      const onClickActivate = (ev) => {
+        if (this.state !== 'splash' || this._splashDismissed) return;
+        const target = ev && ev.target;
+        if (target && typeof target.closest === 'function') {
+          if (target.closest('#global-mute-btn, #btn-mute')) return;
+        }
+        this.enterMenuFromSplash();
+      };
+
       this._splashPointerHandler = onPointerActivate;
+      this._splashClickHandler = onClickActivate;
       document.addEventListener('pointerdown', onPointerActivate, true);
+      overlay.addEventListener('click', onClickActivate);
     }
 
     hideSplashOverlay() {
@@ -502,6 +570,10 @@
         this._splashPointerHandler = null;
       }
       const overlay = document.getElementById('splash-overlay');
+      if (overlay && this._splashClickHandler) {
+        overlay.removeEventListener('click', this._splashClickHandler);
+        this._splashClickHandler = null;
+      }
       if (!overlay) return;
       try { overlay.blur(); } catch (e) {}
       overlay.classList.add('is-leaving');
@@ -789,6 +861,12 @@
       const kTina = this.getControlKeyBadge('tina', true, 'X');
       const kSkill = this.getControlKeyBadge('skill', true, 'C');
       const kReserve = this.getControlKeyBadge('reserve', true, 'SHIFT');
+      const kUlt = this.getTinaUltimateKeyLabel();
+      const ultUnlocked = Boolean(
+        global.WorldProgress &&
+          typeof global.WorldProgress.isTinaUltimateUnlocked === 'function' &&
+          global.WorldProgress.isTinaUltimateUnlocked()
+      );
 
       const legend = document.getElementById('desktop-keys-legend');
       if (legend) {
@@ -800,6 +878,9 @@
           [`[${kTina}]`, 'La Tina'],
           [`[${kShoot}]`, 'Planta']
         ];
+        if (ultUnlocked) {
+          items.push([`[${kUlt}]`, 'Bombardeo Tina']);
+        }
         items.forEach(([keyLabel, actionName]) => {
           const span = document.createElement('span');
           const b = document.createElement('b');
@@ -826,6 +907,104 @@
       setBtnSub('btn-shoot', `PLANTA [${kShoot}]`);
       setBtnSub('btn-skill', `ESP [${kSkill}/${kTina}]`);
       setBtnSub('btn-jump', `SALTAR [${kJump}]`);
+      this.syncTinaUltimateUI(true);
+    }
+
+    getTinaUltimateKeyLabel() {
+      if (this.input && typeof this.input.getActionKeyLabel === 'function') {
+        const lbl = this.input.getActionKeyLabel('tinaUltimate');
+        if (lbl) return lbl;
+      }
+      if (this.inputManager && typeof this.inputManager.getActionKeyLabel === 'function') {
+        const lbl = this.inputManager.getActionKeyLabel('tinaUltimate');
+        if (lbl) return lbl;
+      }
+      const scheme = this.getControlSchemeSafe();
+      const fallback = scheme && scheme.profile === 'preset_a' ? 'A' : 'Q';
+      return this.getControlKeyBadge('tinaUltimate', true, fallback);
+    }
+
+    syncTinaUltimateUI(force = false) {
+      if (typeof document === 'undefined') return;
+      const btnUlt = document.getElementById('btn-tina-ult');
+      if (!btnUlt) return;
+      const unlocked = Boolean(
+        global.WorldProgress &&
+          typeof global.WorldProgress.isTinaUltimateUnlocked === 'function' &&
+          global.WorldProgress.isTinaUltimateUnlocked()
+      );
+      const visible = Boolean(
+        unlocked &&
+          this.state === 'playing' &&
+          !this.isBiplaneFlightCheat &&
+          !this.isAbductedByCheat
+      );
+      const ultKey = this.getTinaUltimateKeyLabel();
+      const passActive = Boolean(this.tinaUltimatePass || (this.tina && this.tina.ultimatePassActive));
+      const cd = this.tina ? Math.max(0, Number(this.tina.ultimateCooldown) || 0) : 0;
+      const ready = cd <= 0 && !passActive;
+      const cdSec = Math.ceil(cd);
+      const label = passActive ? '✈️ VOLANDO' : ready ? `✈️ ULT [${ultKey}]` : `✈️ ${cdSec}s`;
+      const cacheKey = `${visible ? 1 : 0}|${ready ? 1 : 0}|${label}|${ultKey}`;
+      if (!force && this._lastUltBtnKey === cacheKey) return;
+      this._lastUltBtnKey = cacheKey;
+
+      btnUlt.classList.toggle('hidden', !visible);
+      btnUlt.classList.toggle('is-ready', visible && ready);
+      btnUlt.classList.toggle('is-cooldown', visible && !ready);
+      btnUlt.textContent = label;
+      btnUlt.setAttribute('aria-label', `Definitiva Bombardeo de La Tina (Tecla ${ultKey})`);
+    }
+
+    showEventToast(text, color = '#fde047', duration = 3.2) {
+      if (!text) return;
+      const next = { text: String(text), color, duration, timer: duration };
+      if (!this.eventToast || this.eventToast.timer <= 0) {
+        this.eventToast = next;
+      } else {
+        if (!Array.isArray(this.eventToastQueue)) this.eventToastQueue = [];
+        this.eventToastQueue.push(next);
+      }
+    }
+
+    updateEventToast(dt) {
+      if (this.eventToast && this.eventToast.timer > 0) {
+        this.eventToast.timer = Math.max(0, this.eventToast.timer - dt);
+        if (this.eventToast.timer <= 0) {
+          this.eventToast = null;
+        }
+      }
+      if (!this.eventToast && Array.isArray(this.eventToastQueue) && this.eventToastQueue.length > 0) {
+        this.eventToast = this.eventToastQueue.shift();
+      }
+    }
+
+    resetSessionRelicSpots() {
+      this.sessionRelicSpots = {};
+      return this.ensureSessionRelicSpots();
+    }
+
+    ensureSessionRelicSpots() {
+      if (!this.sessionRelicSpots || typeof this.sessionRelicSpots !== 'object') {
+        this.sessionRelicSpots = {};
+      }
+      const defs = global.RELIC_DEFS || {};
+      const keys = Object.keys(defs);
+      for (let i = 0; i < keys.length; i++) {
+        const cityKey = keys[i];
+        const def = defs[cityKey];
+        const spots = def && Array.isArray(def.spots) ? def.spots : null;
+        if (!spots || spots.length === 0) continue;
+        const existing = this.sessionRelicSpots[cityKey];
+        if (!Number.isInteger(existing) || existing < 0 || existing >= spots.length) {
+          this.sessionRelicSpots[cityKey] = Math.floor(Math.random() * spots.length);
+        }
+      }
+      return this.sessionRelicSpots;
+    }
+
+    isNoLifeLossBonus() {
+      return Boolean(this.levelData && this.levelData.noLifeLossOnFail);
     }
 
     renderJukeboxList() {
@@ -1334,6 +1513,12 @@
       }
     }
 
+    handleCanvasPointerUp() {
+      if (this.state === 'map' && this.mapScreen && typeof this.mapScreen.handlePointerUp === 'function') {
+        this.mapScreen.handlePointerUp();
+      }
+    }
+
     handleCanvasPointer(cx, cy) {
       if (this.state === 'splash') {
         this.enterMenuFromSplash();
@@ -1350,8 +1535,8 @@
           this.swapReserveItem();
         }
       } else if (this.state === 'menu') {
-        // Pill compacto superior de Tabla de Récords (Top 10)
-        if (cx >= 310 && cx <= 650 && cy >= 78 && cy <= 104) {
+        // Pill compacto superior de Tabla de Récords (Top 5)
+        if (cx >= 295 && cx <= 665 && cy >= 76 && cy <= 104) {
           this.sound.menuSelect();
           this.sound.playMenuConfirmChord(true);
           this.openLeaderboardModal();
@@ -1376,12 +1561,18 @@
           this.sound.playDoubleBarkSample();
           return;
         }
-        // Opciones limpias del menú (cada una: x=290..670, y = 336 + i*32, alto 28)
+        // Opciones limpias del menú (cada una: x=290..670, y = 336 + i*32, alto 29)
         if (cx >= 290 && cx <= 670 && cy >= 336) {
           const optIdx = Math.floor((cy - 336) / 32);
-          const withinBox = cy - 336 - optIdx * 32 <= 28;
+          const withinBox = cy - 336 - optIdx * 32 <= 29;
           if (optIdx >= 0 && optIdx <= 5 && withinBox) {
             this.menuCursor = optIdx;
+            if (optIdx === 1 && (cx <= 326 || cx >= 634)) {
+              this.selectedCharacter = this.selectedCharacter === 'nico' ? 'andrea' : 'nico';
+              this.sound.menuSelect();
+              this.sound.playMenuConfirmChord(true);
+              return;
+            }
             this.activateMenuOption();
             return;
           }
@@ -1395,54 +1586,12 @@
         this.sound.menuSelect();
       } else if (this.state === 'leaderboard') {
         this.closeLeaderboardModal(true);
+      } else if (this.state === 'secret_exit') {
+        this.returnFromSecretLevel();
       } else if (this.state === 'level_clear') {
         this.confirmLevelClear();
       } else if (this.state === 'gameover') {
-        if (this.gameOverPhase === 'initials') {
-          // 3 cajas Arcade centradas: bx = 362 + i * 86, w = 64
-          for (let i = 0; i < 3; i++) {
-            const bx = 362 + i * 86;
-            if (cx >= bx && cx <= bx + 64) {
-              if (cy >= 230 && cy <= 262) {
-                this.arcadeLetterIdx = i;
-                this.stepArcadeInitial(1);
-                return;
-              }
-              if (cy > 262 && cy <= 332) {
-                this.arcadeLetterIdx = i;
-                this.sound.menuSelect();
-                return;
-              }
-              if (cy > 332 && cy <= 364) {
-                this.arcadeLetterIdx = i;
-                this.stepArcadeInitial(-1);
-                return;
-              }
-            }
-          }
-          if (cy >= 382 && cy <= 426) {
-            if (cx >= 204 && cx <= 470) {
-              this.confirmArcadeInitials();
-            } else if (cx >= 486 && cx <= 756) {
-              this.retryCurrentZone();
-            }
-          }
-        } else {
-          if (cy >= 436 && cy <= 480) {
-            if (cx >= 144 && cx <= 374) {
-              this.returnToLastPlayedMap();
-            } else if (cx >= 386 && cx <= 610) {
-              this.retryCurrentZone();
-            } else if (cx >= 622 && cx <= 816) {
-              this.lives = 3;
-              this.savedHearts = 3;
-              this.syncHeartsToSlot(3);
-              this.returnToMenu(false);
-            }
-          } else {
-            this.returnToLastPlayedMap();
-          }
-        }
+        this.exitGameOverToMenu();
       } else if (this.state === 'victory') {
         if (cy >= 310 && cy <= 355) {
           this.startNewGame();
@@ -1522,6 +1671,13 @@
       this.savedHearts =
         Number.isFinite(savedHearts) && savedHearts >= 1 ? Math.max(1, Math.min(3, Math.floor(savedHearts))) : 3;
       this.player = null;
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
+      this.resetSessionRelicSpots();
       this.survivalRiskMode = false;
       this.setPostGameOverActive(false);
       this.carriedPowerUp = null;
@@ -1689,6 +1845,13 @@
       this.lizardEventConsumed = false;
       this.gaudiLizardEventResolved = false;
       this.player = null;
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
+      this.resetSessionRelicSpots();
       this.clearRunEquipment();
       this.resetLevelBoneTracking();
       this.loadLevel(0, 3);
@@ -1730,6 +1893,13 @@
       this.lizardEventConsumed = false;
       this.gaudiLizardEventResolved = false;
       this.player = null;
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
+      this.resetSessionRelicSpots();
       this.clearRunEquipment();
       this.resetLevelBoneTracking();
       this.loadLevel(0, 3);
@@ -1778,6 +1948,14 @@
     }
 
     getCityLevels() {
+      if (
+        this.isSecretBonusLevel &&
+        this.activeSecretKey &&
+        global.SECRET_LEVELS &&
+        global.SECRET_LEVELS[this.activeSecretKey]
+      ) {
+        return [global.SECRET_LEVELS[this.activeSecretKey]];
+      }
       const key = this.normalizeCityKey(this.cityKey);
       const defs = global.CITY_DEFS || {};
       const def = defs[key] || defs[this.cityKey];
@@ -1834,6 +2012,8 @@
       this.input.downPressed = false;
       this.input.skillPressed = false;
       this.input.tinaPressed = false;
+      this.input.tinaUltimatePressed = false;
+      this.input.tinaUltimate = false;
       this.input.shootPressed = false;
       this.input.reservePressed = false;
     }
@@ -1848,8 +2028,17 @@
       }
       this.isBiplaneFlightCheat = false;
       this.biplaneFlightCheat = null;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
       this.airTourBuffer = '';
       this.ghostBuffer = '';
+      this.powBuffer = '';
       if (this.sound.menuMusicPlaying && !this.sound.muted) {
         this.sound.stopMusic();
         if (typeof this.sound.stopFanfareAudio === 'function') {
@@ -1860,6 +2049,7 @@
       }
       this.clearTransientInput();
       this.state = 'map';
+      this.syncTinaUltimateUI(true);
       if (this.sound && typeof this.sound.preloadCityAudio === 'function') {
         this.sound.preloadCityAudio(opts.cursorCity || this.cityKey);
       }
@@ -1941,6 +2131,11 @@
     }
 
     returnToLastPlayedMap() {
+      if (this.isSecretBonusLevel) {
+        this.closeSettingsModal(false);
+        this.returnFromSecretLevel();
+        return;
+      }
       this.closeSettingsModal(false);
       if (this.sound) {
         if (typeof this.sound.setHurryUp === 'function') this.sound.setHurryUp(false);
@@ -2073,7 +2268,7 @@
       }
       const itemType = info.item || 'golden_bone';
       const spawned = new global.Entities.Collectible(info.spawnX, info.spawnY, itemType, false);
-      if (itemType === 'golden_bone' || itemType === '1up_bone') {
+      if (itemType === 'golden_bone' || itemType === '1up_bone' || itemType === 'extra_life_heart' || itemType === '1up_heart') {
         spawned.secretKey = hb.secretKey || this.getGoldenBoneKey(this.cityKey, this.levelIndex, hb);
       }
       if (itemType === 'tina_golden_bone' && typeof spawned.startHighLaunch === 'function') {
@@ -2094,6 +2289,12 @@
         global.isCountryLocked((def && def.country) || normalizedKey);
       if (!def || !def.playable || isTempLocked || !global.WorldProgress.isUnlocked(normalizedKey)) return;
 
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
       this.cityKey = normalizedKey;
       const levels = this.getCityLevels();
       const maxIdx = Math.max(0, levels.length - 1);
@@ -2162,9 +2363,21 @@
       this.sound.stopAllSounds();
       this.isBiplaneFlightCheat = false;
       this.biplaneFlightCheat = null;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
+      this.eventToast = null;
+      this.eventToastQueue = [];
       this.airTourBuffer = '';
       this.ghostMode = false;
       this.ghostBuffer = '';
+      this.powBuffer = '';
+      this.pendingSecretUnlock = null;
       this.ghostToastTimer = 0;
       this.ghostRescueToastCooldown = 0;
       if (this.player) this.player.ghostMode = false;
@@ -2179,6 +2392,7 @@
       if (this.tina) this.tina.state = 'active';
       this.highScore = this.loadHighScore();
       this.state = 'menu';
+      this.syncTinaUltimateUI(true);
       if (playSelect) {
         this.sound.menuSelect();
       }
@@ -2192,6 +2406,7 @@
       this.clearTransientInput();
       this.highScore = this.loadHighScore();
       this.state = 'menu';
+      this.syncTinaUltimateUI(true);
     }
 
     /**
@@ -2204,6 +2419,14 @@
       const def = global.CITY_DEFS[city];
       const wasSaUnlocked = global.WorldProgress.isContinentUnlocked('southamerica');
       const wasChileUnlocked = global.WorldProgress.isContinentUnlocked('chile');
+      const wasSpainSecret =
+        typeof global.WorldProgress.isSecretUnlocked === 'function'
+          ? global.WorldProgress.isSecretUnlocked('secret_spain')
+          : false;
+      const wasArgSecret =
+        typeof global.WorldProgress.isSecretUnlocked === 'function'
+          ? global.WorldProgress.isSecretUnlocked('secret_argentina')
+          : false;
       this.saveHighScore();
       global.WorldProgress.setMaxLevel(city, this.getCityLevels().length);
       global.WorldProgress.complete(city);
@@ -2211,17 +2434,38 @@
       if (city === 'canarias') {
         const pendingWorld =
           this.pendingContinentUnlock && this.pendingContinentUnlock.to === 'argentina'
-            ? this.pendingContinentUnlock
-            : (wasSaUnlocked ? null : { from: 'spain', to: 'argentina' });
+            ? { ...this.pendingContinentUnlock, keepFocusOn: 'spain' }
+            : (wasSaUnlocked ? null : { from: 'spain', to: 'argentina', keepFocusOn: 'spain' });
+        const spainSecretNow = !!(
+          global.WorldProgress &&
+          typeof global.WorldProgress.isSecretUnlocked === 'function' &&
+          global.WorldProgress.isSecretUnlocked('secret_spain')
+        );
+        const spainBonusUnlock =
+          (this.pendingSecretUnlock && this.pendingSecretUnlock.to === 'secret_spain') ||
+          (!wasSpainSecret && spainSecretNow)
+            ? { from: 'palma', to: 'secret_spain' }
+            : null;
         this.pendingContinentUnlock = null;
         this.pendingCityUnlock = null;
+        this.pendingSecretUnlock = null;
         global.WorldProgress.unlockContinent('southamerica');
-        this.openMap({
-          level: 'world',
-          cursorCity: 'canarias',
-          worldUnlockAnim: pendingWorld,
-          pendingContinentUnlock: pendingWorld
-        });
+        if (spainBonusUnlock) {
+          this.openMap({
+            level: 'spain',
+            cursorCity: 'palma',
+            unlockAnim: spainBonusUnlock,
+            afterAnimWorldUnlock: pendingWorld
+          });
+        } else {
+          this.openMap({
+            level: 'world',
+            worldNode: 'spain',
+            cursorCity: 'canarias',
+            worldUnlockAnim: pendingWorld,
+            pendingContinentUnlock: pendingWorld
+          });
+        }
         return;
       }
 
@@ -2278,13 +2522,32 @@
             ? global.isCountryLocked('chile')
             : !!(global.LOCKED_COUNTRIES && global.LOCKED_COUNTRIES.chile);
         if (chileTempLocked) {
+          const argSecretNow = !!(
+            global.WorldProgress &&
+            typeof global.WorldProgress.isSecretUnlocked === 'function' &&
+            global.WorldProgress.isSecretUnlocked('secret_argentina')
+          );
+          const argBonusUnlock =
+            (this.pendingSecretUnlock && this.pendingSecretUnlock.to === 'secret_argentina') ||
+            (!wasArgSecret && argSecretNow)
+              ? { from: 'rosario', to: 'secret_argentina' }
+              : null;
           this.pendingContinentUnlock = null;
           this.pendingCityUnlock = null;
-          this.openMap({
-            level: 'world',
-            worldNode: 'argentina',
-            cursorCity: 'ushuaia'
-          });
+          this.pendingSecretUnlock = null;
+          if (argBonusUnlock) {
+            this.openMap({
+              level: 'southamerica',
+              cursorCity: 'rosario',
+              unlockAnim: argBonusUnlock
+            });
+          } else {
+            this.openMap({
+              level: 'world',
+              worldNode: 'argentina',
+              cursorCity: 'ushuaia'
+            });
+          }
           return;
         }
         const nextKey = def ? def.next : null;
@@ -2348,15 +2611,18 @@
       const raw = cityLevels[safeIndex] || (Array.isArray(global.LEVELS) && global.LEVELS[0]) || {};
       this.levelData = raw;
       if (this.sound) {
-        if (typeof this.sound.preloadCityAudio === 'function') {
+        if (!this.isSecretBonusLevel && typeof this.sound.preloadCityAudio === 'function') {
           this.sound.preloadCityAudio(this.cityKey);
         }
         if (typeof this.sound.startMusic === 'function') {
-          this.sound.startMusic(this.getActiveLevelMusicTheme(), this.getActiveLevelMusicMeta());
+          this.sound.startMusic(
+            this.getActiveLevelMusicTheme(),
+            this.isSecretBonusLevel ? false : this.getActiveLevelMusicMeta()
+          );
         }
       }
       this.levelStartScore = this.score;
-      const isBarcelonaZone1 = this.cityKey === 'barcelona' && safeIndex === 0;
+      const isBarcelonaZone1 = !this.isSecretBonusLevel && this.cityKey === 'barcelona' && safeIndex === 0;
       const isFreshNewSlot = !!(
         global.WorldProgress &&
         typeof global.WorldProgress.isFreshZeroSlot === 'function' &&
@@ -2369,16 +2635,22 @@
       this.pwingBuffer = '';
       this.airTourBuffer = '';
       this.ghostBuffer = '';
+      this.powBuffer = '';
       this.ghostRescueToastCooldown = 0;
       this.isAbductedByCheat = false;
       this.abductionCheat = null;
       this.isBiplaneFlightCheat = false;
       this.biplaneFlightCheat = null;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      this.eventToast = null;
+      this.eventToastQueue = [];
       if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
         this.sound.stopBiplaneAmbience();
       }
       this.pendingCityUnlock = null;
       this.pendingContinentUnlock = null;
+      this.pendingSecretUnlock = null;
       this.cheatLoadTime =
         typeof performance !== 'undefined' && typeof performance.now === 'function'
           ? performance.now()
@@ -2391,8 +2663,10 @@
       ) {
         global.WorldProgress.markBarcelonaFirstEntry();
       }
-      global.WorldProgress.setLastPlayedLocation(this.cityKey, safeIndex + 1);
-      global.WorldProgress.setMaxLevel(this.cityKey, safeIndex + 1);
+      if (!this.isSecretBonusLevel && global.WorldProgress) {
+        global.WorldProgress.setLastPlayedLocation(this.cityKey, safeIndex + 1);
+        global.WorldProgress.setMaxLevel(this.cityKey, safeIndex + 1);
+      }
       this.levelCoins = 0;
       this.levelTime = 0;
       const levelTimeLimit = Number.isFinite(raw.timeLimit) ? raw.timeLimit : DEFAULT_TIME_LIMIT;
@@ -2484,8 +2758,40 @@
           return true;
         })
         .map((c) => new global.Entities.Collectible(c.x, c.y, c.type, false));
+      if (!this.isSecretBonusLevel && global.RELIC_DEFS) {
+        this.ensureSessionRelicSpots();
+        const normRelicCity = this.normalizeCityKey(this.cityKey);
+        const relicDef = global.RELIC_DEFS[normRelicCity];
+        const spots = relicDef && Array.isArray(relicDef.spots) ? relicDef.spots : null;
+        if (spots && spots.length > 0) {
+          const spotIdx = Math.max(
+            0,
+            Math.min(spots.length - 1, Number(this.sessionRelicSpots[normRelicCity]) || 0)
+          );
+          const spot = spots[spotIdx];
+          if (spot && spot.zoneIndex === safeIndex) {
+            const alreadyCollected = Boolean(
+              global.WorldProgress &&
+                typeof global.WorldProgress.hasRelic === 'function' &&
+                global.WorldProgress.hasRelic(normRelicCity)
+            );
+            if (!alreadyCollected) {
+              this.collectibles.push(
+                new global.Entities.Collectible(spot.x, spot.y, 'relic', {
+                  cityKey: normRelicCity,
+                  relicId: relicDef.id,
+                  relicName: relicDef.name,
+                  relicIcon: relicDef.icon,
+                  relicColor: relicDef.color,
+                  ghost: false
+                })
+              );
+            }
+          }
+        }
+      }
       this.pigeons = (raw.pigeons || []).map(
-        (p) => new global.Entities.Pigeon(p.x, p.y, p.minX, p.maxX, p.speed, index, !!p.reactive || this.cityKey === 'canarias')
+        (p) => new global.Entities.Pigeon(p.x, p.y, p.minX, p.maxX, p.speed, index, !!p.reactive || (!this.isSecretBonusLevel && this.cityKey === 'canarias'))
       );
       this.scooters = (raw.scooters || []).map(
         (s) => new global.Entities.Scooter(s.x, s.y, s.minX, s.maxX, s.speed, index)
@@ -2692,7 +2998,15 @@
           )
       );
       this.bouncyDrums = (raw.bouncyDrums || []).map(
-        (bd) => new global.Entities.BouncyDrum(bd.x, bd.y, bd.w, bd.h, bd.bounceVy)
+        (bd) =>
+          new global.Entities.BouncyDrum(
+            bd.x,
+            bd.y,
+            bd.w,
+            bd.h,
+            bd.bounceVy,
+            bd.style || (this.isSecretBonusLevel ? 'circus' : 'drum')
+          )
       );
       this.swarmMosquitoes = [];
       this.isMosquitoSwarm = !!raw.isMosquitoSwarm;
@@ -2774,7 +3088,7 @@
       this.windTimer = 0;
       this.windActive = false;
       this.windForceX = 0;
-      this.hasWaterPits = !!raw.hasWaterPits || this.cityKey === 'palma';
+      this.hasWaterPits = this.isSecretBonusLevel ? !!raw.hasWaterPits : (!!raw.hasWaterPits || this.cityKey === 'palma');
       this.hasStormWaves = !!raw.hasStormWaves;
       this.roseTunnels = Array.isArray(raw.roseTunnels) ? raw.roseTunnels : [];
       this.waterPits = this.computeWaterPits();
@@ -2923,9 +3237,12 @@
       const partnerChar = this.selectedCharacter === 'nico' ? 'andrea' : 'nico';
       this.partner = new global.Entities.PartnerCompanion(spawnPos.x, spawnPos.y, partnerChar);
       this.tina = new global.Entities.TinaCompanion(spawnPos.x, spawnPos.y);
+      this.tina.ultimateCooldown = 0;
+      this.tina.ultimatePassActive = false;
       this.particles = new global.Entities.ParticleSystem();
       this.cheatSpawnX = this.player ? this.player.x : spawnPos.x;
       this.clearTransientInput();
+      this.syncTinaUltimateUI(true);
     }
 
     nextLevel() {
@@ -2934,6 +3251,10 @@
         this.sound.stopAnnouncementAudio();
       }
       this.resetLevelBoneTracking();
+      if (this.isSecretBonusLevel) {
+        this.returnFromSecretLevel();
+        return;
+      }
       const levels = this.getCityLevels();
       if (this.levelIndex + 1 < levels.length) {
         // Flujo obligatorio: siempre volver al Submapa de la ciudad tras completar una zona
@@ -3135,6 +3456,14 @@
     // CINEMÁTICA DE FIN DE NIVEL: METRO DE BARCELONA (TMB) + JINGLE + IRIS OUT
     // ========================================================================
     handleTimeUp() {
+      if (this.isSecretBonusLevel) {
+        this.handleSecretTimeUp();
+        return;
+      }
+      if (this.isNoLifeLossBonus()) {
+        this.exitSecretLevelSafely('timeout');
+        return;
+      }
       if (this.ghostMode) {
         this.levelTimer = DEFAULT_TIME_LIMIT;
         this.timeLeft = DEFAULT_TIME_LIMIT;
@@ -3151,7 +3480,21 @@
       if (this.ghostMode) return;
       if (this.isAbductedByCheat) return;
       if (this.isBiplaneFlightCheat) return;
+      if (this.isNoLifeLossBonus()) {
+        this.exitSecretLevelSafely(timeUp ? 'timeout' : 'fall');
+        return;
+      }
       if (this.state !== 'playing' || !this.player || this.player.dead) return;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      if (this.tina) {
+        this.tina.ultimatePassActive = false;
+        this.tina.hiddenInMetro = false;
+      }
+      if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
+        this.sound.stopBiplaneAmbience();
+      }
+      this.syncTinaUltimateUI(true);
       this.tookDamageInZone = true;
 
       if (this.sound) {
@@ -3537,6 +3880,20 @@
     }
 
     persistClearedZoneProgress() {
+      if (this.isSecretBonusLevel) {
+        this.carriedPowerUp = (this.player && this.player.activePowerUp) || this.carriedPowerUp || null;
+        this.survivalRiskMode = false;
+        this.saveHighScore();
+        if (
+          global.WorldProgress &&
+          this.activeSecretKey &&
+          typeof global.WorldProgress.completeSecretLevel === 'function'
+        ) {
+          global.WorldProgress.completeSecretLevel(this.activeSecretKey, this.score);
+        }
+        this.syncLivesToSlot();
+        return;
+      }
       const wasCompletedBefore = this.isCityCompleted(this.cityKey);
       this.carriedPowerUp = (this.player && this.player.activePowerUp) || this.carriedPowerUp || null;
       this.survivalRiskMode = false;
@@ -3557,6 +3914,14 @@
           typeof global.WorldProgress.isContinentUnlocked === 'function'
             ? global.WorldProgress.isContinentUnlocked('chile')
             : false;
+        const wasSpainSecret =
+          typeof global.WorldProgress.isSecretUnlocked === 'function'
+            ? global.WorldProgress.isSecretUnlocked('secret_spain')
+            : false;
+        const wasArgSecret =
+          typeof global.WorldProgress.isSecretUnlocked === 'function'
+            ? global.WorldProgress.isSecretUnlocked('secret_argentina')
+            : false;
 
         const zoneNum = (this.levelIndex | 0) + 1;
         const res = global.WorldProgress.completeZone(this.cityKey, zoneNum);
@@ -3567,7 +3932,7 @@
               ? global.isCountryLocked('chile')
               : !!(global.LOCKED_COUNTRIES && global.LOCKED_COUNTRIES.chile);
           if (this.cityKey === 'canarias' && !wasSaUnlocked && !this.pendingContinentUnlock) {
-            this.pendingContinentUnlock = { from: 'spain', to: 'argentina' };
+            this.pendingContinentUnlock = { from: 'spain', to: 'argentina', keepFocusOn: 'spain' };
           } else if (this.cityKey === 'ushuaia' && !chileTempLocked && !wasChileUnlocked && !this.pendingContinentUnlock) {
             this.pendingContinentUnlock = { from: 'argentina', to: 'chile' };
           } else if (nextCityKey && !wasNextCityUnlocked && !this.pendingCityUnlock) {
@@ -3575,6 +3940,19 @@
               ? 'chile'
               : (['buenosaires', 'rosario', 'cordoba', 'ushuaia'].includes(this.cityKey) ? 'southamerica' : 'spain');
             this.pendingCityUnlock = { from: this.cityKey, to: nextCityKey, scope };
+          }
+          if (
+            !wasSpainSecret &&
+            typeof global.WorldProgress.isSecretUnlocked === 'function' &&
+            global.WorldProgress.isSecretUnlocked('secret_spain')
+          ) {
+            this.pendingSecretUnlock = { level: 'spain', from: 'palma', to: 'secret_spain' };
+          } else if (
+            !wasArgSecret &&
+            typeof global.WorldProgress.isSecretUnlocked === 'function' &&
+            global.WorldProgress.isSecretUnlocked('secret_argentina')
+          ) {
+            this.pendingSecretUnlock = { level: 'southamerica', from: 'rosario', to: 'secret_argentina' };
           }
         }
         this.syncLivesToSlot();
@@ -3697,6 +4075,10 @@
       this.abductionCheat = null;
       this.isBiplaneFlightCheat = false;
       this.biplaneFlightCheat = null;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      this.eventToast = null;
+      this.eventToastQueue = [];
       if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
         this.sound.stopBiplaneAmbience();
       }
@@ -3704,6 +4086,7 @@
       this.pwingBuffer = '';
       this.airTourBuffer = '';
       this.ghostBuffer = '';
+      this.powBuffer = '';
       if (this.player) {
         this.player.hiddenInMetro = false;
         this.player.dropThroughTimer = 0;
@@ -3715,18 +4098,24 @@
       if (this.tina) {
         this.tina.hiddenInMetro = false;
         this.tina.dropThroughTimer = 0;
+        this.tina.ultimatePassActive = false;
       }
+      this.syncTinaUltimateUI(true);
       this.state = 'level_cinematic';
       this.cinematicTimer = 0;
 
+      const isSecretBonus = this.isSecretBonusLevel;
+      if (isSecretBonus) {
+        this.secretEntrySnapshot = null;
+      }
+      const remainingSeconds = Math.max(0, Math.floor(this.levelTimer));
       // Bono de Zona Perfecta (completar zona de punta a punta sin recibir golpes ni perder vidas)
-      const isPerfectZone = !this.tookDamageInZone;
+      const isPerfectZone = !isSecretBonus && !this.tookDamageInZone;
       this.cinematicPerfectZone = isPerfectZone;
       this.cinematicPerfectBonus = isPerfectZone ? 500 : 0;
-      if (isPerfectZone) {
+      if (isPerfectZone || isSecretBonus) {
         this.grantExtraLife();
       }
-      this.persistClearedZoneProgress();
 
       // 1. Congelar controles del jugador y detener música de fondo
       this.clearTransientInput();
@@ -3740,28 +4129,31 @@
       } else {
         this.sound.playOriginalVictoryFanfare();
       }
-      this.cinematicBaseScore = this.score + 200; // +200 pts base por tocar la bandera
+      this.cinematicBaseScore = this.score + (isSecretBonus ? 2500 : 200);
       this.score = this.cinematicBaseScore;
-      if (this.cinematicPerfectZone && this.particles && this.levelData) {
+      this.cinematicInitialTimeLeft = remainingSeconds;
+      this.cinematicTimeLeft = remainingSeconds;
+      this.cinematicTimeBonus = remainingSeconds * (isSecretBonus ? 100 : 50);
+      this.cinematicCoinsTallied = 0;
+      this.cinematicCoinBonus = this.levelCoins * 20;
+      this.cinematicTickAccum = 0;
+      this.cinematicMetroAnnounced = false;
+      this.cinematicTallyFinished = false;
+      this.persistClearedZoneProgress();
+      if (isSecretBonus) {
+        this.showEventToast('🏆 ¡BONUS FRENÉTICO COMPLETADO! +1 VIDA · +2500', '#fde047', 3.4);
+      }
+      if ((this.cinematicPerfectZone || isSecretBonus) && this.particles && this.levelData) {
         const flagDrawX = this.getGoalFlagDrawX();
         this.particles.Burst(flagDrawX + 12, this.levelData.flagY + 12, '#fde047', 26);
         this.particles.Burst(flagDrawX + 12, this.levelData.flagY + 12, '#4ade80', 16);
         this.particles.FloatingText(
           flagDrawX - 66,
           Math.max(66, this.levelData.flagY - 22),
-          '🌟 ¡ZONA PERFECTA! +1 VIDA · +500',
+          isSecretBonus ? '🏆 ¡BONUS COMPLETADO! +1 VIDA' : '🌟 ¡ZONA PERFECTA! +1 VIDA · +500',
           '#fde047'
         );
       }
-      const remainingSeconds = Math.max(0, Math.floor(this.levelTimer));
-      this.cinematicInitialTimeLeft = remainingSeconds;
-      this.cinematicTimeLeft = remainingSeconds;
-      this.cinematicTimeBonus = remainingSeconds * 50;
-      this.cinematicCoinsTallied = 0;
-      this.cinematicCoinBonus = this.levelCoins * 20;
-      this.cinematicTickAccum = 0;
-      this.cinematicMetroAnnounced = false;
-      this.cinematicTallyFinished = false;
       this.irisRadius = Math.hypot(LOGICAL_W, LOGICAL_H);
 
       // Alinear al trío en suelo firme frente a la meta
@@ -3945,7 +4337,7 @@
         if (this.cinematicTimeLeft > 0) {
           const step = Math.min(this.cinematicTimeLeft, 2);
           this.cinematicTimeLeft -= step;
-          this.score += step * 50;
+          this.score += step * (this.isSecretBonusLevel ? 100 : 50);
           ticked = true;
         }
         if (this.cinematicCoinsTallied < this.levelCoins) {
@@ -4007,19 +4399,21 @@
                   : 'Castell de Bellver');
       if (this.cinematicTimer >= 0.05 && !this.cinematicMetroAnnounced) {
         this.cinematicMetroAnnounced = true;
-        const zoneNum = (this.levelIndex | 0) + 1;
-        if (this.isCanariasCity() && typeof this.sound.playCanariasAnnouncement === 'function') {
-          this.sound.playCanariasAnnouncement(nextDest, false, zoneNum);
-        } else if (this.isRosarioCity()) {
-          this.sound.playMetroAnnouncement(nextDest, 'rosario', zoneNum);
-        } else if (this.isCordobaCity()) {
-          this.sound.playMetroAnnouncement(nextDest, 'cordoba', zoneNum);
-        } else if (this.isUshuaiaCity()) {
-          this.sound.playMetroAnnouncement(nextDest, 'ushuaia', zoneNum);
-        } else if (this.isChileBusCity()) {
-          this.sound.playMetroAnnouncement(nextDest, this.normalizeCityKey(this.cityKey), zoneNum);
-        } else {
-          this.sound.playMetroAnnouncement(nextDest, 'palma', zoneNum);
+        if (!this.isSecretBonusLevel) {
+          const zoneNum = (this.levelIndex | 0) + 1;
+          if (this.isCanariasCity() && typeof this.sound.playCanariasAnnouncement === 'function') {
+            this.sound.playCanariasAnnouncement(nextDest, false, zoneNum);
+          } else if (this.isRosarioCity()) {
+            this.sound.playMetroAnnouncement(nextDest, 'rosario', zoneNum);
+          } else if (this.isCordobaCity()) {
+            this.sound.playMetroAnnouncement(nextDest, 'cordoba', zoneNum);
+          } else if (this.isUshuaiaCity()) {
+            this.sound.playMetroAnnouncement(nextDest, 'ushuaia', zoneNum);
+          } else if (this.isChileBusCity()) {
+            this.sound.playMetroAnnouncement(nextDest, this.normalizeCityKey(this.cityKey), zoneNum);
+          } else {
+            this.sound.playMetroAnnouncement(nextDest, 'palma', zoneNum);
+          }
         }
       }
 
@@ -4324,8 +4718,10 @@
       // Megafonía del Metro mientras el equipo desciende por la escalera
       if (this.cinematicTimer >= 0.05 && !this.cinematicMetroAnnounced) {
         this.cinematicMetroAnnounced = true;
-        const nextDest = this.levelData.nextDestination || 'El Gòtic';
-        this.sound.playMetroAnnouncement(nextDest, this.cityKey, (this.levelIndex | 0) + 1);
+        if (!this.isSecretBonusLevel) {
+          const nextDest = this.levelData.nextDestination || 'El Gòtic';
+          this.sound.playMetroAnnouncement(nextDest, this.cityKey, (this.levelIndex | 0) + 1);
+        }
       }
 
       const maxR = Math.hypot(LOGICAL_W, LOGICAL_H);
@@ -4595,6 +4991,68 @@
         });
       }
       return false;
+    }
+
+    // Truco secreto de desbloqueo total de reliquias y definitiva (validado exclusivamente por SHA-256)
+    handlePowCheatKey(key, code = '') {
+      if (this.state !== 'playing') {
+        this.powBuffer = '';
+        return false;
+      }
+      const ch = this.extractCheatLetter(key, code);
+      if (!ch) {
+        this.powBuffer = '';
+        return false;
+      }
+      this.powBuffer = (this.powBuffer + ch).slice(-6);
+      if (this.powBuffer.length === 6) {
+        const candidate = this.powBuffer;
+        this.computeSha256Hex(candidate).then((hash) => {
+          if (this.state !== 'playing') return;
+          if (hash === 'db355fd4757ac9e27d1ac3adaf4436829e9b7e83139359df43c7b2b6e05cb9fb') {
+            this.activatePowCheat();
+          }
+        });
+      }
+      return false;
+    }
+
+    activatePowCheat() {
+      this.powBuffer = '';
+      if (
+        global.WorldProgress &&
+        typeof global.WorldProgress.unlockAllRelicsAndUltimate === 'function'
+      ) {
+        global.WorldProgress.unlockAllRelicsAndUltimate();
+      }
+      if (this.tina) {
+        this.tina.ultimateCooldown = 0;
+        this.tina.ultimateReadyPulse = Math.max(this.tina.ultimateReadyPulse || 0, 1.5);
+      }
+      if (Array.isArray(this.collectibles)) {
+        this.collectibles = this.collectibles.filter((c) => !c || c.type !== 'relic');
+      }
+      this.syncTinaUltimateUI(true);
+      if (this.sound) {
+        if (typeof this.sound.relicPickup === 'function') {
+          this.sound.relicPickup();
+        } else if (typeof this.sound.mapUnlock === 'function') {
+          this.sound.mapUnlock();
+        }
+      }
+      if (this.particles && this.player) {
+        const cx = this.player.x + this.player.w * 0.5;
+        const cy = this.player.y + this.player.h * 0.5;
+        this.particles.Burst(cx, cy, '#fbbf24', 28);
+        this.particles.Burst(cx, cy, '#38bdf8', 16);
+      }
+      const ultKey = this.getTinaUltimateKeyLabel();
+      this.showEventToast(
+        `🏺 ¡8/8 RELIQUIAS + DEFINITIVA DE LA TINA LISTAS [${ultKey}]!`,
+        '#fde047',
+        3.8
+      );
+      return true;
     }
 
     toggleGhostMode() {
@@ -5533,6 +5991,675 @@
             passengers: !!st.passengersBoarded
           }
         );
+      }
+    }
+
+    // ========================================================================
+    // NIVELES SECRETOS "BONUS FRENÉTICO" (50s, cero enemigos, un solo uso)
+    // ========================================================================
+    enterSecretLevel(secretKey) {
+      const secretDefs = global.SECRET_LEVELS || {};
+      const levelDef = secretDefs[secretKey];
+      if (!levelDef) return false;
+      if (
+        global.WorldProgress &&
+        typeof global.WorldProgress.isSecretCompleted === 'function' &&
+        global.WorldProgress.isSecretCompleted(secretKey)
+      ) {
+        this.showEventToast('🏅 Este Bonus Frenético ya fue completado y sellado en esta partida', '#94a3b8', 2.4);
+        return false;
+      }
+
+      this.isSecretBonusLevel = true;
+      this.activeSecretKey = secretKey;
+      this.secretBonusCountry = levelDef.country === 'argentina' ? 'argentina' : 'spain';
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.cityKey = secretKey === 'secret_spain' ? 'palma' : 'buenosaires';
+
+      this.preserveSessionLives();
+      const prevHearts = this.preserveSessionHearts();
+      // Instantánea previa al bonus: si expira el tiempo antes de la meta, se descarta todo
+      // el botín obtenido en el bonus y se resta 1 vida sobre esta instantánea.
+      this.secretEntrySnapshot = {
+        score: Math.max(0, Math.floor(Number(this.score) || 0)),
+        totalCoins: Math.max(0, Math.floor(Number(this.totalCoins) || 0)),
+        runCoins: Math.max(0, Math.floor(Number(this.runCoins) || 0)),
+        lives: Math.max(1, Math.floor(Number(this.lives) || 3)),
+        hearts: prevHearts
+      };
+      this.survivalRiskMode = false;
+      this.tookDamageInZone = false;
+      this.setPostGameOverActive(false);
+      this.resetLevelBoneTracking();
+      this.lizardEventConsumed = false;
+      this.gaudiLizardEventResolved = false;
+
+      this.lockLandscapeOrientation();
+      if (this.sound) {
+        if (typeof this.sound.stopMenuMusic === 'function') this.sound.stopMenuMusic();
+        if (typeof this.sound.stopAllSounds === 'function') this.sound.stopAllSounds();
+        if (typeof this.sound.init === 'function') this.sound.init();
+        if (typeof this.sound.resume === 'function') this.sound.resume();
+        if (typeof this.sound.mapEnter === 'function') this.sound.mapEnter();
+      }
+      this.clearTransientInput();
+      this.levelIndex = 0;
+      this.loadLevel(0, prevHearts);
+      this.levelBannerTimer = 2.8;
+      this.state = 'playing';
+      if (this.sound && typeof this.sound.startMusic === 'function') {
+        this.sound.startMusic(levelDef.musicTheme || this.getActiveLevelMusicTheme(), false);
+      }
+      this.syncTinaUltimateUI(true);
+      return true;
+    }
+
+    handleSecretTimeUp() {
+      if (this._secretExiting) return;
+      this._secretExiting = true;
+
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      if (this.tina) {
+        this.tina.ultimatePassActive = false;
+        this.tina.hiddenInMetro = false;
+      }
+
+      if (this.sound) {
+        if (typeof this.sound.stopBiplaneAmbience === 'function') this.sound.stopBiplaneAmbience();
+        if (typeof this.sound.setHurryUp === 'function') this.sound.setHurryUp(false);
+        if (typeof this.sound.stopMusic === 'function') this.sound.stopMusic();
+      }
+
+      const snap = this.secretEntrySnapshot || {
+        score: Math.max(0, Math.floor(Number(this.levelStartScore) || 0)),
+        totalCoins: Math.max(0, Math.floor(Number(this.totalCoins) || 0) - Math.max(0, Math.floor(Number(this.levelCoins) || 0))),
+        runCoins: 0,
+        lives: Math.max(1, Math.floor(Number(this.lives) || 3)),
+        hearts: Math.max(1, Math.min(3, Number(this.savedHearts) || 3))
+      };
+
+      // Descartar todas las monedas, puntos y vidas recolectadas dentro del Bonus Frenético
+      this.score = snap.score;
+      this.levelStartScore = snap.score;
+      this.totalCoins = snap.totalCoins;
+      this.runCoins = snap.runCoins;
+      this.levelCoins = 0;
+      if (global.WorldProgress && typeof global.WorldProgress.setTotalCoins === 'function') {
+        global.WorldProgress.setTotalCoins(this.totalCoins);
+      }
+
+      // Restar 1 vida sobre las vidas previas al nivel bonus
+      this.lives = Math.max(0, snap.lives - 1);
+      this.secretEntrySnapshot = null;
+      this.hurryUpTriggered = false;
+      this.clearTransientInput();
+
+      if (this.lives <= 0) {
+        this._secretExiting = false;
+        this.clearRunEquipment();
+        if (this.sound) {
+          if (typeof this.sound.spikeHit === 'function') this.sound.spikeHit();
+          if (typeof this.sound.playerDeath === 'function') this.sound.playerDeath();
+          if (typeof this.sound.gameOver === 'function') this.sound.gameOver();
+        }
+        this.prepareGameOverScreen(snap.score);
+        this.lives = 3;
+        this.syncLivesToSlot();
+        this.savedHearts = 3;
+        this.syncHeartsToSlot(3);
+        return;
+      }
+
+      if (this.sound) {
+        if (typeof this.sound.spikeHit === 'function') this.sound.spikeHit();
+        else if (typeof this.sound.hurt === 'function') this.sound.hurt();
+      }
+      if (this.player) {
+        this.player.dead = false;
+        this.player.vx = 0;
+        this.player.vy = 0;
+        this.player.hearts = snap.hearts;
+      }
+      this.syncLivesToSlot();
+      this.syncHeartsToSlot(snap.hearts);
+
+      this.secretExitState = {
+        timer: 0,
+        duration: 1.9,
+        reason: 'timeout',
+        lostBonus: true,
+        headline: '⏱️ ¡TIEMPO AGOTADO EN EL BONUS!',
+        subline: '¡No llegaste a la meta! Botín del bonus descartado y -1 ❤️ VIDA',
+        coins: 0,
+        score: this.score || 0
+      };
+      this.state = 'secret_exit';
+      this.syncTinaUltimateUI(true);
+    }
+
+    exitSecretLevelSafely(reason = 'timeout') {
+      if (this._secretExiting) return;
+      this._secretExiting = true;
+
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      if (this.tina) {
+        this.tina.ultimatePassActive = false;
+        this.tina.hiddenInMetro = false;
+      }
+      if (this.player) {
+        this.player.dead = false;
+        this.player.vx = 0;
+        this.player.vy = 0;
+        if ((this.player.hearts || 0) <= 0) {
+          this.player.hearts = Math.max(1, Math.min(3, Number(this.savedHearts) || 3));
+        }
+      }
+
+      if (this.sound) {
+        if (typeof this.sound.stopBiplaneAmbience === 'function') this.sound.stopBiplaneAmbience();
+        if (typeof this.sound.setHurryUp === 'function') this.sound.setHurryUp(false);
+        if (typeof this.sound.stopMusic === 'function') this.sound.stopMusic();
+        if (typeof this.sound.secretBonusEscape === 'function') {
+          this.sound.secretBonusEscape();
+        } else if (typeof this.sound.menuSelect === 'function') {
+          this.sound.menuSelect();
+        }
+      }
+
+      this.hurryUpTriggered = false;
+      this.clearTransientInput();
+      this.preserveSessionLives();
+      this.preserveSessionHearts();
+      this.saveHighScore();
+
+      const headline =
+        reason === 'timeout'
+          ? '⏱️ ¡TIEMPO DEL BONUS!'
+          : '✨ ¡SALIDA SEGURA DEL BONUS!';
+      this.secretExitState = {
+        timer: 0,
+        duration: 1.65,
+        reason,
+        headline,
+        subline: '¡Te quedas con todo el botín sin perder vidas!',
+        coins: this.levelCoins || 0,
+        score: this.score || 0
+      };
+      this.state = 'secret_exit';
+      this.syncTinaUltimateUI(true);
+    }
+
+    updateSecretExit(dt) {
+      if (!this.secretExitState) {
+        this.returnFromSecretLevel();
+        return;
+      }
+      this.secretExitState.timer += dt;
+      if (this.particles) {
+        this.particles.update(dt);
+      }
+      if (this.secretExitState.timer >= this.secretExitState.duration) {
+        this.returnFromSecretLevel();
+      }
+    }
+
+    returnFromSecretLevel() {
+      const country =
+        this.secretBonusCountry ||
+        (this.activeSecretKey === 'secret_argentina' ? 'argentina' : 'spain');
+      const secretKey = this.activeSecretKey;
+      this.isSecretBonusLevel = false;
+      this.activeSecretKey = null;
+      this.secretBonusCountry = null;
+      this.secretExitState = null;
+      this._secretExiting = false;
+      this.secretEntrySnapshot = null;
+      this.tinaUltimatePass = null;
+      this.biplaneBombs = [];
+      if (this.tina) {
+        this.tina.ultimatePassActive = false;
+        this.tina.hiddenInMetro = false;
+      }
+      this.preserveSessionLives();
+      this.preserveSessionHearts();
+      this.saveHighScore();
+      this.resetLevelBoneTracking();
+      if (this.sound) {
+        if (typeof this.sound.setHurryUp === 'function') this.sound.setHurryUp(false);
+        if (typeof this.sound.stopBiplaneAmbience === 'function') this.sound.stopBiplaneAmbience();
+        if (typeof this.sound.stopAnnouncementAudio === 'function') this.sound.stopAnnouncementAudio();
+      }
+      this.openMap({
+        level: country === 'spain' ? 'spain' : 'southamerica',
+        worldNode: country === 'spain' ? 'spain' : 'argentina',
+        cursorCity: secretKey || (country === 'spain' ? 'palma' : 'buenosaires'),
+        secretKey
+      });
+    }
+
+    renderSecretExitOverlay(ctx) {
+      const st = this.secretExitState;
+      if (!st) return;
+      ctx.save();
+      const fadeIn = Math.min(1, st.timer / 0.25);
+      const fadeOut = st.timer > st.duration - 0.35 ? Math.max(0, 1 - (st.timer - (st.duration - 0.35)) / 0.35) : 1;
+      ctx.fillStyle = `rgba(9, 13, 22, ${(0.58 * fadeIn).toFixed(2)})`;
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+
+      ctx.globalAlpha = fadeIn;
+      ctx.fillStyle = st.lostBonus ? 'rgba(32, 10, 14, 0.95)' : 'rgba(15, 23, 42, 0.94)';
+      ctx.strokeStyle = st.lostBonus ? '#ef4444' : '#fde047';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(LOGICAL_W * 0.5 - 275, 175, 550, 156, 16);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = st.lostBonus ? '#f87171' : '#fde047';
+      ctx.font = '900 25px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(st.headline, LOGICAL_W * 0.5, 222);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(st.subline, LOGICAL_W * 0.5, 256);
+
+      ctx.fillStyle = st.lostBonus ? '#fca5a5' : '#4ade80';
+      ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(
+        st.lostBonus
+          ? `💔 Botín descartado  ·  ❤️ Vidas restantes: ${this.lives}  ·  ⭐ Puntos: ${st.score}`
+          : `🪙 Monedas: +${st.coins}  ·  ⭐ Puntos: ${st.score}  ·  ❤️ Vidas intactas: ${this.lives}`,
+        LOGICAL_W * 0.5,
+        292
+      );
+
+      if (fadeOut < 1) {
+        ctx.fillStyle = `rgba(0, 0, 0, ${(1 - fadeOut).toFixed(2)})`;
+        ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+      }
+      ctx.restore();
+    }
+
+    // ========================================================================
+    // DEFINITIVA DE LA TINA: BOMBARDEO AÉREO ESTILO WORMS (8/8 Reliquias)
+    // ========================================================================
+    getUltimateBombEnemyTargets() {
+      const listNames = [
+        'pigeons', 'scooters', 'seagulls', 'hedgehogs', 'boars', 'zigzagPigeons',
+        'madridCats', 'selfieTourists', 'royalGuards', 'peacocks', 'crazyCyclists',
+        'greenParakeets', 'swarmParakeets', 'jellyfishes', 'crabs', 'goats',
+        'royalSeagulls', 'swarmRoyalSeagulls', 'gallotias', 'garajonayFoxes',
+        'abubillas', 'swarmAbubillas', 'blindCrabs', 'trapitos', 'motochorros',
+        'barrabravas', 'canillitas', 'fatPigeons', 'horneros', 'swarmHorneros',
+        'horneroNests', 'rockeros', 'penguins', 'palometas', 'pacificHazards',
+        'swarmMosquitoes', 'belgranoPirates', 'serranoBurros', 'miniUfos',
+        'seaLions', 'kingCrabs', 'fuegianFoxes', 'swarmCormorants', 'pumas',
+        'condors', 'portPelicans', 'frigates', 'swarmFrigates', 'vicunas',
+        'portDogs', 'rapaNuiWarriors', 'guasoDancers', 'swarmPigeons', 'enemies'
+      ];
+      const seen = new Set();
+      const targets = [];
+      for (let i = 0; i < listNames.length; i++) {
+        const arr = this[listNames[i]];
+        if (!Array.isArray(arr)) continue;
+        for (let j = 0; j < arr.length; j++) {
+          const enemy = arr[j];
+          if (!enemy || seen.has(enemy)) continue;
+          seen.add(enemy);
+          if (enemy.dead || enemy.broken || enemy.defeated || enemy.escaped || enemy.fallingFromPole) continue;
+          if (enemy.state === 'peeking' || enemy.state === 'hidden') continue;
+          targets.push(enemy);
+        }
+      }
+      if (
+        this.gaudiLizard &&
+        !seen.has(this.gaudiLizard) &&
+        !this.gaudiLizard.dead &&
+        !this.gaudiLizard.defeated &&
+        this.gaudiLizard.state === 'running'
+      ) {
+        targets.push(this.gaudiLizard);
+      }
+      return targets;
+    }
+
+    killEnemyByBiplaneBomb(enemy, bx, by) {
+      if (!enemy || enemy.dead || enemy.broken || enemy.defeated || enemy.escaped) return false;
+      const E = global.Entities;
+      const ex = (Number.isFinite(enemy.x) ? enemy.x : bx) + (enemy.w || 26) * 0.5;
+      const ey = (Number.isFinite(enemy.y) ? enemy.y : by) + (enemy.h || 26) * 0.5;
+      const knockDir = ex >= bx ? 1 : -1;
+
+      if (enemy.isBoss) {
+        if (typeof enemy.takeHit === 'function') {
+          enemy.takeHit(this.particles, knockDir, true, true);
+        }
+        this.score += 120;
+        this.particles.Burst(ex, ey, '#fde047', 14);
+        this.particles.FloatingText(ex - 20, ey - 18, '💥 ¡IMPACTO! +120', '#fde047');
+        return true;
+      }
+
+      if (E && E.GaudiLizardEnemy && enemy instanceof E.GaudiLizardEnemy) {
+        if (enemy.state !== 'running') return false;
+        return this.defeatGaudiLizard(enemy, false);
+      }
+
+      if (E && E.HorneroNest && enemy instanceof E.HorneroNest) {
+        enemy.broken = true;
+        enemy.dead = true;
+        enemy.hp = 0;
+        enemy.hits = 0;
+        this.score += 100;
+        if (this.particles) {
+          this.particles.Burst(ex, ey, '#92400e', 18);
+          this.particles.Burst(ex, ey, '#fde047', 12);
+          this.particles.FloatingText(ex - 26, ey - 18, '💥 ¡NIDO VOLADO! +100', '#fde047');
+        }
+        return true;
+      }
+
+      if (E && E.RockeroEnemy && enemy instanceof E.RockeroEnemy && enemy.onPole) {
+        this.defeatPoleRockero(enemy, knockDir, '💥 ¡AL SUELO! +80', '#fde047');
+        enemy.dead = true;
+        enemy.defeated = true;
+        return true;
+      }
+
+      if (
+        E &&
+        ((E.PalometaEnemy && enemy instanceof E.PalometaEnemy) ||
+          (E.PacificJumpHazard && enemy instanceof E.PacificJumpHazard))
+      ) {
+        if (typeof enemy.eliminate === 'function') {
+          enemy.eliminate(8.0);
+        }
+        enemy.dead = true;
+        this.score += 80;
+        if (this.particles) {
+          this.particles.Burst(ex, ey, '#38bdf8', 14);
+          this.particles.FloatingText(ex - 16, ey - 16, '💥 +80', '#fde047');
+        }
+        return true;
+      }
+
+      if (E && E.TrapitoEnemy && enemy instanceof E.TrapitoEnemy) {
+        this.collectibles.push(new E.Collectible(enemy.x + 6, enemy.y - 16, 'coin', true));
+      }
+
+      const wasArmored = Boolean(
+        enemy.hasArmor ||
+          enemy.hasMask ||
+          enemy.hasDrum ||
+          (E &&
+            ((E.RoyalGuardEnemy && enemy instanceof E.RoyalGuardEnemy) ||
+              (E.KingCrabEnemy && enemy instanceof E.KingCrabEnemy) ||
+              (E.RapaNuiWarrior && enemy instanceof E.RapaNuiWarrior) ||
+              (E.BlindCrabEnemy && enemy instanceof E.BlindCrabEnemy) ||
+              (E.BarrabravaEnemy && enemy instanceof E.BarrabravaEnemy) ||
+              (E.PeacockEnemy && enemy instanceof E.PeacockEnemy) ||
+              (E.BelgranoPirateEnemy && enemy instanceof E.BelgranoPirateEnemy)))
+      );
+      if ('hasArmor' in enemy) enemy.hasArmor = false;
+      if ('armorBroken' in enemy) enemy.armorBroken = true;
+      if ('hasMask' in enemy) enemy.hasMask = false;
+      if ('hasDrum' in enemy) enemy.hasDrum = false;
+      if ('shellBroken' in enemy) enemy.shellBroken = true;
+      if ('hp' in enemy) enemy.hp = 0;
+      enemy.dead = true;
+      enemy.defeated = true;
+
+      const pts = wasArmored ? 100 : 80;
+      this.score += pts;
+      if (this.particles) {
+        this.particles.Burst(ex, ey, '#f97316', 14);
+        if (wasArmored) {
+          this.particles.Burst(ex, ey, '#cbd5e1', 12);
+          this.particles.Burst(ex, ey, '#fde047', 10);
+        }
+        this.particles.FloatingText(ex - 18, ey - 16, `💥 +${pts}`, '#fde047');
+      }
+      return true;
+    }
+
+    triggerTinaUltimate() {
+      if (
+        this.state !== 'playing' ||
+        this.paused ||
+        this.isBiplaneFlightCheat ||
+        this.isAbductedByCheat ||
+        this.state === 'level_cinematic'
+      ) {
+        return false;
+      }
+
+      const unlocked = Boolean(
+        global.WorldProgress &&
+          typeof global.WorldProgress.isTinaUltimateUnlocked === 'function' &&
+          global.WorldProgress.isTinaUltimateUnlocked()
+      );
+      if (!unlocked) {
+        if (this.sound) {
+          if (typeof this.sound.uiCancel === 'function') this.sound.uiCancel();
+          else if (typeof this.sound.menuSelect === 'function') this.sound.menuSelect();
+        }
+        this.showEventToast('🔒 Consigue 8/8 Reliquias para desbloquear la Definitiva de La Tina', '#fbbf24', 2.6);
+        return false;
+      }
+
+      if (!this.tina || !this.tina.canUseUltimate() || this.tinaUltimatePass) {
+        if (this.tina && this.tina.ultimateCooldown > 0 && !this.tinaUltimatePass) {
+          if (this.sound && typeof this.sound.uiCancel === 'function') this.sound.uiCancel();
+          this.showEventToast(
+            `⏳ Definitiva recargando (${Math.ceil(this.tina.ultimateCooldown)}s)`,
+            '#94a3b8',
+            1.5
+          );
+        }
+        return false;
+      }
+
+      if (!this.tina.activateUltimate()) return false;
+      this.tina.ultimatePassActive = true;
+
+      if (this.sound) {
+        if (typeof this.sound.tinaUltimateLaunch === 'function') this.sound.tinaUltimateLaunch();
+        if (typeof this.sound.startBiplaneAmbience === 'function') this.sound.startBiplaneAmbience();
+      }
+
+      if (this.particles && this.tina) {
+        const tx = this.tina.x + this.tina.w * 0.5;
+        const ty = this.tina.y + this.tina.h * 0.5;
+        this.particles.Burst(tx, ty, '#fde047', 18);
+        this.particles.Burst(tx, ty, '#f97316', 12);
+        this.particles.FloatingText(tx - 44, ty - 34, '✈️💣 ¡BOMBARDEO DE LA TINA!', '#fde047');
+      }
+
+      this.tinaUltimatePass = {
+        phase: 'takeoff',
+        timer: 0,
+        animTimer: 0,
+        screenX: LOGICAL_W + 70,
+        screenY: 82,
+        speed: 510,
+        dropScreenXs: [890, 755, 620, 485, 350, 215, 80],
+        dropIdx: 0
+      };
+      this.syncTinaUltimateUI(true);
+      return true;
+    }
+
+    updateTinaUltimatePass(dt) {
+      const pass = this.tinaUltimatePass;
+      if (pass) {
+        pass.timer += dt;
+        pass.animTimer += dt;
+
+        if (pass.phase === 'takeoff') {
+          if (this.tina) {
+            this.tina.vy = -480;
+            this.tina.y -= 420 * dt;
+            if (this.particles && Math.random() < 0.7) {
+              this.particles.Sparkle(this.tina.x + 12, this.tina.y + this.tina.h, '#fde047');
+            }
+          }
+          if (pass.timer >= 0.22) {
+            pass.phase = 'bombing';
+            pass.timer = 0;
+            if (this.tina) {
+              this.tina.hiddenInMetro = true;
+            }
+          }
+        } else if (pass.phase === 'bombing') {
+          pass.screenX -= pass.speed * dt;
+          pass.screenY = 82 + Math.sin(pass.timer * 4.8) * 10;
+
+          if (this.particles && Math.random() < 0.45) {
+            this.particles.Sparkle(this.cameraX + pass.screenX + 28, pass.screenY + 2, '#fef08a');
+          }
+
+          const E = global.Entities;
+          while (
+            pass.dropIdx < pass.dropScreenXs.length &&
+            pass.screenX <= pass.dropScreenXs[pass.dropIdx]
+          ) {
+            if (E && E.BiplaneBombProjectile) {
+              const bx = this.cameraX + pass.screenX - 8;
+              const by = pass.screenY + 14;
+              const bomb = new E.BiplaneBombProjectile(bx, by, -82, 58, {
+                explosionRadius: 140
+              });
+              if (pass.dropIdx % 2 === 1) {
+                bomb.variant = 'golden_bone';
+              }
+              this.biplaneBombs.push(bomb);
+              if (this.sound && typeof this.sound.biplaneBombDrop === 'function') {
+                this.sound.biplaneBombDrop();
+              }
+            }
+            pass.dropIdx++;
+          }
+
+          if (pass.screenX <= -160) {
+            this.tinaUltimatePass = null;
+            if (this.sound && typeof this.sound.stopBiplaneAmbience === 'function') {
+              this.sound.stopBiplaneAmbience();
+            }
+            if (this.tina) {
+              this.tina.ultimatePassActive = false;
+              this.tina.hiddenInMetro = false;
+              if (this.player && this.levelData) {
+                this.tina.x = Math.max(
+                  16,
+                  Math.min((this.levelData.width || 3200) - 40, this.player.x - 42)
+                );
+                this.tina.y = Math.max(40, this.player.y - 76);
+                this.tina.vx = 0;
+                this.tina.vy = 50;
+                this.tina.onGround = false;
+                this.tina.isGrounded = false;
+                if (this.particles) {
+                  this.particles.Burst(this.tina.x + 12, this.tina.y + 12, '#fde047', 12);
+                  this.particles.FloatingText(this.tina.x - 16, this.tina.y - 14, '🐾 ¡MISIÓN CUMPLIDA!', '#6ee7b7');
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (!Array.isArray(this.biplaneBombs) || this.biplaneBombs.length === 0) return;
+
+      const E = global.Entities;
+      const activeEnemies = this.getUltimateBombEnemyTargets();
+
+      for (let i = this.biplaneBombs.length - 1; i >= 0; i--) {
+        const bomb = this.biplaneBombs[i];
+        if (!bomb) {
+          this.biplaneBombs.splice(i, 1);
+          continue;
+        }
+        bomb.update(dt, this.solids, this.particles);
+
+        if (!bomb.exploded && E && typeof E.aabbOverlap === 'function') {
+          for (let eIdx = 0; eIdx < activeEnemies.length; eIdx++) {
+            const enemy = activeEnemies[eIdx];
+            if (!enemy || enemy.dead || enemy.broken || enemy.defeated) continue;
+            if (
+              ((E.PalometaEnemy && enemy instanceof E.PalometaEnemy) ||
+                (E.PacificJumpHazard && enemy instanceof E.PacificJumpHazard)) &&
+              typeof enemy.isAirborne === 'function' &&
+              !enemy.isAirborne()
+            ) {
+              continue;
+            }
+            if (E.aabbOverlap(bomb, enemy)) {
+              bomb.explode(this.particles);
+              break;
+            }
+          }
+        }
+
+        if (bomb.exploded && !bomb.blastChecked) {
+          bomb.blastChecked = true;
+          const bx = bomb.x + bomb.w * 0.5;
+          const by = bomb.y + bomb.h * 0.5;
+          const radius = Number.isFinite(bomb.explosionRadius) ? bomb.explosionRadius : 140;
+
+          if (this.sound && typeof this.sound.biplaneBombExplosion === 'function') {
+            this.sound.biplaneBombExplosion();
+          }
+          this.triggerScreenShake(0.28, 8);
+
+          let killedAny = false;
+          for (let eIdx = 0; eIdx < activeEnemies.length; eIdx++) {
+            const enemy = activeEnemies[eIdx];
+            if (!enemy || enemy.dead || enemy.broken || enemy.defeated) continue;
+            const ew = enemy.w || 26;
+            const eh = enemy.h || 26;
+            const closestX = Math.max(enemy.x, Math.min(bx, enemy.x + ew));
+            const closestY = Math.max(enemy.y, Math.min(by, enemy.y + eh));
+            if (Math.hypot(closestX - bx, closestY - by) <= radius) {
+              if (this.killEnemyByBiplaneBomb(enemy, bx, by)) {
+                killedAny = true;
+              }
+            }
+          }
+
+          const enemyProjLists = [
+            this.newspaperProjectiles,
+            this.pelicanDrops,
+            this.salineSpits,
+            this.fernetBottles,
+            this.coldBlasts
+          ];
+          for (let pListIdx = 0; pListIdx < enemyProjLists.length; pListIdx++) {
+            const projArr = enemyProjLists[pListIdx];
+            if (!Array.isArray(projArr)) continue;
+            for (let pIdx = projArr.length - 1; pIdx >= 0; pIdx--) {
+              const ep = projArr[pIdx];
+              if (!ep) continue;
+              const px = ep.x + (ep.w || 16) * 0.5;
+              const py = ep.y + (ep.h || 16) * 0.5;
+              if (Math.hypot(px - bx, py - by) <= radius) {
+                ep.dead = true;
+                projArr.splice(pIdx, 1);
+              }
+            }
+          }
+
+          if (killedAny) {
+            this.saveHighScore();
+          }
+        }
+
+        if (bomb.dead) {
+          this.biplaneBombs.splice(i, 1);
+        }
       }
     }
 
@@ -6722,6 +7849,7 @@
       if (this.state !== 'playing') return false;
       this.state = 'paused';
       this.clearTransientInput();
+      this.syncTinaUltimateUI(true);
       if (this.sound) {
         if (typeof this.sound.playPauseSfx === 'function') this.sound.playPauseSfx(true);
         else if (typeof this.sound.menuSelect === 'function') this.sound.menuSelect();
@@ -6734,6 +7862,7 @@
       if (this.state !== 'paused') return false;
       this.state = 'playing';
       this.clearTransientInput();
+      this.syncTinaUltimateUI(true);
       if (this.sound) {
         if (typeof this.sound.resumeMusic === 'function') this.sound.resumeMusic();
         if (typeof this.sound.playPauseSfx === 'function') this.sound.playPauseSfx(false);
@@ -6772,6 +7901,9 @@
       }
       if (this.state !== 'paused' && this.ghostToastTimer > 0) {
         this.ghostToastTimer = Math.max(0, this.ghostToastTimer - dt);
+      }
+      if (this.state !== 'paused') {
+        this.updateEventToast(dt);
       }
       if (this.ghostRescueToastCooldown > 0) {
         this.ghostRescueToastCooldown = Math.max(0, this.ghostRescueToastCooldown - dt);
@@ -6828,8 +7960,19 @@
         return;
       }
 
+      if (this.state === 'secret_exit') {
+        this.updateSecretExit(dt);
+        if (this.inputManager) this.inputManager.clearStepTriggers();
+        return;
+      }
+
       if (this.state === 'map') {
         this.mapScreen.update(dt);
+        if (this.inputManager) this.inputManager.clearStepTriggers();
+        return;
+      }
+      if (this.state === 'gameover') {
+        this.gameOverAnimTimer = (this.gameOverAnimTimer || 0) + dt;
         if (this.inputManager) this.inputManager.clearStepTriggers();
         return;
       }
@@ -6888,6 +8031,7 @@
           ((this.input.jumpPressed || this.input.jumpHeld) && this.getCheatElapsedMs() > 300) ||
           this.input.shootPressed ||
           this.input.tinaPressed ||
+          this.input.tinaUltimatePressed ||
           this.input.skillPressed ||
           this.input.reservePressed ||
           Math.abs(this.input.analogX || 0) > 0.16 ||
@@ -7009,9 +8153,12 @@
         .concat(this.fallingPlatforms)
         .concat(this.sinkingContainers);
 
-      // 2. Acciones especiales: Ladrido Doble de la Tina [X], Disparo de Planta [Z] y Reserva [SHIFT]
+      // 2. Acciones especiales: Ladrido Doble de la Tina [X], Definitiva Tina [E], Planta [Z] y Reserva [SHIFT]
       if (this.input.tinaPressed) {
         this.triggerTinaGrowl();
+      }
+      if (this.input.tinaUltimatePressed) {
+        this.triggerTinaUltimate();
       }
       if (this.input.shootPressed) {
         this.tryShootPlant();
@@ -7116,6 +8263,7 @@
         this.input.downPressed = false;
         this.input.skillPressed = false;
         this.input.tinaPressed = false;
+        this.input.tinaUltimatePressed = false;
         this.input.shootPressed = false;
         this.input.reservePressed = false;
       }
@@ -7137,9 +8285,21 @@
 
       this.partner.update(dt, this.player, this.solids, activePlatforms);
       this.tina.update(dt, this.player, this.solids, activePlatforms, this.collectibles);
+      this.updateTinaUltimatePass(dt);
+      this.syncTinaUltimateUI();
 
-      // 4. ¿El Líder cayó al agua profunda, lava volcánica o en un pozo mortal? (cuesta 1 vida)
-      if (this.ghostMode) {
+      // 4. ¿El Líder cayó al agua profunda, lava volcánica o en un pozo mortal? (En Bonus Frenético no hay pozos)
+      if (this.isSecretBonusLevel) {
+        if (this.player.y > LOGICAL_H + 60) {
+          this.player.y = 390;
+          this.player.vy = 0;
+        }
+      } else if (this.isNoLifeLossBonus()) {
+        if (this.player.y > LOGICAL_H + 60) {
+          this.exitSecretLevelSafely('fall');
+          return;
+        }
+      } else if (this.ghostMode) {
         const rescueLimitY =
           this.hasLavaPits || this.hasDeadlyPits || this.hasWaterPits ? 494 : LOGICAL_H + 40;
         if (this.player.y > rescueLimitY) {
@@ -7206,15 +8366,22 @@
               : Math.random() < 0.5 ? '#fef08a' : '#fbbf24'
           );
         }
-        if (!c.canBePickedUp()) continue;
+        if (!c.canBePickedUp() || c.ghost) continue;
 
-        const isSecret1Up = c.type === 'golden_bone' || c.type === '1up_bone';
+        const isPowerUpCollect =
+          c.type === 'angel_wings' ||
+          c.type === 'plant' ||
+          c.type === 'calamares' ||
+          c.type === 'electric_shield' ||
+          c.type === 'earthquake' ||
+          c.type === 'hypnotic_pose' ||
+          c.type === 'pose';
         const tinaBlocked = (c.tinaDelayTimer || 0) > 0;
-        const actors = isSecret1Up
-          ? [this.player]
-          : tinaBlocked
-            ? [this.player, this.partner]
-            : partyMembers;
+        // Regla estricta: únicamente power-ups pueden ser recogidos por acompañantes/La Tina;
+        // monedas, curaciones/comidas, vidas extra (1UP) y reliquias solo los agarra el jugador.
+        const actors = isPowerUpCollect
+          ? (tinaBlocked ? [this.player, this.partner] : partyMembers)
+          : [this.player];
         let touchedBy = null;
         for (let m = 0; m < actors.length; m++) {
           if (global.Entities.aabbOverlap(actors[m], c)) {
@@ -7275,6 +8442,9 @@
             this.grantExtraLife();
             this.emitGoldenBonePickupEffect(c.x + 13, c.y + 13, '✨ ¡1UP SECRETO! +1 VIDA');
           } else if (c.type === 'extra_life_heart' || c.type === '1up_heart') {
+            if (this.collectedBonesInRun && c.secretKey) {
+              this.collectedBonesInRun.add(c.secretKey);
+            }
             this.score += 150;
             this.grantExtraLife();
             if (this.sound && typeof this.sound.play1Up === 'function') {
@@ -7299,6 +8469,62 @@
             if (this.sound && typeof this.sound.bark === 'function') {
               setTimeout(() => this.sound && this.sound.bark(), 160);
             }
+          } else if (c.isRelic) {
+            this.score += 1000;
+            const res =
+              global.WorldProgress && typeof global.WorldProgress.collectRelic === 'function'
+                ? global.WorldProgress.collectRelic(c.cityKey)
+                : null;
+            let totalCount = res && Number.isFinite(res.totalCount) ? res.totalCount : 0;
+            if (!totalCount && global.WorldProgress) {
+              if (typeof global.WorldProgress.hasRelic === 'function' && global.RELIC_DEFS) {
+                const rKeys = Object.keys(global.RELIC_DEFS);
+                for (let rk = 0; rk < rKeys.length; rk++) {
+                  if (global.WorldProgress.hasRelic(rKeys[rk])) totalCount++;
+                }
+              }
+              if (!totalCount) totalCount = 1;
+            }
+            if (this.sound && typeof this.sound.relicPickup === 'function') {
+              this.sound.relicPickup();
+            }
+            if (this.particles) {
+              if (typeof this.particles.RelicAuraBurst === 'function') {
+                this.particles.RelicAuraBurst(c.x + 14, c.y + 14, c.relicColor);
+              } else {
+                this.particles.Burst(c.x + 14, c.y + 14, c.relicColor || '#fbbf24', 28);
+              }
+              this.particles.FloatingText(
+                c.x - 34,
+                c.y - 20,
+                `✨ ${c.relicName || '¡RELIQUIA!'} +1000`,
+                c.relicColor || '#fde047'
+              );
+            }
+            this.showEventToast(
+              `✨ ¡RELIQUIA OBTENIDA: ${c.relicName || c.cityKey}! (${totalCount}/8)`,
+              c.relicColor || '#fde047',
+              3.4
+            );
+            if (res && res.unlockedSpainSecret) {
+              this.showEventToast(
+                '🌅 ¡BONUS SECRETO DE ESPAÑA DESBLOQUEADO: Atardecer en Ibiza!',
+                '#fb923c',
+                3.8
+              );
+            }
+            if (res && res.unlockedArgentinaSecret) {
+              this.showEventToast(
+                '🌊 ¡BONUS SECRETO DE ARGENTINA DESBLOQUEADO: Cataratas del Iguazú!',
+                '#38bdf8',
+                3.8
+              );
+            }
+            if (res && res.unlockedTinaUltimate) {
+              this.showEventToast('✈️💣 ¡DEFINITIVA DE LA TINA DESBLOQUEADA!', '#fde047', 4.0);
+              this.syncControlHintsUI();
+            }
+            this.syncTinaUltimateUI(true);
           }
           this.saveHighScore();
         }
@@ -9100,6 +10326,13 @@
       if (this.ghostMode) return;
       if (this.isAbductedByCheat) return;
       if (this.isBiplaneFlightCheat) return;
+      if (this.isNoLifeLossBonus()) {
+        if (this.player && (this.player.hearts || 0) <= 0) {
+          this.player.hearts = Math.max(1, Math.min(3, Number(this.savedHearts) || 3));
+        }
+        this.exitSecretLevelSafely(fellInPit ? 'fall' : 'knockout');
+        return;
+      }
       this.triggerPlayerDeath({ fellInPit: Boolean(fellInPit), timeUp: false });
     }
 
@@ -9154,6 +10387,12 @@
         return;
       }
 
+      if (this.state === 'gameover') {
+        this.renderGameOverModal(ctx);
+        ctx.restore();
+        return;
+      }
+
       // Temblor de cámara en impactos
       ctx.save();
       if (this.screenShakeTimer > 0) {
@@ -9177,6 +10416,8 @@
         this.renderPauseModal(ctx);
       } else if (this.state === 'level_clear') {
         this.renderLevelClearModal(ctx);
+      } else if (this.state === 'secret_exit') {
+        this.renderSecretExitOverlay(ctx);
       } else if (this.state === 'gameover') {
         this.renderGameOverModal(ctx);
       } else if (this.state === 'victory') {
@@ -9317,6 +10558,11 @@
       }
       for (let i = 0; i < this.calamaresProjectiles.length; i++) {
         this.calamaresProjectiles[i].draw(ctx, this.sprites, this.cameraX);
+      }
+      if (Array.isArray(this.biplaneBombs)) {
+        for (let i = 0; i < this.biplaneBombs.length; i++) {
+          this.biplaneBombs[i].draw(ctx, this.sprites, this.cameraX);
+        }
       }
 
       // 6. Enemigos con sombras dinámicas
@@ -9586,6 +10832,29 @@
         this.drawBiplaneTourFlight(ctx);
       }
 
+      if (
+        this.tinaUltimatePass &&
+        this.tinaUltimatePass.phase === 'bombing' &&
+        this.sprites &&
+        typeof this.sprites.drawTinaBiplane === 'function'
+      ) {
+        this.sprites.drawTinaBiplane(
+          ctx,
+          this.tinaUltimatePass.screenX,
+          this.tinaUltimatePass.screenY,
+          this.tinaUltimatePass.animTimer,
+          -1,
+          {
+            scale: 1.25,
+            pitch: Math.cos(this.tinaUltimatePass.timer * 4.8) * 0.06,
+            bob: Math.sin(this.tinaUltimatePass.timer * 8) * 1.5,
+            contrails: true,
+            turbo: true,
+            passengers: false
+          }
+        );
+      }
+
       if (isTeideCable) {
         if (this.state === 'level_cinematic' && !this.cinematicCableCarExited) {
           const isDocked = this.cinematicTimer >= 2.15 && this.cinematicTimer < 3.15;
@@ -9722,7 +10991,7 @@
         const gapBetween = subLines.length > 0 ? 3 : 0;
         const boxH = padY * 2 + titleLines.length * titleLineH + gapBetween + subLines.length * subLineH;
         const boxX = LOGICAL_W * 0.5 - boxW * 0.5;
-        const boxY = 60;
+        const boxY = 94;
 
         ctx.fillStyle = 'rgba(9, 13, 22, 0.84)';
         ctx.strokeStyle = '#fbbf24';
@@ -9772,14 +11041,14 @@
         ctx.strokeStyle = 'rgba(251, 191, 36, 0.75)';
         ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.roundRect(LOGICAL_W * 0.5 - textW * 0.5, 60, textW, boxH, 8);
+        ctx.roundRect(LOGICAL_W * 0.5 - textW * 0.5, 94, textW, boxH, 8);
         ctx.fill();
         ctx.stroke();
 
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fef08a';
         for (let i = 0; i < hintLines.length; i++) {
-          ctx.fillText(hintLines[i], LOGICAL_W * 0.5, 60 + 17 + i * lineH, textW - padX * 2);
+          ctx.fillText(hintLines[i], LOGICAL_W * 0.5, 94 + 17 + i * lineH, textW - padX * 2);
         }
         ctx.restore();
       }
@@ -9792,7 +11061,7 @@
         ctx.strokeStyle = flash ? '#fef08a' : '#ef4444';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.roundRect(LOGICAL_W * 0.5 - 310, 72, 620, 64, 12);
+        ctx.roundRect(LOGICAL_W * 0.5 - 310, 96, 620, 64, 12);
         ctx.fill();
         ctx.stroke();
 
@@ -9802,7 +11071,7 @@
         ctx.fillText(
           '⚠️ WARNING / ¡PELIGRO! — ¡ATAQUE EN ENJAMBRE! ⚠️',
           LOGICAL_W * 0.5,
-          100
+          124
         );
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
@@ -9822,7 +11091,7 @@
           : this.isMadridSwarm
           ? `¡20 COTORRAS EN ENJAMBRE! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`
           : `¡20 PALOMAS AGRESIVAS! ¡ACTIVÁ EL LADRIDO DE LA TINA [${kSwarmTina}] AHORA!`;
-        ctx.fillText(swarmText, LOGICAL_W * 0.5, 123);
+        ctx.fillText(swarmText, LOGICAL_W * 0.5, 147);
         ctx.restore();
       }
     }
@@ -9833,6 +11102,7 @@
      */
     renderCinematicOverlay(ctx) {
       const nextDest = this.levelData.nextDestination || 'El Gòtic';
+      const isSecretBonus = Boolean(this.isSecretBonusLevel);
       const isBusOrGuagua = this.usesBusOrGuaguaCinematic();
       const isTeideCable = this.isTeideCableCarLevel();
       const isCanarias = this.isCanariasCity();
@@ -9842,8 +11112,11 @@
       const isChileBus = this.isChileBusCity();
       const isRosario = this.isRosarioCity();
       const isBuenosAires = this.normalizeCityKey(this.cityKey) === 'buenosaires';
+      const secretPlace = this.activeSecretKey === 'secret_spain' ? 'Ibiza' : 'Iguazú';
       const metroHeader =
-        isTeideCable
+        isSecretBonus
+          ? `✨ BONUS FRENÉTICO · ${secretPlace.toUpperCase()}`
+          : isTeideCable
           ? '🚡 TELEFÉRICO DEL TEIDE · CUMBRE DE ESPAÑA'
           : isCanarias
           ? '🚌 PARADA DE GUAGUA CANARIA'
@@ -9869,7 +11142,9 @@
           ? '🚌 PARADA AUTOBÚS EMT PALMA'
           : '🚇 MEGAFONIA METRO BARCELONA (TMB)';
       const metroLine =
-        isTeideCable
+        isSecretBonus
+          ? `🔊 «¡Meta secreta de ${secretPlace} superada! Volviendo al mapa»`
+          : isTeideCable
           ? '🔊 «¡Cumbre alcanzada! Próxima parada: América del Sur»'
           : isCanarias
           ? `🔊 «Guagua Canaria con destino a ${nextDest}»`
@@ -9968,20 +11243,22 @@
           ctx.textAlign = 'center';
           ctx.fillStyle = '#fbbf24';
           ctx.font = '900 32px "Segoe UI", system-ui, sans-serif';
-          ctx.fillText('¡NIVEL COMPLETADO!', LOGICAL_W * 0.5, 226);
+          ctx.fillText(isSecretBonus ? '¡BONUS COMPLETADO!' : '¡NIVEL COMPLETADO!', LOGICAL_W * 0.5, 226);
 
-          ctx.fillStyle = isCanarias || isCordoba ? '#fde047' : '#38bdf8';
+          ctx.fillStyle = isSecretBonus ? '#4ade80' : isCanarias || isCordoba ? '#fde047' : '#38bdf8';
           ctx.font = 'bold 15px "Segoe UI", system-ui, sans-serif';
           ctx.fillText(
-            isCanarias
-              ? `🚌 Próxima parada Guagua: ${nextDest}`
-              : isCordoba
-              ? `🚌 Próxima parada TAMSE: ${nextDest}`
-              : isUshuaia
-              ? `🚌 Próxima parada Austral: ${nextDest}`
-              : isRosario
-              ? `🚌 Próxima parada MOVI: ${nextDest}`
-              : `🚌 Próxima parada EMT: ${nextDest}`,
+            isSecretBonus
+              ? `✨ Nivel Secreto ${secretPlace} · +1 Vida Extra · +2500 PTS`
+              : isCanarias
+                ? `🚌 Próxima parada Guagua: ${nextDest}`
+                : isCordoba
+                  ? `🚌 Próxima parada TAMSE: ${nextDest}`
+                  : isUshuaia
+                    ? `🚌 Próxima parada Austral: ${nextDest}`
+                    : isRosario
+                      ? `🚌 Próxima parada MOVI: ${nextDest}`
+                      : `🚌 Próxima parada EMT: ${nextDest}`,
             LOGICAL_W * 0.5,
             258
           );
@@ -10200,8 +11477,9 @@
         ? (Math.floor(Date.now() / 200) % 2 === 0 ? '#ef4444' : '#ffffff')
         : '#cbd5e1';
 
-      const cityHudCode =
-        this.cityKey === 'madrid'
+      const cityHudCode = this.isSecretBonusLevel
+        ? (this.activeSecretKey === 'secret_spain' ? 'IBIZA ✨' : 'IGUAZÚ ✨')
+        : this.cityKey === 'madrid'
           ? 'MADRID'
           : this.cityKey === 'palma'
             ? 'PALMA'
@@ -10224,10 +11502,12 @@
                           : this.cityKey === 'buenosaires'
                             ? 'BA'
                             : 'BCN';
-      ctx.fillStyle = isHurry ? '#ef4444' : '#38bdf8';
+      ctx.fillStyle = this.isSecretBonusLevel ? '#fde047' : isHurry ? '#ef4444' : '#38bdf8';
       ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
-        `${cityHudCode} ${this.levelIndex + 1}/${this.getCityLevels().length}`,
+        this.isSecretBonusLevel
+          ? cityHudCode
+          : `${cityHudCode} ${this.levelIndex + 1}/${this.getCityLevels().length}`,
         682,
         23
       );
@@ -10322,10 +11602,142 @@
         ctx.restore();
       }
 
+      // 6b. Fila Sub-HUD derecha (y = 64): Contador de Reliquias (X/8) y Definitiva de La Tina
+      {
+        const rowY = 64;
+        const pillH = 22;
+        const rightEdge = this.ghostMode ? 776 : LOGICAL_W - 16;
+
+        let relicCount = 0;
+        if (global.WorldProgress) {
+          if (typeof global.WorldProgress.hasRelic === 'function' && global.RELIC_DEFS) {
+            const rKeys = Object.keys(global.RELIC_DEFS);
+            for (let rk = 0; rk < rKeys.length; rk++) {
+              if (global.WorldProgress.hasRelic(rKeys[rk])) relicCount++;
+            }
+          } else if (typeof global.WorldProgress.getRelicCount === 'function') {
+            relicCount = Math.max(0, Math.min(8, Number(global.WorldProgress.getRelicCount()) || 0));
+          }
+        }
+
+        const ultUnlocked = Boolean(
+          global.WorldProgress &&
+            typeof global.WorldProgress.isTinaUltimateUnlocked === 'function' &&
+            global.WorldProgress.isTinaUltimateUnlocked()
+        );
+        const ultKey = this.getTinaUltimateKeyLabel();
+
+        ctx.save();
+        ctx.font = 'bold 10.5px "Segoe UI", system-ui, sans-serif';
+        ctx.textBaseline = 'middle';
+
+        let ultW = 0;
+        let ultX = rightEdge;
+        if (!ultUnlocked) {
+          const lockLabel = '✈️ ULT 🔒 8/8 RELIQUIAS';
+          ultW = Math.ceil(ctx.measureText(lockLabel).width) + 16;
+          ultX = rightEdge - ultW;
+          ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+          ctx.strokeStyle = 'rgba(100, 116, 139, 0.75)';
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          ctx.roundRect(ultX, rowY, ultW, pillH, 6);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#94a3b8';
+          ctx.textAlign = 'center';
+          ctx.fillText(lockLabel, ultX + ultW * 0.5, rowY + pillH * 0.5 + 0.5);
+        } else {
+          const ultCd = this.tina ? Math.max(0, Number(this.tina.ultimateCooldown) || 0) : 0;
+          const ultMaxCd = this.tina ? Math.max(1, Number(this.tina.ultimateMaxCooldown) || 55) : 55;
+          const ultActive = Boolean(this.tinaUltimatePass || (this.tina && this.tina.ultimatePassActive));
+          const ultReady = ultCd <= 0 && !ultActive;
+          const keyBadge = `✈️ [${ultKey}]`;
+          const keyBadgeW = Math.ceil(ctx.measureText(keyBadge).width) + 6;
+          const barW = 68;
+          ultW = keyBadgeW + barW + 16;
+          ultX = rightEdge - ultW;
+
+          ctx.fillStyle = ultReady
+            ? 'rgba(20, 83, 45, 0.88)'
+            : ultActive
+              ? 'rgba(124, 45, 18, 0.90)'
+              : 'rgba(9, 13, 22, 0.86)';
+          ctx.strokeStyle = ultReady ? '#fde047' : ultActive ? '#fb923c' : '#64748b';
+          ctx.lineWidth = ultReady ? 1.6 : 1.25;
+          ctx.beginPath();
+          ctx.roundRect(ultX, rowY, ultW, pillH, 6);
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.textAlign = 'left';
+          ctx.fillStyle = ultReady ? '#fef08a' : '#e2e8f0';
+          ctx.fillText(keyBadge, ultX + 7, rowY + pillH * 0.5 + 0.5);
+
+          const barX = ultX + keyBadgeW + 9;
+          const barY = rowY + 5;
+          const barH = 12;
+          const prog = ultActive ? 1 : ultReady ? 1 : Math.max(0, Math.min(1, 1 - ultCd / ultMaxCd));
+          ctx.fillStyle = '#090d16';
+          ctx.beginPath();
+          ctx.roundRect(barX, barY, barW, barH, 4);
+          ctx.fill();
+
+          if (prog > 0) {
+            ctx.fillStyle = ultActive ? '#f97316' : ultReady ? '#22c55e' : '#f59e0b';
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, Math.max(4, barW * prog), barH, 4);
+            ctx.fill();
+          }
+
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 9px "Segoe UI", system-ui, sans-serif';
+          ctx.fillText(
+            ultActive ? '¡BOMBA!' : ultReady ? '¡LISTA!' : `${Math.ceil(ultCd)}s`,
+            barX + barW * 0.5,
+            rowY + pillH * 0.5 + 0.5
+          );
+          ctx.font = 'bold 10.5px "Segoe UI", system-ui, sans-serif';
+        }
+
+        const normCity = this.normalizeCityKey(this.cityKey);
+        const cityRelicDone = Boolean(
+          !this.isSecretBonusLevel &&
+            global.RELIC_DEFS &&
+            global.RELIC_DEFS[normCity] &&
+            global.WorldProgress &&
+            typeof global.WorldProgress.hasRelic === 'function' &&
+            global.WorldProgress.hasRelic(normCity)
+        );
+        const relicLabel =
+          relicCount >= 8
+            ? '🏺 RELIQUIAS 8/8 ★'
+            : cityRelicDone
+              ? `🏺 RELIQUIAS ${relicCount}/8 ✓`
+              : `🏺 RELIQUIAS ${relicCount}/8`;
+        const relicW = Math.ceil(ctx.measureText(relicLabel).width) + 16;
+        const relicX = ultX - 8 - relicW;
+
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.86)';
+        ctx.strokeStyle = relicCount >= 8 ? '#fde047' : 'rgba(251, 191, 36, 0.72)';
+        ctx.lineWidth = relicCount >= 8 ? 1.6 : 1.25;
+        ctx.beginPath();
+        ctx.roundRect(relicX, rowY, relicW, pillH, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = relicCount >= 8 ? '#fef08a' : '#fde68a';
+        ctx.fillText(relicLabel, relicX + relicW * 0.5, rowY + pillH * 0.5 + 0.5);
+        ctx.restore();
+      }
+
       if (this.ghostToastTimer > 0 && this.ghostToastText) {
         ctx.save();
         ctx.globalAlpha = Math.min(1, this.ghostToastTimer * 1.6);
-        const toastY = this.levelBannerTimer > 0 ? 110 : 62;
+        const toastY = this.levelBannerTimer > 0 ? 150 : 96;
         ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
         ctx.strokeStyle = this.ghostToastColor || '#67e8f9';
         ctx.lineWidth = 2;
@@ -10340,6 +11752,26 @@
         ctx.restore();
       }
 
+      if (this.eventToast && this.eventToast.timer > 0 && this.eventToast.text) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, this.eventToast.timer * 1.8);
+        ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+        const padX = 20;
+        const boxW = Math.min(LOGICAL_W - 40, Math.max(260, Math.ceil(ctx.measureText(this.eventToast.text).width) + padX * 2));
+        const toastY = this.levelBannerTimer > 0 ? 150 : 96;
+        ctx.fillStyle = 'rgba(9, 13, 22, 0.94)';
+        ctx.strokeStyle = this.eventToast.color || '#fde047';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.roundRect(LOGICAL_W * 0.5 - boxW * 0.5, toastY, boxW, 32, 10);
+        ctx.fill();
+        ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = this.eventToast.color || '#fde047';
+        ctx.fillText(this.eventToast.text, LOGICAL_W * 0.5, toastY + 20.5, boxW - 16);
+        ctx.restore();
+      }
+
       ctx.restore();
     }
 
@@ -10347,68 +11779,87 @@
     // MENÚ PRINCIPAL Y MODALES HD (64/128-Bit)
     // ========================================================================
     renderMenu(ctx) {
+      // Fondo estático ilustrado de atardecer en la Barceloneta (sin paralaje pesado)
       this.bgRenderer.draw(
         ctx,
-        'barceloneta',
-        this.globalAnimTime * 42,
+        'barceloneta_menu',
+        0,
         LOGICAL_W,
         LOGICAL_H,
-        this.globalAnimTime
+        0
       );
-
-      ctx.fillStyle = 'rgba(9, 13, 22, 0.62)';
-      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
       ctx.save();
       ctx.textAlign = 'center';
 
-      ctx.fillStyle = '#090d16';
-      ctx.font = '900 38px "Segoe UI", system-ui, sans-serif';
-      ctx.fillText('AVENTURAS POR EL MUNDO', LOGICAL_W * 0.5 + 3, 49);
-      const titleGrad = ctx.createLinearGradient(0, 14, 0, 54);
+      // Encabezado Principal: Título dorado/naranja con contorno 3D oscuro y sombra
+      ctx.font = '900 37px "Segoe UI", system-ui, sans-serif';
+      ctx.lineJoin = 'round';
+      ctx.fillStyle = 'rgba(7, 10, 20, 0.85)';
+      ctx.fillText('AVENTURAS POR EL MUNDO', LOGICAL_W * 0.5 + 3, 47);
+      ctx.lineWidth = 6.5;
+      ctx.strokeStyle = '#0b1220';
+      ctx.strokeText('AVENTURAS POR EL MUNDO', LOGICAL_W * 0.5, 44);
+      const titleGrad = ctx.createLinearGradient(0, 12, 0, 50);
       titleGrad.addColorStop(0, '#fef08a');
-      titleGrad.addColorStop(0.5, '#fbbf24');
-      titleGrad.addColorStop(1, '#f59e0b');
+      titleGrad.addColorStop(0.42, '#facc15');
+      titleGrad.addColorStop(0.8, '#f59e0b');
+      titleGrad.addColorStop(1, '#d97706');
       ctx.fillStyle = titleGrad;
-      ctx.fillText('AVENTURAS POR EL MUNDO', LOGICAL_W * 0.5, 46);
+      ctx.fillText('AVENTURAS POR EL MUNDO', LOGICAL_W * 0.5, 44);
 
-      // Etiqueta de versión discreta en la esquina superior derecha
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-      ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
-      ctx.lineWidth = 1.5;
+      // Esquina superior derecha: badge v3.9 (justo arriba del botón circular de mute)
+      ctx.fillStyle = 'rgba(13, 21, 38, 0.9)';
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.72)';
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.roundRect(LOGICAL_W - 74, 14, 58, 24, 8);
+      ctx.roundRect(LOGICAL_W - 74, 14, 58, 24, 11);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#bae6fd';
+      ctx.fillStyle = '#e0f2fe';
       ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(GAME_VERSION, LOGICAL_W - 45, 30);
 
-      ctx.fillStyle = '#38bdf8';
-      ctx.font = 'bold 13.5px "Segoe UI", system-ui, sans-serif';
+      // Subtítulo en cian brillante con trazo oscuro nítido
+      ctx.font = '900 13.5px "Segoe UI", system-ui, sans-serif';
+      ctx.lineWidth = 3.4;
+      ctx.strokeStyle = '#090d16';
+      ctx.strokeText(
+        'NICO, ANDREA Y LA TINA • VIAJE POR ESPAÑA Y EL MUNDO',
+        LOGICAL_W * 0.5,
+        66
+      );
+      ctx.fillStyle = '#67e8f9';
       ctx.fillText(
         'NICO, ANDREA Y LA TINA • VIAJE POR ESPAÑA Y EL MUNDO',
         LOGICAL_W * 0.5,
-        68
+        66
       );
 
-      // Botón compacto de Tabla de Récords Arcade (Top 5)
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.84)';
-      ctx.strokeStyle = 'rgba(251, 191, 36, 0.62)';
-      ctx.lineWidth = 1.5;
+      // Pastilla oscura con borde dorado debajo del subtítulo (Récord dinámico Top 5)
+      const pillX = 295;
+      const pillY = 76;
+      const pillW = 370;
+      const pillH = 25;
+      const pillGrad = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
+      pillGrad.addColorStop(0, 'rgba(19, 28, 48, 0.94)');
+      pillGrad.addColorStop(1, 'rgba(10, 15, 28, 0.96)');
+      ctx.fillStyle = pillGrad;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.roundRect(310, 78, 340, 24, 12);
+      ctx.roundRect(pillX, pillY, pillW, pillH, 12.5);
       ctx.fill();
       ctx.stroke();
-      ctx.fillStyle = '#fde047';
+      ctx.fillStyle = '#fef08a';
       ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
-        `🏆 TABLA DE RÉCORDS (TOP 5) · MEJOR: ${this.highScore} PTS`,
+        `🏆 TABLA DE RÉCORDS (TOP 5) • MEJOR: ${this.highScore} PTS`,
         LOGICAL_W * 0.5,
-        94
+        92.5
       );
 
-      // Dos tarjetas limpias de selección de líder
+      // Dos tarjetas lado a lado de selección de líder (sprites y ciclo de caminata intactos)
       const kMenuSkill = this.getControlKeyBadge('skill', true, 'C');
       const kMenuTina = this.getControlKeyBadge('tina', true, 'X');
       this.drawCharacterCard(
@@ -10437,21 +11888,31 @@
         this.selectedCharacter === 'andrea'
       );
 
-      // Contenedor horizontal de La Tina por debajo de ambas tarjetas
+      // Banner horizontal verde oscuro con borde dorado para La Tina
       const tinaBoxX = 175;
       const tinaBoxY = 272;
       const tinaBoxW = 610;
       const tinaBoxH = 54;
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
-      ctx.strokeStyle = 'rgba(52, 211, 153, 0.62)';
-      ctx.lineWidth = 2;
+      const tinaBg = ctx.createLinearGradient(tinaBoxX, tinaBoxY, tinaBoxX, tinaBoxY + tinaBoxH);
+      tinaBg.addColorStop(0, 'rgba(14, 62, 48, 0.94)');
+      tinaBg.addColorStop(1, 'rgba(8, 36, 31, 0.96)');
+      ctx.fillStyle = tinaBg;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
       ctx.roundRect(tinaBoxX, tinaBoxY, tinaBoxW, tinaBoxH, 12);
       ctx.fill();
       ctx.stroke();
 
+      ctx.strokeStyle = 'rgba(134, 239, 172, 0.28)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(tinaBoxX + 3, tinaBoxY + 3, tinaBoxW - 6, tinaBoxH - 6, 9.5);
+      ctx.stroke();
+
+      // Sprite animado intacto de La Tina caminando a la izquierda del banner
       ctx.save();
-      ctx.translate(202, 283);
+      ctx.translate(200, 282);
       ctx.scale(1.06, 1.06);
       this.sprites.drawTinaHD(
         ctx,
@@ -10466,48 +11927,127 @@
       );
       ctx.restore();
 
+      // Huellita vectorial luminosa + título de La Tina
+      ctx.save();
+      ctx.fillStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.ellipse(274, 291, 4.2, 3.2, 0, 0, Math.PI * 2);
+      ctx.arc(269.5, 285.5, 1.5, 0, Math.PI * 2);
+      ctx.arc(274, 284.2, 1.6, 0, Math.PI * 2);
+      ctx.arc(278.5, 285.5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#6ee7b7';
+      ctx.fillStyle = '#86efac';
       ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
         kMenuTina === 'X'
-          ? '🐾 LA TINA [X]  •  COMPAÑERA FIEL Y LADRIDO SÓNICO'
-          : `🐾 LA TINA [${kMenuTina}]  •  COMPAÑERA FIEL Y LADRIDO SÓNICO`,
-        272,
+          ? 'LA TINA [X]  •  COMPAÑERA FIEL Y LADRIDO SÓNICO'
+          : `LA TINA [${kMenuTina}]  •  COMPAÑERA FIEL Y LADRIDO SÓNICO`,
+        286,
         294
       );
-      ctx.fillStyle = '#e2e8f0';
+      ctx.fillStyle = '#f1f5f9';
       ctx.font = '12px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
         '¡Guau, guau! Espanta bandadas de aves y salta a recoger ítems cercanos',
-        272,
-        314
+        268,
+        313
       );
 
+      // Pila vertical de 6 botones inferiores centrados
       ctx.textAlign = 'center';
       const options = [
-        '▶ JUGAR / PARTIDAS GUARDADAS',
-        `LÍDER ACTIVO: ${this.selectedCharacter.toUpperCase()} (◄ ►)`,
+        '► JUGAR / PARTIDAS GUARDADAS',
+        `LÍDER ACTIVO: ${this.selectedCharacter.toUpperCase()} ( ◄ ► )`,
         '❓ AYUDA / CONTROLES',
         '🏆 TABLA DE RÉCORDS (TOP 5)',
-        '🗺 MAPA GENERAL (ESPAÑA Y EL MUNDO)',
-        '⚙ CONFIGURACIÓN (AUDIO Y JUKEBOX)'
+        '🗺️ MAPA GENERAL (ESPAÑA Y EL MUNDO)',
+        '⚙️ CONFIGURACIÓN (AUDIO Y JUKEBOX)'
       ];
 
+      const btnX = LOGICAL_W * 0.5 - 190;
+      const btnW = 380;
+      const btnH = 29;
       for (let i = 0; i < options.length; i++) {
         const by = 336 + i * 32;
         const active = this.menuCursor === i;
-        ctx.fillStyle = active ? '#ef4444' : 'rgba(15, 23, 42, 0.9)';
-        ctx.strokeStyle = active ? '#fde047' : '#475569';
-        ctx.lineWidth = active ? 2.8 : 1.8;
+        const isPrimaryPlay = i === 0;
+
+        ctx.save();
+        if (isPrimaryPlay) {
+          const playGrad = ctx.createLinearGradient(btnX, by, btnX, by + btnH);
+          playGrad.addColorStop(0, '#f97316');
+          playGrad.addColorStop(0.28, '#ef4444');
+          playGrad.addColorStop(1, '#b91c1c');
+          ctx.fillStyle = playGrad;
+          ctx.strokeStyle = active ? '#fef08a' : '#f59e0b';
+          ctx.lineWidth = active ? 2.6 : 2.1;
+          if (active) {
+            ctx.shadowColor = 'rgba(250, 204, 21, 0.55)';
+            ctx.shadowBlur = 10;
+          }
+        } else {
+          const itemGrad = ctx.createLinearGradient(btnX, by, btnX, by + btnH);
+          itemGrad.addColorStop(0, active ? 'rgba(38, 60, 96, 0.96)' : 'rgba(24, 38, 62, 0.94)');
+          itemGrad.addColorStop(1, active ? 'rgba(19, 32, 54, 0.98)' : 'rgba(13, 21, 38, 0.96)');
+          ctx.fillStyle = itemGrad;
+          ctx.strokeStyle = active ? '#fde047' : '#64748b';
+          ctx.lineWidth = active ? 2.4 : 1.7;
+        }
         ctx.beginPath();
-        ctx.roundRect(LOGICAL_W * 0.5 - 190, by, 380, 28, 9);
+        ctx.roundRect(btnX, by, btnW, btnH, 9);
         ctx.fill();
         ctx.stroke();
+        ctx.shadowBlur = 0;
 
-        ctx.fillStyle = active ? '#ffffff' : '#cbd5e1';
+        // Bisel luminoso superior sutil para efecto metálico limpio
+        ctx.fillStyle = isPrimaryPlay ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.08)';
+        ctx.beginPath();
+        ctx.roundRect(btnX + 3, by + 2, btnW - 6, 6, 4);
+        ctx.fill();
+
+        // Cajetines laterales clicables ◄ y ► en la fila "LÍDER ACTIVO"
+        if (i === 1) {
+          const arrowBoxW = 28;
+          const arrowBoxH = btnH - 4;
+          [
+            [btnX + 2, '◄'],
+            [btnX + btnW - arrowBoxW - 2, '►']
+          ].forEach(([ax, glyph]) => {
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+            ctx.strokeStyle = active ? '#fde047' : '#64748b';
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            ctx.roundRect(ax, by + 2, arrowBoxW, arrowBoxH, 6);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#f8fafc';
+            ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+            ctx.fillText(glyph, ax + arrowBoxW * 0.5, by + 18.5);
+          });
+        }
+
+        // Texto de cada botón (dibujando '?' en rojo en Ayuda / Controles manteniendo token verificable)
         ctx.font = 'bold 12.5px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(options[i], LOGICAL_W * 0.5, by + 18.5);
+        if (i === 2) {
+          const labelTxt = 'AYUDA / CONTROLES';
+          const qGlyph = '?';
+          const qW = ctx.measureText(qGlyph + ' ').width;
+          const lW = ctx.measureText(labelTxt).width;
+          const startX = LOGICAL_W * 0.5 - (qW + lW) * 0.5;
+          ctx.textAlign = 'left';
+          ctx.fillStyle = '#f87171';
+          ctx.fillText(qGlyph, startX, by + 19);
+          ctx.fillStyle = active ? '#ffffff' : '#e2e8f0';
+          ctx.fillText(labelTxt, startX + qW, by + 19);
+          ctx.textAlign = 'center';
+        } else {
+          ctx.fillStyle = isPrimaryPlay ? '#ffffff' : (active ? '#fef08a' : '#e2e8f0');
+          ctx.fillText(options[i], LOGICAL_W * 0.5, by + 19);
+        }
+        ctx.restore();
       }
 
       ctx.restore();
@@ -10515,13 +12055,86 @@
 
     drawCharacterCard(ctx, x, y, w, h, charType, title, subtitle, skillDesc, selected) {
       ctx.save();
-      ctx.fillStyle = selected ? 'rgba(30, 41, 59, 0.95)' : 'rgba(15, 23, 42, 0.78)';
-      ctx.strokeStyle = selected ? '#fbbf24' : '#334155';
-      ctx.lineWidth = selected ? 3.5 : 2;
+      if (selected) {
+        ctx.shadowColor = 'rgba(250, 204, 21, 0.68)';
+        ctx.shadowBlur = 18;
+        const selGrad = ctx.createLinearGradient(x, y, x, y + h);
+        selGrad.addColorStop(0, 'rgba(66, 46, 24, 0.92)');
+        selGrad.addColorStop(0.55, 'rgba(46, 30, 39, 0.95)');
+        selGrad.addColorStop(1, 'rgba(28, 19, 32, 0.96)');
+        ctx.fillStyle = selGrad;
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 3.4;
+      } else {
+        const unselGrad = ctx.createLinearGradient(x, y, x, y + h);
+        unselGrad.addColorStop(0, 'rgba(34, 49, 72, 0.92)');
+        unselGrad.addColorStop(1, 'rgba(16, 25, 42, 0.95)');
+        ctx.fillStyle = unselGrad;
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 2.2;
+      }
       ctx.beginPath();
       ctx.roundRect(x, y, w, h, 14);
       ctx.fill();
       ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Marco doble metálico / ornamental interior
+      ctx.strokeStyle = selected ? '#d97706' : '#334155';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.roundRect(x + 4, y + 4, w - 8, h - 8, 11);
+      ctx.stroke();
+
+      if (selected) {
+        // Destellos dorados tenues y detalles ornamentales en las 4 esquinas del marco
+        const sparks = [
+          [0.14, 0.24, 3.2, 0.0],
+          [0.24, 0.44, 2.6, 1.4],
+          [0.82, 0.28, 3.4, 2.3],
+          [0.74, 0.48, 2.4, 3.7],
+          [0.88, 0.62, 2.8, 0.9]
+        ];
+        for (let s = 0; s < sparks.length; s++) {
+          const sx = x + w * sparks[s][0];
+          const sy = y + h * sparks[s][1];
+          const sr = sparks[s][2] * (0.7 + 0.35 * Math.sin(this.globalAnimTime * 3.8 + sparks[s][3]));
+          ctx.fillStyle = 'rgba(254, 240, 138, 0.85)';
+          ctx.beginPath();
+          ctx.moveTo(sx, sy - sr * 1.4);
+          ctx.lineTo(sx + sr * 0.45, sy - sr * 0.45);
+          ctx.lineTo(sx + sr * 1.4, sy);
+          ctx.lineTo(sx + sr * 0.45, sy + sr * 0.45);
+          ctx.lineTo(sx, sy + sr * 1.4);
+          ctx.lineTo(sx - sr * 0.45, sy + sr * 0.45);
+          ctx.lineTo(sx - sr * 1.4, sy);
+          ctx.lineTo(sx - sr * 0.45, sy - sr * 0.45);
+          ctx.closePath();
+          ctx.fill();
+        }
+        const corners = [
+          [x + 6, y + 6],
+          [x + w - 6, y + 6],
+          [x + 6, y + h - 6],
+          [x + w - 6, y + h - 6]
+        ];
+        for (let c = 0; c < corners.length; c++) {
+          const cx = corners[c][0];
+          const cy = corners[c][1];
+          ctx.fillStyle = '#fde047';
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - 5);
+          ctx.lineTo(cx + 5, cy);
+          ctx.lineTo(cx, cy + 5);
+          ctx.lineTo(cx - 5, cy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = '#e11d48';
+          ctx.beginPath();
+          ctx.arc(cx, cy, 2.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
 
       let demoAnimState = 'idle';
       let demoOffsetY = 0;
@@ -10570,7 +12183,7 @@
       ctx.restore();
 
       ctx.textAlign = 'center';
-      ctx.fillStyle = selected ? '#fbbf24' : '#e2e8f0';
+      ctx.fillStyle = selected ? '#fde047' : '#f1f5f9';
       ctx.font = 'bold 14.5px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(title, x + w * 0.5, y + 84);
 
@@ -10578,7 +12191,7 @@
       ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(subtitle, x + w * 0.5, y + 104);
 
-      ctx.fillStyle = '#cbd5e1';
+      ctx.fillStyle = '#e2e8f0';
       ctx.font = '11px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(skillDesc, x + w * 0.5, y + 122);
 
@@ -11121,6 +12734,7 @@
      */
     renderLevelClearModal(ctx) {
       const nextDest = this.levelData.nextDestination || 'El Gòtic';
+      const isSecretBonus = Boolean(this.isSecretBonusLevel);
       const isBusOrGuagua = this.usesBusOrGuaguaCinematic();
       const isTeideCable = this.isTeideCableCarLevel();
       const isCanarias = this.isCanariasCity();
@@ -11133,10 +12747,22 @@
         this.levelClearParticles.draw(ctx, 0);
       }
 
-      // Emblema superior: Teleférico Teide, Guagua Canaria, Bus EMT Palma o Rombo Metro
+      // Emblema superior: Bonus Secreto, Teleférico Teide, Guagua Canaria, Bus EMT Palma o Rombo Metro
       ctx.save();
       ctx.translate(LOGICAL_W * 0.5, 68);
-      if (isTeideCable) {
+      if (isSecretBonus) {
+        ctx.beginPath();
+        ctx.roundRect(-52, -18, 104, 36, 9);
+        ctx.fillStyle = '#ca8a04';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#fde047';
+        ctx.stroke();
+        ctx.fillStyle = '#fef9c3';
+        ctx.font = '900 15px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('★ BONUS ★', 0, 5);
+      } else if (isTeideCable) {
         ctx.beginPath();
         ctx.roundRect(-44, -18, 88, 36, 8);
         ctx.fillStyle = '#dc2626';
@@ -11216,14 +12842,19 @@
       const isChileMetroCity = this.isChileMetroCity();
       const isChileBusCity = this.isChileBusCity();
       const isChileFinale =
+        !isSecretBonus &&
         this.normalizeCityKey(this.cityKey) === 'chile_pascua' &&
         this.levelIndex + 1 >= this.getCityLevels().length;
 
       ctx.textAlign = 'center';
-      ctx.fillStyle = isTeideCable || isChileFinale ? '#fde047' : '#ffffff';
+      ctx.fillStyle = isSecretBonus || isTeideCable || isChileFinale ? '#fde047' : '#ffffff';
       ctx.font = '900 26px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(
-        isTeideCable
+        isSecretBonus
+          ? (this.activeSecretKey === 'secret_spain'
+              ? '🌅 ¡BONUS IBIZA COMPLETADO!'
+              : '🌊 ¡BONUS IGUAZÚ COMPLETADO!')
+          : isTeideCable
           ? '🏆 ¡ESPAÑA COMPLETADA AL 100%!'
           : isChileFinale
             ? '🏆 ¡CHILE COMPLETADO AL 100%!'
@@ -11235,10 +12866,12 @@
       const isRosarioCity = this.isRosarioCity();
       const isCordobaCity = this.isCordobaCity();
       const isUshuaiaCity = this.isUshuaiaCity();
-      const isUshuaiaFinale = isUshuaiaCity && this.levelIndex + 1 >= this.getCityLevels().length;
+      const isUshuaiaFinale = !isSecretBonus && isUshuaiaCity && this.levelIndex + 1 >= this.getCityLevels().length;
       const isBuenosAiresCity = this.normalizeCityKey(this.cityKey) === 'buenosaires';
       const clearAnnouncement =
-        isTeideCable
+        isSecretBonus
+          ? '🎁 ¡+1 VIDA EXTRA y +2500 PTS · TODO TU BOTÍN ASEGURADO!'
+          : isTeideCable
           ? '🚡 Teleférico del Teide: «¡España 100%! Próximo continente: América del Sur»'
           : isCanarias
           ? `🚌 Guagua Canaria: «Próxima parada insular: ${nextDest}»`
@@ -11263,7 +12896,7 @@
           : isBusOrGuagua
           ? `🚌 Autobús EMT Palma: «Cap a ${nextDest}»`
           : `🔊 Megafonia TMB: «Tren amb destinació ${nextDest}»`;
-      ctx.fillStyle = isTeideCable || isUshuaiaFinale || isChileFinale ? '#4ade80' : '#e2e8f0';
+      ctx.fillStyle = isSecretBonus || isTeideCable || isUshuaiaFinale || isChileFinale ? '#4ade80' : '#e2e8f0';
       ctx.font = 'italic 15px "Segoe UI", system-ui, sans-serif';
       ctx.fillText(clearAnnouncement, LOGICAL_W * 0.5, 154);
 
@@ -11302,7 +12935,7 @@
       const rows = [
         ['PUNTAJE BASE DEL NIVEL', `${dispBase} PTS`],
         [`MONEDAS RECOGIDAS (${dispCoinsCount})`, `+${dispCoinBonus} PTS`],
-        [`BONUS DE TIEMPO (${dispTimeLeft}s × 50)`, `+${dispTimeBonus} PTS`]
+        [`BONUS DE TIEMPO (${dispTimeLeft}s × ${isSecretBonus ? 100 : 50})`, `+${dispTimeBonus} PTS`]
       ];
       if (this.cinematicPerfectZone) {
         rows.push(['🌟 ZONA PERFECTA (SIN DAÑO)', `+${dispPerfectBonus} PTS`]);
@@ -11370,159 +13003,173 @@
 
     renderGameOverModal(ctx) {
       ctx.save();
-      ctx.fillStyle = 'rgba(5, 8, 16, 0.9)';
+      const t = this.gameOverAnimTimer || this.globalAnimTime || 0;
+
+      // Fondo oscuro arcade 16-bit con degradado nocturno carmesí
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
+      bgGrad.addColorStop(0, '#050711');
+      bgGrad.addColorStop(0.55, '#130714');
+      bgGrad.addColorStop(1, '#1e0810');
+      ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-      if (this.gameOverPhase === 'initials') {
-        ctx.fillStyle = '#0f172a';
-        ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 3.2;
+      // Rejilla de horizonte retro 16-bit + estrellas tenues
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.14)';
+      ctx.lineWidth = 1;
+      for (let gx = 0; gx <= LOGICAL_W; gx += 48) {
         ctx.beginPath();
-        ctx.roundRect(170, 56, 620, 428, 18);
-        ctx.fill();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, LOGICAL_H);
         ctx.stroke();
-
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#ef4444';
-        ctx.font = '900 34px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText('GAME OVER', LOGICAL_W * 0.5, 108);
-
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(
-          `Puntaje Final: ${(Number.isFinite(this.gameOverScore) ? this.gameOverScore : this.score).toLocaleString('es-ES')} PTS  ·  Líder: ${this.selectedCharacter.toUpperCase()}`,
-          LOGICAL_W * 0.5,
-          144
-        );
-
-        ctx.fillStyle = this.arcadeQualifies ? '#4ade80' : '#fde047';
-        ctx.font = 'bold 14px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(
-          this.arcadeQualifies
-            ? '🏆 ¡ENTRASTE AL TOP 5 ARCADE! INGRESÁ TUS 3 INICIALES'
-            : 'INGRESÁ TUS 3 INICIALES ARCADE',
-          LOGICAL_W * 0.5,
-          178
-        );
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '12px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(
-          'Escribí con teclado (A-Z) o usá ▲/▼ para cambiar letra y ◄/► para moverte',
-          LOGICAL_W * 0.5,
-          204
-        );
-
-        // 3 cajas Arcade A-Z (bx = 362 + i * 86)
-        for (let i = 0; i < 3; i++) {
-          const bx = 362 + i * 86;
-          const active = this.arcadeLetterIdx === i;
-
-          ctx.fillStyle = active ? '#fde047' : '#64748b';
-          ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
-          ctx.fillText('▲', bx + 32, 250);
-
-          ctx.fillStyle = active ? 'rgba(30, 58, 138, 0.95)' : 'rgba(15, 23, 42, 0.95)';
-          ctx.strokeStyle = active ? '#fde047' : '#475569';
-          ctx.lineWidth = active ? 3.5 : 2;
-          ctx.beginPath();
-          ctx.roundRect(bx, 262, 64, 70, 12);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = active ? '#fef08a' : '#f8fafc';
-          ctx.font = '900 36px "Consolas", monospace';
-          ctx.fillText(this.arcadeInitials[i] || 'A', bx + 32, 310);
-
-          ctx.fillStyle = active ? '#fde047' : '#64748b';
-          ctx.font = 'bold 18px "Segoe UI", system-ui, sans-serif';
-          ctx.fillText('▼', bx + 32, 354);
-        }
-
-        // Botones Confirmar Iniciales y Reintentar Nivel [R]
-        ctx.fillStyle = '#16a34a';
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.roundRect(204, 382, 266, 42, 10);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#b45309';
-        ctx.strokeStyle = '#fde047';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.roundRect(486, 382, 270, 42, 10);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '900 13.5px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText('✔ GUARDAR INICIALES [ENTER]', 204 + 133, 408);
-        ctx.fillText('🔄 REINTENTAR NIVEL [R]', 486 + 135, 408);
-
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '12px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText('[R] Reintentar Nivel · [ESC] Saltar al Menú Principal', LOGICAL_W * 0.5, 456);
-      } else {
-        ctx.fillStyle = '#0f172a';
-        ctx.strokeStyle = '#fbbf24';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.roundRect(120, 26, 720, 482, 18);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.textAlign = 'center';
-        ctx.fillStyle = this.arcadeQualifies ? '#fbbf24' : '#f87171';
-        ctx.font = '900 22px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(
-          this.arcadeQualifies
-            ? '🏆 TABLA DE RÉCORDS (TOP 5) ACTUALIZADA'
-            : 'GAME OVER · 🏆 TABLA DE RÉCORDS (TOP 5)',
-          LOGICAL_W * 0.5,
-          62
-        );
-
-        ctx.fillStyle = '#cbd5e1';
-        ctx.font = 'bold 12.5px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(
-          `Puntaje Final: ${(Number.isFinite(this.gameOverScore) ? this.gameOverScore : this.score).toLocaleString('es-ES')} PTS  ·  Líder: ${this.selectedCharacter.toUpperCase()}`,
-          LOGICAL_W * 0.5,
-          86
-        );
-
-        this.renderLeaderboardRows(ctx, this.savedArcadeEntryId, 134, 44);
-
-        const actionBtns = [
-          { x: 144, w: 230, label: '🗺 Volver al Mapa de Zonas [ENTER]', fill: '#15803d', stroke: '#4ade80' },
-          { x: 386, w: 224, label: '🔄 REINTENTAR NIVEL [R]', fill: '#b45309', stroke: '#fde047' },
-          { x: 622, w: 194, label: '🏠 Menú Principal [ESC]', fill: '#334155', stroke: '#94a3b8' }
-        ];
-        actionBtns.forEach((b) => {
-          ctx.fillStyle = b.fill;
-          ctx.strokeStyle = b.stroke;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.roundRect(b.x, 438, b.w, 38, 9);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.textAlign = 'center';
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
-          ctx.fillText(b.label, b.x + b.w * 0.5, 462);
-        });
-
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '11.5px "Segoe UI", system-ui, sans-serif';
-        ctx.fillText(
-          'Hacé clic izquierdo en cualquier parte de la pantalla o presioná ENTER / ESC para salir',
-          LOGICAL_W * 0.5,
-          496
-        );
       }
+      for (let gy = 0; gy <= LOGICAL_H; gy += 36) {
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        ctx.lineTo(LOGICAL_W, gy);
+        ctx.stroke();
+      }
+
+      // Scanlines horizontales estilo monitor arcade CRT 16-bit
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.24)';
+      for (let sy = 0; sy < LOGICAL_H; sy += 4) {
+        ctx.fillRect(0, sy, LOGICAL_W, 2);
+      }
+
+      // Marco principal doble pixel/arcade rojo y dorado
+      ctx.fillStyle = 'rgba(9, 13, 24, 0.94)';
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.roundRect(120, 48, 720, 444, 14);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(128, 56, 704, 428, 10);
+      ctx.stroke();
+
+      // Remaches dorados en las 4 esquinas del marco
+      const cornerPts = [
+        [140, 68],
+        [820, 68],
+        [140, 472],
+        [820, 472]
+      ];
+      ctx.fillStyle = '#fde047';
+      for (let i = 0; i < cornerPts.length; i++) {
+        ctx.beginPath();
+        ctx.arc(cornerPts[i][0], cornerPts[i][1], 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.textAlign = 'center';
+
+      // Cabecera superior 16-bit
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = 'bold 12px "Consolas", "Courier New", monospace';
+      ctx.fillText('★  FIN DE LA PARTIDA  ·  SIN VIDAS RESTANTES  ★', LOGICAL_W * 0.5, 92);
+
+      // Título gigante GAME OVER con sombra dura arcade 16-bit
+      ctx.font = '900 58px "Consolas", "Courier New", monospace';
+      ctx.fillStyle = '#090d16';
+      ctx.fillText('GAME OVER', LOGICAL_W * 0.5 + 5, 162 + 5);
+      ctx.fillStyle = '#7f1d1d';
+      ctx.fillText('GAME OVER', LOGICAL_W * 0.5 + 2.5, 162 + 2.5);
+      const titleGrad = ctx.createLinearGradient(0, 114, 0, 166);
+      titleGrad.addColorStop(0, '#fef08a');
+      titleGrad.addColorStop(0.42, '#ef4444');
+      titleGrad.addColorStop(1, '#991b1b');
+      ctx.fillStyle = titleGrad;
+      ctx.fillText('GAME OVER', LOGICAL_W * 0.5, 162);
+      ctx.strokeStyle = '#450a0a';
+      ctx.lineWidth = 2;
+      ctx.strokeText('GAME OVER', LOGICAL_W * 0.5, 162);
+
+      // Corazones rotos pixelados
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('💔   💔   💔', LOGICAL_W * 0.5, 198);
+
+      // Panel estadístico de la run terminada
+      const finalPts = Math.max(
+        0,
+        Math.floor(Number.isFinite(this.gameOverScore) ? this.gameOverScore : this.score || 0)
+      );
+      const finalCoins = Math.max(0, Math.floor(Number(this.gameOverCoins) || 0));
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.96)';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(190, 218, 580, 108, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 17px "Consolas", "Courier New", monospace';
+      ctx.fillText(
+        `PUNTAJE ALCANZADO: ${finalPts.toLocaleString('es-ES')} PTS`,
+        LOGICAL_W * 0.5,
+        249
+      );
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 15px "Consolas", "Courier New", monospace';
+      ctx.fillText(
+        `MONEDAS DE LA RUN: 🪙 ${finalCoins}  ·  LÍDER: ${String(this.selectedCharacter || 'nico').toUpperCase()}`,
+        LOGICAL_W * 0.5,
+        278
+      );
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 12px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(
+        'Al salir al menú principal, los puntos y monedas de esta run regresan a 0.',
+        LOGICAL_W * 0.5,
+        308
+      );
+
+      // Aviso verde esmeralda: progreso en localStorage intacto
+      ctx.fillStyle = 'rgba(6, 78, 59, 0.72)';
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.roundRect(190, 338, 580, 38, 8);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#a7f3d0';
+      ctx.font = 'bold 13px "Segoe UI", system-ui, sans-serif';
+      ctx.fillText(
+        '💾 PROGRESO GUARDADO: Ciudades, niveles desbloqueados, reliquias y secretos intactos',
+        LOGICAL_W * 0.5,
+        362
+      );
+
+      // Botón principal para volver al Menú Principal + prompt arcade parpadeante
+      const pulse = 0.75 + 0.25 * Math.sin(t * 5.2);
+      ctx.fillStyle = '#dc2626';
+      ctx.strokeStyle = '#fde047';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(LOGICAL_W * 0.5 - 210, 396, 420, 48, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 16px "Consolas", "Courier New", monospace';
+      ctx.fillText('🏠 VOLVER AL MENÚ PRINCIPAL [ENTER]', LOGICAL_W * 0.5, 426);
+
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 12.5px "Consolas", "Courier New", monospace';
+      ctx.fillText(
+        'PULSÁ ENTER / ESPACIO / ESC O HACÉ CLIC PARA VOLVER AL MENÚ',
+        LOGICAL_W * 0.5,
+        468
+      );
 
       ctx.restore();
     }

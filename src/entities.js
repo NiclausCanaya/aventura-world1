@@ -1668,6 +1668,12 @@
       this.growlMaxCooldown = TINA_COOLDOWN_MAX;
       this.goldenBoostTimer = 0;
 
+      // Cooldown de 55s para el Ataque Definitivo del Biplano de La Tina
+      this.barkTimer = 0;
+      this.ultimateCooldown = 0;
+      this.ultimateMaxCooldown = 55;
+      this.ultimatePassActive = false;
+
       // IA de búsqueda de proximidad (120-150px), Doble Salto y Pathfinding anti-atascos
       this.detectionRadius = 142;
       this.targetItem = null;
@@ -1738,6 +1744,18 @@
       return true;
     }
 
+    canUseUltimate() {
+      return this.ultimateCooldown <= 0 && !this.ultimatePassActive;
+    }
+
+    activateUltimate() {
+      if (this.ultimateCooldown > 0) return false;
+      this.ultimateCooldown = this.ultimateMaxCooldown;
+      this.barkTimer = 0.7;
+      this.growlTimer = Math.max(this.growlTimer || 0, 0.7);
+      return true;
+    }
+
     resetNear(leader, solids = null, movingPlatforms = null) {
       const allPlatforms = solids ? solids.concat(movingPlatforms || []) : null;
       const formation = allPlatforms
@@ -1767,6 +1785,8 @@
       this.detourPlatform = null;
       this.detourTimer = 0;
       this.itemSearchTimer = 0;
+      this.barkTimer = 0;
+      this.ultimatePassActive = false;
       this.ignoredItems.clear();
     }
 
@@ -1932,10 +1952,14 @@
       this.animTimer += dt;
       if (this.dropThroughTimer > 0) this.dropThroughTimer = Math.max(0, this.dropThroughTimer - dt);
       if (this.growlTimer > 0) this.growlTimer = Math.max(0, this.growlTimer - dt);
+      if (this.barkTimer > 0) this.barkTimer = Math.max(0, this.barkTimer - dt);
       if (this.goldenBoostTimer > 0) this.goldenBoostTimer = Math.max(0, this.goldenBoostTimer - dt);
       if (this.growlCooldown > 0) {
         const cooldownScale = this.goldenBoostTimer > 0 ? 2.0 : 1.0;
         this.growlCooldown = Math.max(0, this.growlCooldown - dt * cooldownScale);
+      }
+      if (this.ultimateCooldown > 0) {
+        this.ultimateCooldown = Math.max(0, this.ultimateCooldown - dt);
       }
       if (this.ledgeCooldown > 0) this.ledgeCooldown = Math.max(0, this.ledgeCooldown - dt);
 
@@ -2015,14 +2039,23 @@
       );
 
       // --- IA AUTÓNOMA DE RESCATE ILIMITADO [SHIFT] Y POWER-UPS EN PANTALLA ---
+      // Regla estricta: La Tina únicamente persigue y recoge power-ups reales
+      // (Alas, Planta, Terremoto, Pose). Monedas, curaciones/comidas, vidas 1UP y reliquias
+      // quedan estrictamente reservadas para el jugador.
       const isPowerUpCollectible = (item) =>
         Boolean(
           item &&
             !item.collected &&
+            !item.ghost &&
+            !item.secretKey &&
+            !item.isRelic &&
             (item.type === 'angel_wings' ||
               item.type === 'plant' ||
               item.type === 'calamares' ||
-              item.type === 'electric_shield')
+              item.type === 'electric_shield' ||
+              item.type === 'earthquake' ||
+              item.type === 'hypnotic_pose' ||
+              item.type === 'pose')
         );
       let activeRescue = null;
       if (collectibles && collectibles.length > 0) {
@@ -2124,7 +2157,19 @@
 
           for (let i = 0; i < collectibles.length; i++) {
             const c = collectibles[i];
-            if (c.collected || c.type === 'golden_bone' || c.type === '1up_bone') continue;
+            if (
+              c.collected ||
+              c.type === 'golden_bone' ||
+              c.type === '1up_bone' ||
+              c.type === 'extra_life_heart' ||
+              c.type === '1up_heart' ||
+              c.type === 'coin' ||
+              Boolean(c.secretKey) ||
+              c.isRelic ||
+              c.type === 'relic' ||
+              String(c.type || '').indexOf('relic_') === 0 ||
+              !isPowerUpCollectible(c)
+            ) continue;
             if ((c.tinaDelayTimer || 0) > 0) continue; // Esperar 1.0s (1000 ms) antes de que La Tina corra a recogerlo
             if (c.isHighArcDrop && c.vy < 0) continue;
             const blockedUntil = this.ignoredItems.get(c) || 0;
@@ -2677,14 +2722,13 @@
 
       if (this.isDisabled()) return;
 
-      // IA Reactiva / Aggro en Niveles 3-4 y desde Nivel 1 en Canarias: gira hacia el líder y acelera si salta cerca
+      // Patrulla horizontal independiente y predecible (solo alwaysReactive explícito reacciona al líder)
       let currentSpeed = this.baseSpeed;
-      if ((this.alwaysReactive || this.levelIndex >= 2) && leader) {
+      if (this.alwaysReactive && leader) {
         const dx = leader.x + leader.w * 0.5 - (this.x + this.w * 0.5);
         const dy = Math.abs(leader.y - this.y);
-        const detectDist = this.alwaysReactive ? 280 : 235;
-        if (Math.abs(dx) < detectDist && dy < 135) {
-          const jumpBoost = !leader.onGround ? (this.alwaysReactive ? 1.82 : 1.65) : (this.alwaysReactive ? 1.48 : 1.38);
+        if (Math.abs(dx) < 280 && dy < 135) {
+          const jumpBoost = !leader.onGround ? 1.82 : 1.48;
           currentSpeed = this.baseSpeed * jumpBoost;
           if (Math.abs(dx) > 10) {
             this.facing = dx >= 0 ? 'right' : 'left';
@@ -2775,18 +2819,8 @@
 
       if (this.isDisabled()) return;
 
-      // En Niveles 3 y 4: acelera y persigue al líder si entra en su visión o salta cerca
-      let currentSpeed = this.baseSpeed;
-      if (this.levelIndex >= 2 && leader) {
-        const dx = leader.x + leader.w * 0.5 - (this.x + this.w * 0.5);
-        const dy = Math.abs(leader.y - this.y);
-        if (Math.abs(dx) < 260 && dy < 115) {
-          currentSpeed = this.baseSpeed * (!leader.onGround ? 1.48 : 1.3);
-          if (Math.abs(dx) > 16) {
-            this.facing = dx >= 0 ? 'right' : 'left';
-          }
-        }
-      }
+      // Patrulla horizontal fija e independiente de la posición o salto del jugador (velocidad escalada por zona)
+      const currentSpeed = this.baseSpeed;
 
       const dir = this.facing === 'right' ? 1 : -1;
       this.vx = dir * currentSpeed;
@@ -2837,6 +2871,11 @@
       this.maxY = maxY;
       this.levelIndex = levelIndex;
       this.baseSpeed = Math.abs(speed) * getLevelSpeedScale(levelIndex);
+      const safeMaxY = Math.max(this.minY + 12, this.maxY - this.h);
+      this.centerY = (this.minY + safeMaxY) * 0.5;
+      this.ampY = (safeMaxY - this.minY) * 0.5;
+      this.y = this.centerY;
+      this.wavePhase = 0;
       this.vy = this.baseSpeed;
       this.vx = 0;
       this.facing = 'left';
@@ -2883,30 +2922,19 @@
       if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
       if (this.isDisabled()) return;
 
-      if (leader) {
-        this.facing = leader.x < this.x ? 'left' : 'right';
-      }
+      // Patrón sinusoidal fijo e independiente del jugador (mayor ritmo en Zonas 3 y 4 sin homing)
+      const zoneSpeedMult = this.levelIndex >= 2 ? 1.12 : 1.0;
+      const freqY = (this.baseSpeed * zoneSpeedMult) / Math.max(26, this.ampY);
+      this.wavePhase += freqY * dt;
 
-      // En Niveles 3 y 4: anticipa la posición aérea del jugador al saltar
-      let vertSpeed = this.baseSpeed;
-      if (this.levelIndex >= 2 && leader && Math.abs(leader.x - this.x) < 235 && !leader.onGround) {
-        const predictedY = Math.max(this.minY, Math.min(this.maxY, leader.y + leader.vy * 0.22));
-        const dy = predictedY - this.y;
-        if (Math.abs(dy) > 8) {
-          this.vy = Math.sign(dy) * vertSpeed * 1.45;
-        }
-      }
-
-      this.y += this.vy * dt;
-      this.x = this.baseX + Math.sin(this.animTimer * 2.5) * 14;
-
-      if (this.y <= this.minY) {
-        this.y = this.minY;
-        this.vy = Math.abs(vertSpeed);
-      } else if (this.y + this.h >= this.maxY) {
-        this.y = this.maxY - this.h;
-        this.vy = -Math.abs(vertSpeed);
-      }
+      const prevX = this.x;
+      const swayAmpX = this.levelIndex >= 2 ? 22 : 14;
+      const swayFreqX = this.levelIndex >= 2 ? 2.8 : 2.5;
+      this.y = this.centerY + Math.sin(this.wavePhase) * this.ampY;
+      this.vy = Math.cos(this.wavePhase) * this.ampY * freqY;
+      this.x = this.baseX + Math.sin(this.animTimer * swayFreqX) * swayAmpX;
+      this.vx = dt > 0 ? (this.x - prevX) / dt : 0;
+      this.facing = this.x >= prevX ? 'right' : 'left';
     }
 
     draw(ctx, sprites, cameraX, solids, movingPlatforms) {
@@ -2988,17 +3016,8 @@
       if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
       if (this.isDisabled()) return;
 
-      let currentSpeed = this.baseSpeed;
-      if (this.levelIndex >= 2 && leader) {
-        const dx = leader.x + leader.w * 0.5 - (this.x + this.w * 0.5);
-        const dy = Math.abs(leader.y - this.y);
-        if (Math.abs(dx) < 240 && dy < 115) {
-          currentSpeed = this.baseSpeed * (!leader.onGround ? 1.65 : 1.4);
-          if (Math.abs(dx) > 10) {
-            this.facing = dx >= 0 ? 'right' : 'left';
-          }
-        }
-      }
+      // Patrulla horizontal independiente y predecible (sin persecución reactiva al salto)
+      const currentSpeed = this.baseSpeed;
 
       const dir = this.facing === 'right' ? 1 : -1;
       this.vx = dir * currentSpeed;
@@ -5120,14 +5139,7 @@
       if (this.hypnotizedTimer > 0) this.hypnotizedTimer = Math.max(0, this.hypnotizedTimer - dt);
       if (this.isDisabled()) return;
 
-      // Anticipación del salto del jugador en Niveles 3 y 4
-      if (this.levelIndex >= 2 && leader && Math.abs(leader.x - this.x) < 250 && !leader.onGround) {
-        const predictedY = Math.max(150, Math.min(390, leader.y + leader.vy * 0.2));
-        this.targetBaseY += (predictedY - this.targetBaseY) * Math.min(1, dt * 4.5);
-      } else {
-        this.targetBaseY += (this.baseY - this.targetBaseY) * Math.min(1, dt * 2.5);
-      }
-
+      // Patrón sinusoidal fijo e independiente (sin copiar la trayectoria de salto del jugador)
       this.x += this.vx * dt;
       if (this.x <= this.minX) {
         this.x = this.minX;
@@ -5139,7 +5151,10 @@
         this.facing = 'left';
       }
 
-      this.y = this.targetBaseY + Math.sin(this.animTimer * 5.2) * this.ampY;
+      const waveFreq = this.levelIndex >= 2 ? 5.6 : 5.0;
+      const prevY = this.y;
+      this.y = this.baseY + Math.sin(this.animTimer * waveFreq) * this.ampY;
+      this.vy = dt > 0 ? (this.y - prevY) / dt : 0;
     }
 
     draw(ctx, sprites, cameraX, solids, movingPlatforms) {
@@ -5476,15 +5491,39 @@
   // Soporta caída física desde la Caja de Reserva (fromReserveDrop = true)
   // ==========================================================================
   class Collectible {
-    constructor(x, y, type = 'coin', fromReserveDrop = false) {
+    constructor(x, y, type = 'coin', fromReserveOrMeta = false) {
+      const isMetaObj = Boolean(fromReserveOrMeta && typeof fromReserveOrMeta === 'object');
+      const meta = isMetaObj ? fromReserveOrMeta : {};
+      const fromReserveDrop = isMetaObj ? Boolean(meta.fromReserveDrop) : Boolean(fromReserveOrMeta);
+
       this.baseY = y;
       this.x = x;
       this.y = y;
       this.type = type;
-      this.w = 26;
-      this.h = 26;
+      this.isRelic = type === 'relic' || String(type || '').indexOf('relic_') === 0;
+      this.w = this.isRelic ? 28 : 26;
+      this.h = this.isRelic ? 28 : 26;
       this.collected = false;
       this.timer = Math.random() * Math.PI * 2;
+      this.bobTime = this.timer;
+
+      if (this.isRelic) {
+        const inferredCity = String(type || '').indexOf('relic_') === 0 ? String(type).slice(6) : '';
+        this.cityKey = meta.cityKey || inferredCity || '';
+        this.relicId = meta.relicId || (this.cityKey ? 'relic_' + this.cityKey : 'relic');
+        this.relicName = meta.relicName || '';
+        this.relicIcon = meta.relicIcon || '🏆';
+        this.relicColor = meta.relicColor || '#fbbf24';
+        this.ghost = Boolean(meta.ghost);
+      } else {
+        this.cityKey = null;
+        this.relicId = null;
+        this.relicName = null;
+        this.relicIcon = null;
+        this.relicColor = null;
+        this.ghost = false;
+      }
+
       const isPowerUpType =
         type === 'angel_wings' ||
         type === 'plant' ||
@@ -5498,9 +5537,9 @@
       this.arcBounds = null;
       this.tinaDelayTimer = 0;
       this._seenOnScreen = Boolean(fromReserveDrop);
-      this.falling = fromReserveDrop;
-      this.vy = this.isReserveDrop ? 148 : fromReserveDrop ? 85 : 0;
-      this.pickupDelay = this.isReserveDrop ? 0.22 : fromReserveDrop ? 0.26 : 0;
+      this.falling = this.isRelic ? false : fromReserveDrop;
+      this.vy = this.isReserveDrop ? 148 : this.falling ? 85 : 0;
+      this.pickupDelay = this.isReserveDrop ? 0.22 : this.falling ? 0.26 : 0;
       this.landingSurfaceY = 442;
       this.popTimer = 0;
       this.popDuration = 0.28;
@@ -5575,6 +5614,7 @@
     update(dt, solids = [], movingPlatforms = []) {
       if (this.collected) return;
       this.timer += dt * 4;
+      this.bobTime = this.timer;
       if (this.pickupDelay > 0) {
         this.pickupDelay = Math.max(0, this.pickupDelay - dt);
       }
@@ -5662,7 +5702,53 @@
 
     draw(ctx, sprites, cameraX) {
       if (this.collected) return;
-      sprites.drawCollectibleHD(ctx, this.type, this.x - cameraX, this.y, this.timer);
+      const drawX = this.x - cameraX;
+      const drawY = this.y;
+      if (this.isRelic) {
+        const pulse = 0.72 + 0.28 * Math.sin(this.bobTime * 1.15);
+        const cx = drawX + this.w * 0.5;
+        const cy = drawY + this.h * 0.5;
+        ctx.save();
+        const auraR = 24 * pulse + 4;
+        const glow = ctx.createRadialGradient(cx, cy, 2, cx, cy, auraR);
+        glow.addColorStop(0, 'rgba(255, 255, 255, 0.78)');
+        glow.addColorStop(0.45, this.relicColor || '#fbbf24');
+        glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.globalAlpha = (this.ghost ? 0.28 : 0.52) * pulse;
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(cx, cy, auraR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        if (sprites && typeof sprites.drawCollectibleHD === 'function') {
+          sprites.drawCollectibleHD(
+            ctx,
+            'relic',
+            drawX,
+            drawY,
+            this.bobTime,
+            { cityKey: this.cityKey, relicId: this.relicId, ghost: this.ghost }
+          );
+        } else {
+          ctx.save();
+          if (this.ghost) ctx.globalAlpha = 0.52;
+          ctx.fillStyle = this.relicColor || '#fbbf24';
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = '15px "Segoe UI Emoji", "Segoe UI", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.relicIcon || '🏆', cx, cy + 1);
+          ctx.restore();
+        }
+        return;
+      }
+      sprites.drawCollectibleHD(ctx, this.type, drawX, drawY, this.timer);
     }
   }
 
@@ -5958,6 +6044,185 @@
   const CalamaresProjectile = PlantProjectile;
 
   // ==========================================================================
+  // PROYECTIL DE BOMBA DEL BIPLANO DE LA TINA (Ataque Definitivo [55s])
+  // Cae en arco parabólico, rota hacia el vector de velocidad y detona con
+  // onda expansiva radial estilo Worms al chocar suelo/sólido o tras 3.2s.
+  // ==========================================================================
+  class BiplaneBombProjectile {
+    constructor(x, y, vx = 0, vy = 40, variantOrOpts = 'bomb') {
+      const opts = variantOrOpts && typeof variantOrOpts === 'object' ? variantOrOpts : {};
+      const variant = typeof variantOrOpts === 'string' ? variantOrOpts : opts.variant || 'bomb';
+      this.x = x;
+      this.y = y;
+      this.vx = Number.isFinite(vx) ? vx : 0;
+      this.vy = Number.isFinite(vy) ? vy : 40;
+      this.w = 18;
+      this.h = 18;
+      this.gravity = Number.isFinite(opts.gravity) ? opts.gravity : 780;
+      this.exploded = false;
+      this.dead = false;
+      this.explosionDuration = 0.36;
+      this.explosionTimer = 0;
+      this.explosionRadius = Number.isFinite(opts.explosionRadius) ? opts.explosionRadius : 115;
+      this.blastChecked = false;
+      this.fuseTimer = 0;
+      this.animTimer = 0;
+      this.variant = variant === 'bone_bomb' ? 'bone_bomb' : 'bomb';
+      const refVx = Math.abs(this.vx) > 20 ? this.vx : (this.vx < 0 ? -40 : 40);
+      this.angle = Math.atan2(this.vy, refVx);
+    }
+
+    explode(particles = null) {
+      if (this.exploded) return;
+      this.exploded = true;
+      this.explosionTimer = this.explosionDuration;
+      this.vx = 0;
+      this.vy = 0;
+      if (particles && typeof particles.BombExplosion === 'function') {
+        particles.BombExplosion(this.x + this.w * 0.5, this.y + this.h * 0.5);
+      }
+    }
+
+    update(dt, solids = [], particles = null) {
+      this.animTimer += dt;
+      if (this.exploded) {
+        this.explosionTimer = Math.max(0, this.explosionTimer - dt);
+        if (this.explosionTimer <= 0) {
+          this.dead = true;
+        }
+        return;
+      }
+
+      this.fuseTimer += dt;
+      this.vy += this.gravity * dt;
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+
+      const refVx = Math.abs(this.vx) > 24 ? this.vx : (this.vx < 0 ? -24 : 24);
+      const targetAngle = Math.atan2(this.vy, refVx);
+      let da = targetAngle - this.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      this.angle += da * Math.min(1, dt * 10);
+
+      let hitSolid = null;
+      if (Array.isArray(solids)) {
+        for (let i = 0; i < solids.length; i++) {
+          const s = solids[i];
+          if (!s || s.broken || s.fallen || !(s.w > 0 && s.h > 0)) continue;
+          if (s.revealed === false && s.visible === false) continue;
+          if (s.oneWay && this.vy < 0) continue;
+          if (aabbOverlap(this, s)) {
+            hitSolid = s;
+            break;
+          }
+        }
+      }
+
+      if (hitSolid) {
+        if (this.vy >= 0 && this.y < hitSolid.y) {
+          this.y = hitSolid.y - this.h;
+        }
+        this.explode(particles);
+        return;
+      }
+
+      if (this.y >= 460 || this.fuseTimer > 3.2) {
+        if (this.y >= 460) {
+          this.y = 460 - this.h;
+        }
+        this.explode(particles);
+      }
+    }
+
+    draw(ctx, sprites, cameraX = 0) {
+      if (this.dead) return;
+      const drawX = this.x - cameraX;
+      const drawY = this.y;
+      const cx = drawX + this.w * 0.5;
+      const cy = drawY + this.h * 0.5;
+
+      if (this.exploded) {
+        const dur = this.explosionDuration || 0.36;
+        const progress = Math.max(0, Math.min(1, 1 - this.explosionTimer / dur));
+        const alpha = Math.max(0, 1 - progress);
+        const blastR = this.explosionRadius * (0.28 + 0.72 * progress);
+
+        ctx.save();
+        const flashGrad = ctx.createRadialGradient(cx, cy, 4, cx, cy, blastR);
+        flashGrad.addColorStop(0.0, `rgba(255, 255, 255, ${(alpha * 0.92).toFixed(2)})`);
+        flashGrad.addColorStop(0.32, `rgba(253, 224, 71, ${(alpha * 0.72).toFixed(2)})`);
+        flashGrad.addColorStop(0.68, `rgba(249, 115, 22, ${(alpha * 0.42).toFixed(2)})`);
+        flashGrad.addColorStop(1.0, 'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = flashGrad;
+        ctx.beginPath();
+        ctx.arc(cx, cy, blastR, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(253, 224, 71, ${(alpha * 0.95).toFixed(2)})`;
+        ctx.lineWidth = 4.5 * alpha + 1.2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, blastR * 0.92, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(251, 146, 60, ${(alpha * 0.85).toFixed(2)})`;
+        ctx.lineWidth = 2.5 * alpha + 0.8;
+        ctx.beginPath();
+        ctx.arc(cx, cy, blastR * 0.62, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+        return;
+      }
+
+      if (sprites && typeof sprites.drawBiplaneBombHD === 'function') {
+        sprites.drawBiplaneBombHD(ctx, drawX, drawY, this.angle, this.fuseTimer, this.variant);
+        return;
+      }
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(this.angle);
+      // Aletas de cola
+      ctx.fillStyle = this.variant === 'bone_bomb' ? '#f59e0b' : '#dc2626';
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-11, -5);
+      ctx.lineTo(-5, -2);
+      ctx.lineTo(-5, 2);
+      ctx.lineTo(-11, 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Cuerpo esférico metálico / bomba huesito dorado
+      const bodyGrad = ctx.createRadialGradient(-2, -3, 1.5, 0, 0, 9);
+      if (this.variant === 'bone_bomb') {
+        bodyGrad.addColorStop(0, '#fef9c3');
+        bodyGrad.addColorStop(0.55, '#fbbf24');
+        bodyGrad.addColorStop(1, '#b45309');
+      } else {
+        bodyGrad.addColorStop(0, '#64748b');
+        bodyGrad.addColorStop(0.55, '#1e293b');
+        bodyGrad.addColorStop(1, '#090d16');
+      }
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Chispa parpadeante en la mecha
+      const sparkR = 2.2 + Math.abs(Math.sin(this.fuseTimer * 22)) * 2.2;
+      ctx.fillStyle = Math.sin(this.fuseTimer * 30) >= 0 ? '#fde047' : '#f97316';
+      ctx.beginPath();
+      ctx.arc(-6, -7, sparkR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ==========================================================================
   // SISTEMA DE PARTÍCULAS HD A 60 FPS (Grietas y escombros para Nico,
   // Corazones para Andrea, Ondas expansivas para la Tina, Chispas eléctricas)
   // ==========================================================================
@@ -5982,6 +6247,106 @@
           life: 0.5 + Math.random() * 0.3,
           maxLife: 0.8,
           gravity: 420
+        });
+      }
+    }
+
+    BombExplosion(x, y) {
+      this.rings.push({
+        x,
+        y,
+        r: 14,
+        maxR: 120,
+        color: '#fef08a',
+        life: 0.36,
+        maxLife: 0.36,
+        type: 'bomb'
+      });
+      this.rings.push({
+        x,
+        y,
+        r: 10,
+        maxR: 155,
+        color: '#f97316',
+        life: 0.48,
+        maxLife: 0.48,
+        type: 'bomb'
+      });
+
+      const emberColors = ['#fde047', '#fb923c', '#ef4444', '#ffffff'];
+      for (let i = 0; i < 22; i++) {
+        const angle = (Math.PI * 2 * i) / 22 + (Math.random() - 0.5) * 0.25;
+        const speed = 95 + Math.random() * 210;
+        this.particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 65,
+          radius: 2.6 + Math.random() * 3.2,
+          color: emberColors[i % emberColors.length],
+          life: 0.42 + Math.random() * 0.28,
+          maxLife: 0.7,
+          gravity: 520
+        });
+      }
+
+      const smokeColors = ['#fef9c3', '#f8fafc', '#cbd5e1'];
+      for (let i = 0; i < 12; i++) {
+        const angle = (Math.PI * 2 * i) / 12 + (Math.random() - 0.5) * 0.4;
+        const speed = 28 + Math.random() * 75;
+        this.particles.push({
+          x: x + (Math.random() - 0.5) * 22,
+          y: y + (Math.random() - 0.5) * 16,
+          vx: Math.cos(angle) * speed,
+          vy: -35 - Math.random() * 75,
+          radius: 6 + Math.random() * 5,
+          color: smokeColors[i % smokeColors.length],
+          life: 0.55 + Math.random() * 0.3,
+          maxLife: 0.85,
+          gravity: -28
+        });
+      }
+    }
+
+    RelicAuraBurst(x, y, color = '#fbbf24') {
+      const accent = color || '#fbbf24';
+      this.rings.push({
+        x,
+        y,
+        r: 12,
+        maxR: 165,
+        color: accent,
+        life: 0.55,
+        maxLife: 0.55,
+        type: 'sonic'
+      });
+      this.rings.push({
+        x,
+        y,
+        r: 8,
+        maxR: 112,
+        color: '#fef08a',
+        life: 0.42,
+        maxLife: 0.42,
+        type: 'sonic'
+      });
+
+      const confettiPalette = [accent, '#fde047', '#ffffff', '#38bdf8', '#f472b6', '#4ade80'];
+      for (let i = 0; i < 24; i++) {
+        const angle = (Math.PI * 2 * i) / 24 + (Math.random() - 0.5) * 0.2;
+        const speed = 80 + Math.random() * 175;
+        const isStar = i % 3 === 0;
+        this.particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 55,
+          radius: isStar ? undefined : 2.8 + Math.random() * 2.6,
+          text: isStar ? (i % 6 === 0 ? '★' : '✦') : undefined,
+          color: confettiPalette[i % confettiPalette.length],
+          life: 0.65 + Math.random() * 0.35,
+          maxLife: 1.0,
+          gravity: 240
         });
       }
     }
@@ -9655,14 +10020,15 @@
     }
   }
 
-  // Bombo gigante de la hinchada (Zona 4): rebote alto al caer sobre su parche
+  // Bombo gigante de la hinchada (Zona 4) o Trampolín circo/dorado en niveles bonus: rebote alto al caer sobre su parche
   class BouncyDrum {
-    constructor(x, y, w = 72, h = 46, bounceVy = -740) {
+    constructor(x, y, w = 72, h = 46, bounceVy = -740, style = 'drum') {
       this.w = Number(w) || 72;
       this.h = Number(h) || 46;
       this.x = x;
       this.y = y - this.h;
       this.bounceVy = Number(bounceVy) || -740;
+      this.style = typeof style === 'string' && style ? style : 'drum';
       this.squash = 0;
       this.cooldown = 0;
       this.animTimer = Math.random() * 3;
@@ -12035,6 +12401,7 @@
     HiddenBlock,
     PlantProjectile,
     CalamaresProjectile,
+    BiplaneBombProjectile,
     ParticleSystem
   };
 })(window);

@@ -829,82 +829,109 @@
       id: 4,
       city: 'madrid',
       name: '4. Palacio Real y Almudena',
-      subtitle: 'Plaza de la Armería — ¡Supervivencia contra Enjambre de 20 Cotorras!',
+      subtitle: 'Plaza de la Armería — ¡Gran travesía y Supervivencia contra 20 Cotorras!',
       nextDestination: 'Palma de Mallorca (Mundo 3)',
       theme: 'madrid_palacio',
-      width: 3600,
+      width: 5460,
       timeLimit: 210,
       spawn: { x: 80, y: 390 },
-      flagX: 3380,
+      flagX: 5220,
       flagY: GROUND_Y - 68,
-      swarmTriggerX: 2620,
+      swarmTriggerX: 3920,
       isMadridSwarm: true,
       hints: [
         { x: 60, y: 305, text: '👑 Palacio Real: ¡Guardá el doble ladrido [X] de Tina para el Enjambre final!' },
         { x: 1260, y: 245, text: '⚠️ Ascensores verticales y plataformas móviles sobre las fosas reales' },
-        { x: 2560, y: 235, text: '🚨 ¡ALERTA PLAGA ADELANTE! Las 20 cotorras te perseguirán sin piedad' }
+        { x: 3840, y: 235, text: '🚨 ¡ALERTA PLAGA ADELANTE! Las 20 cotorras te perseguirán rumbo al Metro' }
       ],
       solids: [
         { x: 0, y: GROUND_Y, w: 460, h: 100, style: 'stone' },
         { x: 800, y: GROUND_Y, w: 500, h: 100, style: 'stone' },
         { x: 1700, y: GROUND_Y, w: 480, h: 100, style: 'stone' },
-        { x: 2540, y: GROUND_Y, w: 1060, h: 100, style: 'stone' },
+        { x: 2540, y: GROUND_Y, w: 920, h: 100, style: 'stone' },
+        { x: 3760, y: GROUND_Y, w: 540, h: 100, style: 'stone' },
+        { x: 4780, y: GROUND_Y, w: 680, h: 100, style: 'stone' },
 
         { x: 280, y: 360, w: 95, h: 18, oneWay: true, style: 'stone' },
         { x: 1020, y: 355, w: 95, h: 18, oneWay: true, style: 'stone' },
         { x: 1475, y: 310, w: 90, h: 18, oneWay: true, style: 'stone' },
         { x: 1900, y: 355, w: 95, h: 18, oneWay: true, style: 'stone' },
         { x: 2305, y: 235, w: 92, h: 18, oneWay: true, style: 'stone' },
-        { x: 2820, y: 360, w: 95, h: 18, oneWay: true, style: 'stone' }
+        { x: 2820, y: 360, w: 95, h: 18, oneWay: true, style: 'stone' },
+        { x: 3560, y: 335, w: 95, h: 18, oneWay: true, style: 'stone' },
+        { x: 3920, y: 355, w: 95, h: 18, oneWay: true, style: 'stone' },
+        // Plataformas escalonadas finales + viga más alta sobre el último pozo previo al Metro
+        { x: 4315, y: 382, w: 90, h: 18, oneWay: true, style: 'stone' },
+        { x: 4430, y: 330, w: 90, h: 18, oneWay: true, style: 'stone' },
+        { x: 4565, y: 278, w: 96, h: 18, oneWay: true, style: 'stone' },
+        { x: 4685, y: 375, w: 92, h: 18, oneWay: true, style: 'stone' }
       ],
       movingPlatforms: [
         { x: 495, y: 415, endX: 685, endY: 415, sx: 495, sy: 415, ex: 685, ey: 415, w: 95, h: 18, speed: 110, style: 'stone' },
         { x: 1335, y: 430, endX: 1335, endY: 285, sx: 1335, sy: 430, ex: 1335, ey: 285, w: 90, h: 18, speed: 110, style: 'crane' },
         { x: 2210, y: 410, endX: 2320, endY: 410, sx: 2210, sy: 410, ex: 2320, ey: 410, w: 90, h: 18, speed: 115, style: 'stone' },
-        { x: 2425, y: 430, endX: 2425, endY: 315, sx: 2425, sy: 430, ex: 2425, ey: 315, w: 90, h: 18, speed: 110, style: 'crane' }
+        { x: 2425, y: 430, endX: 2425, endY: 315, sx: 2425, sy: 430, ex: 2425, ey: 315, w: 90, h: 18, speed: 110, style: 'crane' },
+        { x: 3495, y: 412, endX: 3645, endY: 412, sx: 3495, sy: 412, ex: 3645, ey: 412, w: 92, h: 18, speed: 112, style: 'stone' }
       ],
       fallingPlatforms: [
-        { x: 1595, y: 385, w: 80, h: 18, style: 'wood' }
+        { x: 1595, y: 385, w: 80, h: 18, style: 'wood' },
+        { x: 4695, y: 422, w: 80, h: 18, style: 'wood' }
       ],
       collectibles: [
         { x: 200, y: 415, type: 'coin' },
         { x: 590, y: 370, type: 'coin' },
         { x: 1831, y: 417, type: 'burger' },
         { x: 2270, y: 365, type: 'coin' },
-        { x: 2354, y: 192, type: 'angel_wings' },
+        { x: 2340, y: 196, type: 'coin' },
         { x: 2855, y: 320, type: 'coin' },
-        { x: 3120, y: 415, type: 'coin' }
+        { x: 3120, y: 415, type: 'coin' },
+        { x: 3594, y: 292, type: 'angel_wings' },
+        { x: 4040, y: 417, type: 'burger' },
+        { x: 4355, y: 342, type: 'coin' },
+        { x: 4470, y: 290, type: 'coin' },
+        { x: 4920, y: 415, type: 'coin' }
       ],
       questionBlocks: [
         { x: 1051, y: 233, w: 32, h: 32, item: 'plant', style: 'question' }
+      ],
+      hiddenBlocks: [
+        { x: 4597, y: 158, w: 32, h: 32, item: 'extra_life_heart', style: 'secret_gold' }
       ],
       // ENEMIGOS NIVEL 4: Mezcla de Turistas, Gatos en plataformas + Enjambre teledirigido
       selfieTourists: [
         { x: 300, y: GROUND_Y, minX: 180, maxX: 440, speed: 60 },
         { x: 920, y: GROUND_Y, minX: 820, maxX: 1035, speed: 62 },
         { x: 1840, y: GROUND_Y, minX: 1720, maxX: 1955, speed: 65 },
-        { x: 2950, y: GROUND_Y, minX: 2680, maxX: 3260, speed: 68 }
+        { x: 2950, y: GROUND_Y, minX: 2680, maxX: 3260, speed: 68 },
+        { x: 3980, y: GROUND_Y, minX: 3800, maxX: 4240, speed: 70 },
+        { x: 4920, y: GROUND_Y, minX: 4810, maxX: 5110, speed: 70 }
       ],
       cats: [
         { x: 305, y: 360, minX: 285, maxX: 368, speed: 48, isAmbush: true },
         { x: 1050, y: 355, minX: 1025, maxX: 1110, speed: 51, isAmbush: true },
         { x: 1185, y: GROUND_Y, minX: 1085, maxX: 1275, speed: 92, isAmbush: false },
         { x: 1930, y: 355, minX: 1905, maxX: 1990, speed: 53, isAmbush: true },
-        { x: 2850, y: 360, minX: 2825, maxX: 2910, speed: 55, isAmbush: true }
+        { x: 2850, y: 360, minX: 2825, maxX: 2910, speed: 55, isAmbush: true },
+        { x: 3950, y: 355, minX: 3925, maxX: 4010, speed: 56, isAmbush: true }
       ],
       greenParakeets: [
         { x: 650, baseY: 310, minX: 460, maxX: 880, ampY: 45, speed: 145 },
         { x: 1450, baseY: 270, minX: 1250, maxX: 1700, ampY: 50, speed: 154 },
-        { x: 2300, baseY: 315, minX: 2100, maxX: 2560, ampY: 48, speed: 150 }
+        { x: 2300, baseY: 315, minX: 2100, maxX: 2560, ampY: 48, speed: 150 },
+        { x: 3600, baseY: 285, minX: 3420, maxX: 3840, ampY: 46, speed: 154 },
+        { x: 4520, baseY: 250, minX: 4280, maxX: 4780, ampY: 44, speed: 158 }
       ],
       royalGuards: [
         { x: 1060, y: GROUND_Y, minX: 980, maxX: 1260, speed: 64 },
         { x: 1960, y: GROUND_Y, minX: 1780, maxX: 2040, speed: 66 },
         { x: 2740, y: GROUND_Y, minX: 2580, maxX: 2920, speed: 68 },
-        { x: 3160, y: GROUND_Y, minX: 2980, maxX: 3310, speed: 70 }
+        { x: 3160, y: GROUND_Y, minX: 2980, maxX: 3390, speed: 70 },
+        { x: 4120, y: GROUND_Y, minX: 3850, maxX: 4250, speed: 70 },
+        { x: 4980, y: GROUND_Y, minX: 4820, maxX: 5130, speed: 72 }
       ],
       hedgehogs: [
-        { x: 2050, y: GROUND_Y, minX: 1985, maxX: 2155, speed: 72 }
+        { x: 2050, y: GROUND_Y, minX: 1985, maxX: 2155, speed: 72 },
+        { x: 4180, y: GROUND_Y, minX: 4050, maxX: 4260, speed: 74 }
       ]
     }
   ];
@@ -5957,6 +5984,402 @@
   }
 
   // ==========================================================================
+  // RELIQUIAS COLECCIONABLES POR CIUDAD (1 por ciudad, 4 puntos elevados seguros)
+  // ==========================================================================
+  const RELIC_DEFS = {
+    barcelona: {
+      id: 'relic_barcelona',
+      cityKey: 'barcelona',
+      country: 'spain',
+      name: 'Dragón de Gaudí',
+      icon: '🐉',
+      color: '#38bdf8',
+      spots: [
+        { zoneIndex: 0, x: 3118, y: 329, hint: 'Sobre la pasarela de madera junto al paseo marítimo' },
+        { zoneIndex: 1, x: 1716, y: 209, hint: 'En lo alto del balcón gótico escalonado' },
+        { zoneIndex: 2, x: 5006, y: 274, hint: 'En el mirador de trencadís tras los arcos' },
+        { zoneIndex: 3, x: 5098, y: 274, hint: 'Sobre el andamio alto de las torres centrales' }
+      ]
+    },
+    madrid: {
+      id: 'relic_madrid',
+      cityKey: 'madrid',
+      country: 'spain',
+      name: 'Corona Real',
+      icon: '👑',
+      color: '#fbbf24',
+      spots: [
+        { zoneIndex: 0, x: 3598, y: 329, hint: 'Sobre la cornisa de piedra hacia el tramo final de Sol' },
+        { zoneIndex: 1, x: 1934, y: 324, hint: 'Sobre el balcón central de la Plaza Mayor' },
+        { zoneIndex: 2, x: 1216, y: 324, hint: 'Sobre la pérgola de madera del paseo del Retiro' },
+        { zoneIndex: 3, x: 2854, y: 324, hint: 'Sobre el pedestal de piedra junto al Palacio Real' }
+      ]
+    },
+    palma: {
+      id: 'relic_palma',
+      cityKey: 'palma',
+      country: 'spain',
+      name: 'Ensaimada Dorada',
+      icon: '🥐',
+      color: '#f59e0b',
+      spots: [
+        { zoneIndex: 0, x: 4262, y: 324, hint: 'Sobre el balcón mallorquín del paseo marítimo' },
+        { zoneIndex: 1, x: 2709, y: 324, hint: 'En la plataforma de piedra camino al Castell de Bellver' },
+        { zoneIndex: 2, x: 834, y: 309, hint: 'Sobre el espolón rocoso encima de la cala turquesa' },
+        { zoneIndex: 3, x: 2809, y: 324, hint: 'Sobre la viga de grúa del muelle de Palma' }
+      ]
+    },
+    canarias: {
+      id: 'relic_canarias',
+      cityKey: 'canarias',
+      country: 'spain',
+      name: 'Cristal Volcánico',
+      icon: '💎',
+      color: '#f43f5e',
+      spots: [
+        { zoneIndex: 0, x: 2462, y: 332, hint: 'Sobre la plataforma de arena tras las dunas móviles' },
+        { zoneIndex: 1, x: 3108, y: 329, hint: 'Sobre la rama alta del bosque húmedo de Garajonay' },
+        { zoneIndex: 2, x: 5498, y: 332, hint: 'Sobre el saliente de basalto entre los cráteres' },
+        { zoneIndex: 3, x: 929, y: 326, hint: 'En el saliente de basalto rumbo a la ladera del Teide' }
+      ]
+    },
+    buenosaires: {
+      id: 'relic_buenosaires',
+      cityKey: 'buenosaires',
+      country: 'argentina',
+      name: 'Obelisco Dorado',
+      icon: '🗼',
+      color: '#fde047',
+      spots: [
+        { zoneIndex: 0, x: 1154, y: 268, hint: 'Sobre el techo de chapa rosa de Caminito' },
+        { zoneIndex: 1, x: 6476, y: 266, hint: 'En la marquesina iluminada hacia el Obelisco' },
+        { zoneIndex: 2, x: 4898, y: 232, hint: 'Sobre la viga de grúa alta de Puerto Madero' },
+        { zoneIndex: 3, x: 2736, y: 344, hint: 'Sobre el techo del vagón escalonado del Tren Mitre' }
+      ]
+    },
+    rosario: {
+      id: 'relic_rosario',
+      cityKey: 'rosario',
+      country: 'argentina',
+      name: 'Mate Campeón',
+      icon: '🧉',
+      color: '#4ade80',
+      spots: [
+        { zoneIndex: 0, x: 4083, y: 260, hint: 'En el escalón de mármol alto del Monumento a la Bandera' },
+        { zoneIndex: 1, x: 7838, y: 338, hint: 'Sobre el muelle elevado de madera en La Florida' },
+        { zoneIndex: 2, x: 6594, y: 262, hint: 'Sobre la pérgola superior del Parque Independencia' },
+        { zoneIndex: 3, x: 6994, y: 252, hint: 'Impúlsate con el bombo de la hinchada hasta la tribuna alta' }
+      ]
+    },
+    cordoba: {
+      id: 'relic_cordoba',
+      cityKey: 'cordoba',
+      country: 'argentina',
+      name: 'Fernet Místico',
+      icon: '🥃',
+      color: '#a855f7',
+      spots: [
+        { zoneIndex: 0, x: 2974, y: 270, hint: 'En el balcón de piedra del casco histórico' },
+        { zoneIndex: 1, x: 2448, y: 212, hint: 'En lo más alto del mirador de Carlos Paz' },
+        { zoneIndex: 2, x: 9899, y: 268, hint: 'Sobre el tejado alpino alto de Villa General Belgrano' },
+        { zoneIndex: 3, x: 653, y: 266, hint: 'En la terraza de piedra al inicio del ascenso al Uritorco' }
+      ]
+    },
+    ushuaia: {
+      id: 'relic_ushuaia',
+      cityKey: 'ushuaia',
+      country: 'argentina',
+      name: 'Brújula Austral',
+      icon: '🧭',
+      color: '#22d3ee',
+      spots: [
+        { zoneIndex: 0, x: 1886, y: 266, hint: 'Sobre la plataforma helada superior del centro austral' },
+        { zoneIndex: 1, x: 2553, y: 258, hint: 'Sobre el vagón elevado del Tren del Fin del Mundo' },
+        { zoneIndex: 2, x: 5378, y: 264, hint: 'Sobre el bloque de hielo alto del Glaciar Martial' },
+        { zoneIndex: 3, x: 6191, y: 262, hint: 'Sobre el mirador helado frente al Faro Les Éclaireurs' }
+      ]
+    }
+  };
+
+  const RELIC_LIST = Object.values(RELIC_DEFS);
+
+  // ==========================================================================
+  // NIVELES SECRETOS "BONUS FRENÉTICO" (50s, sin pozos mortales ni pérdida de vidas)
+  // ==========================================================================
+  const SECRET_LEVELS = {
+    secret_spain: {
+      key: 'secret_spain',
+      country: 'spain',
+      id: 1,
+      isSecretBonus: true,
+      noLifeLossOnFail: false,
+      hasEnemies: false,
+      hasWaterPits: false,
+      hasLavaPits: false,
+      hasDeadlyPits: false,
+      name: 'Bonus Frenético: Atardecer en Ibiza',
+      subtitle: '¡50s frenéticos de monedas sin pozos ni enemigos!',
+      nextDestination: 'España',
+      theme: 'bonus_ibiza',
+      musicTheme: 'bonus_ibiza',
+      timeLimit: 50,
+      width: 4200,
+      spawn: { x: 80, y: 390 },
+      flagX: 3960,
+      flagY: GROUND_Y - 68,
+      hints: [
+        { x: 120, y: 390, text: '¡50s SIN ENEMIGOS NI POZOS! Cruza la meta antes de 00 para no perder el botín ✨' }
+      ],
+      solids: [
+        { x: 0, y: GROUND_Y, w: 4200, h: 100, style: 'sand' },
+        // Nivel 1 aéreo (y = 372)
+        { x: 240, y: 372, w: 220, h: 18, oneWay: true, style: 'wood' },
+        { x: 760, y: 372, w: 240, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 1320, y: 372, w: 260, h: 18, oneWay: true, style: 'wood' },
+        { x: 1880, y: 372, w: 240, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 2440, y: 372, w: 260, h: 18, oneWay: true, style: 'wood' },
+        { x: 3000, y: 372, w: 240, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 3480, y: 372, w: 220, h: 18, oneWay: true, style: 'wood' },
+        // Nivel 2 aéreo (y = 278)
+        { x: 480, y: 278, w: 260, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 1040, y: 278, w: 260, h: 18, oneWay: true, style: 'wood' },
+        { x: 1600, y: 278, w: 260, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 2160, y: 278, w: 260, h: 18, oneWay: true, style: 'wood' },
+        { x: 2720, y: 278, w: 260, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 3260, y: 278, w: 220, h: 18, oneWay: true, style: 'wood' },
+        // Autopista celeste nivel 3 (y = 182)
+        { x: 680, y: 182, w: 320, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 1240, y: 182, w: 340, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 1860, y: 182, w: 320, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 2460, y: 182, w: 340, h: 18, oneWay: true, style: 'mosaic' },
+        { x: 3060, y: 182, w: 280, h: 18, oneWay: true, style: 'mosaic' },
+        // Oasis dorados en las nubes (y = 104)
+        { x: 1580, y: 104, w: 220, h: 18, oneWay: true, style: 'wood' },
+        { x: 2820, y: 104, w: 220, h: 18, oneWay: true, style: 'wood' }
+      ],
+      movingPlatforms: [
+        { sx: 960, sy: 182, w: 110, h: 18, mode: 'oscillate', angleDeg: 0, dist: 160, phase: 0, speed: 150, style: 'mosaic' },
+        { sx: 2180, sy: 182, w: 110, h: 18, mode: 'oscillate', angleDeg: 0, dist: 160, phase: 1.5, speed: 155, style: 'mosaic' }
+      ],
+      bouncyDrums: [
+        { x: 170, y: GROUND_Y, w: 72, h: 46, bounceVy: -760, style: 'circus' },
+        { x: 670, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 1230, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 1790, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 2350, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 2910, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 3390, y: GROUND_Y, w: 72, h: 46, bounceVy: -760, style: 'circus' },
+        // Cadena vertical en altura
+        { x: 840, y: 372, w: 68, h: 42, bounceVy: -740, style: 'circus' },
+        { x: 1410, y: 372, w: 68, h: 42, bounceVy: -740, style: 'circus' },
+        { x: 2530, y: 372, w: 68, h: 42, bounceVy: -740, style: 'circus' },
+        { x: 1690, y: 278, w: 68, h: 42, bounceVy: -720, style: 'circus' },
+        { x: 2810, y: 278, w: 68, h: 42, bounceVy: -720, style: 'circus' }
+      ],
+      subwayVents: [
+        { x: 540, y: GROUND_Y, w: 64, height: 320, period: 0, phase: 0, kind: 'vent' },
+        { x: 1120, y: GROUND_Y, w: 64, height: 320, period: 0, phase: 0, kind: 'vent' },
+        { x: 2040, y: GROUND_Y, w: 64, height: 340, period: 0, phase: 0, kind: 'vent' },
+        { x: 2660, y: GROUND_Y, w: 64, height: 340, period: 0, phase: 0, kind: 'vent' },
+        { x: 3200, y: GROUND_Y, w: 64, height: 320, period: 0, phase: 0, kind: 'vent' }
+      ],
+      collectibles: [
+        // Power-ups & 1-UP rewards
+        { type: 'angel_wings', x: 336, y: 330 },
+        { type: 'electric_shield', x: 1436, y: 140 },
+        { type: 'plant', x: 2276, y: 236 },
+        { type: 'smoothie', x: 1986, y: 330 },
+        { type: 'burger', x: 3106, y: 330 },
+        { type: '1up_bone', x: 1676, y: 62 },
+        { type: '1up_bone', x: 2916, y: 62 },
+        { type: 'extra_life_heart', x: 3576, y: 330 },
+        // Carriles de monedas en suelo (y = 420)
+        { type: 'coin', x: 260, y: 420 }, { type: 'coin', x: 300, y: 420 }, { type: 'coin', x: 340, y: 420 }, { type: 'coin', x: 380, y: 420 }, { type: 'coin', x: 420, y: 420 },
+        { type: 'coin', x: 780, y: 420 }, { type: 'coin', x: 820, y: 420 }, { type: 'coin', x: 860, y: 420 }, { type: 'coin', x: 900, y: 420 }, { type: 'coin', x: 940, y: 420 },
+        { type: 'coin', x: 1340, y: 420 }, { type: 'coin', x: 1380, y: 420 }, { type: 'coin', x: 1420, y: 420 }, { type: 'coin', x: 1460, y: 420 }, { type: 'coin', x: 1500, y: 420 },
+        { type: 'coin', x: 1900, y: 420 }, { type: 'coin', x: 1940, y: 420 }, { type: 'coin', x: 1980, y: 420 }, { type: 'coin', x: 2020, y: 420 },
+        { type: 'coin', x: 2460, y: 420 }, { type: 'coin', x: 2500, y: 420 }, { type: 'coin', x: 2540, y: 420 }, { type: 'coin', x: 2580, y: 420 },
+        { type: 'coin', x: 3020, y: 420 }, { type: 'coin', x: 3060, y: 420 }, { type: 'coin', x: 3100, y: 420 }, { type: 'coin', x: 3140, y: 420 },
+        { type: 'coin', x: 3500, y: 420 }, { type: 'coin', x: 3540, y: 420 }, { type: 'coin', x: 3580, y: 420 }, { type: 'coin', x: 3620, y: 420 },
+        { type: 'coin', x: 3720, y: 420 }, { type: 'coin', x: 3760, y: 420 }, { type: 'coin', x: 3800, y: 420 }, { type: 'coin', x: 3840, y: 420 }, { type: 'coin', x: 3880, y: 420 },
+        // Carriles Nivel 1 (y = 332)
+        { type: 'coin', x: 256, y: 332 }, { type: 'coin', x: 296, y: 332 }, { type: 'coin', x: 376, y: 332 }, { type: 'coin', x: 416, y: 332 },
+        { type: 'coin', x: 766, y: 332 }, { type: 'coin', x: 802, y: 332 }, { type: 'coin', x: 926, y: 332 }, { type: 'coin', x: 966, y: 332 },
+        { type: 'coin', x: 1340, y: 332 }, { type: 'coin', x: 1380, y: 332 }, { type: 'coin', x: 1496, y: 332 }, { type: 'coin', x: 1536, y: 332 },
+        { type: 'coin', x: 1900, y: 332 }, { type: 'coin', x: 1940, y: 332 }, { type: 'coin', x: 2036, y: 332 }, { type: 'coin', x: 2076, y: 332 },
+        { type: 'coin', x: 2460, y: 332 }, { type: 'coin', x: 2500, y: 332 }, { type: 'coin', x: 2616, y: 332 }, { type: 'coin', x: 2656, y: 332 },
+        { type: 'coin', x: 3020, y: 332 }, { type: 'coin', x: 3060, y: 332 }, { type: 'coin', x: 3156, y: 332 }, { type: 'coin', x: 3196, y: 332 },
+        // Carriles Nivel 2 (y = 238)
+        { type: 'coin', x: 500, y: 238 }, { type: 'coin', x: 540, y: 238 }, { type: 'coin', x: 580, y: 238 }, { type: 'coin', x: 620, y: 238 }, { type: 'coin', x: 660, y: 238 }, { type: 'coin', x: 700, y: 238 },
+        { type: 'coin', x: 1060, y: 238 }, { type: 'coin', x: 1100, y: 238 }, { type: 'coin', x: 1140, y: 238 }, { type: 'coin', x: 1180, y: 238 }, { type: 'coin', x: 1220, y: 238 }, { type: 'coin', x: 1260, y: 238 },
+        { type: 'coin', x: 1620, y: 238 }, { type: 'coin', x: 1660, y: 238 }, { type: 'coin', x: 1776, y: 238 }, { type: 'coin', x: 1816, y: 238 },
+        { type: 'coin', x: 2180, y: 238 }, { type: 'coin', x: 2220, y: 238 }, { type: 'coin', x: 2320, y: 238 }, { type: 'coin', x: 2360, y: 238 },
+        { type: 'coin', x: 2740, y: 238 }, { type: 'coin', x: 2780, y: 238 }, { type: 'coin', x: 2896, y: 238 }, { type: 'coin', x: 2936, y: 238 },
+        { type: 'coin', x: 3280, y: 238 }, { type: 'coin', x: 3320, y: 238 }, { type: 'coin', x: 3360, y: 238 }, { type: 'coin', x: 3400, y: 238 }, { type: 'coin', x: 3440, y: 238 },
+        // Autopista celeste Nivel 3 (y = 142)
+        { type: 'coin', x: 700, y: 142 }, { type: 'coin', x: 740, y: 142 }, { type: 'coin', x: 780, y: 142 }, { type: 'coin', x: 820, y: 142 }, { type: 'coin', x: 860, y: 142 }, { type: 'coin', x: 900, y: 142 }, { type: 'coin', x: 940, y: 142 },
+        { type: 'coin', x: 1260, y: 142 }, { type: 'coin', x: 1300, y: 142 }, { type: 'coin', x: 1340, y: 142 }, { type: 'coin', x: 1380, y: 142 }, { type: 'coin', x: 1486, y: 142 }, { type: 'coin', x: 1526, y: 142 },
+        { type: 'coin', x: 1880, y: 142 }, { type: 'coin', x: 1920, y: 142 }, { type: 'coin', x: 1960, y: 142 }, { type: 'coin', x: 2000, y: 142 }, { type: 'coin', x: 2040, y: 142 }, { type: 'coin', x: 2080, y: 142 }, { type: 'coin', x: 2120, y: 142 },
+        { type: 'coin', x: 2480, y: 142 }, { type: 'coin', x: 2520, y: 142 }, { type: 'coin', x: 2560, y: 142 }, { type: 'coin', x: 2600, y: 142 }, { type: 'coin', x: 2640, y: 142 }, { type: 'coin', x: 2680, y: 142 }, { type: 'coin', x: 2720, y: 142 },
+        { type: 'coin', x: 3080, y: 142 }, { type: 'coin', x: 3120, y: 142 }, { type: 'coin', x: 3160, y: 142 }, { type: 'coin', x: 3200, y: 142 }, { type: 'coin', x: 3240, y: 142 }, { type: 'coin', x: 3280, y: 142 },
+        // Columnas verticales de monedas sobre bombos y corrientes ascendentes
+        { type: 'coin', x: 193, y: 356 }, { type: 'coin', x: 193, y: 316 }, { type: 'coin', x: 193, y: 276 },
+        { type: 'coin', x: 559, y: 368 }, { type: 'coin', x: 559, y: 328 }, { type: 'coin', x: 559, y: 202 },
+        { type: 'coin', x: 693, y: 356 }, { type: 'coin', x: 693, y: 316 }, { type: 'coin', x: 693, y: 206 },
+        { type: 'coin', x: 1139, y: 368 }, { type: 'coin', x: 1139, y: 328 }, { type: 'coin', x: 1139, y: 202 },
+        { type: 'coin', x: 1253, y: 356 }, { type: 'coin', x: 1253, y: 316 }, { type: 'coin', x: 1253, y: 206 },
+        { type: 'coin', x: 1711, y: 198 }, { type: 'coin', x: 1711, y: 158 },
+        { type: 'coin', x: 1813, y: 356 }, { type: 'coin', x: 1813, y: 316 }, { type: 'coin', x: 1813, y: 206 },
+        { type: 'coin', x: 2059, y: 304 }, { type: 'coin', x: 2059, y: 236 },
+        { type: 'coin', x: 2373, y: 356 }, { type: 'coin', x: 2373, y: 316 }, { type: 'coin', x: 2373, y: 206 },
+        { type: 'coin', x: 2679, y: 304 }, { type: 'coin', x: 2679, y: 236 },
+        { type: 'coin', x: 2831, y: 198 }, { type: 'coin', x: 2831, y: 158 },
+        { type: 'coin', x: 2933, y: 356 }, { type: 'coin', x: 2933, y: 316 }, { type: 'coin', x: 2933, y: 206 },
+        { type: 'coin', x: 3219, y: 304 }, { type: 'coin', x: 3219, y: 236 },
+        { type: 'coin', x: 3428, y: 356 }, { type: 'coin', x: 3428, y: 316 }, { type: 'coin', x: 3428, y: 208 },
+        // Monedas en Oasis altos (y = 64)
+        { type: 'coin', x: 1600, y: 64 }, { type: 'coin', x: 1636, y: 64 }, { type: 'coin', x: 1720, y: 64 }, { type: 'coin', x: 1760, y: 64 },
+        { type: 'coin', x: 2840, y: 64 }, { type: 'coin', x: 2876, y: 64 }, { type: 'coin', x: 2960, y: 64 }, { type: 'coin', x: 3000, y: 64 }
+      ]
+    },
+    secret_argentina: {
+      key: 'secret_argentina',
+      country: 'argentina',
+      id: 1,
+      isSecretBonus: true,
+      noLifeLossOnFail: false,
+      hasEnemies: false,
+      hasWaterPits: false,
+      hasLavaPits: false,
+      hasDeadlyPits: false,
+      name: 'Bonus Frenético: Cataratas del Iguazú',
+      subtitle: '¡50s de vértigo tropical y monedas sin enemigos!',
+      nextDestination: 'Argentina',
+      theme: 'bonus_iguazu',
+      musicTheme: 'bonus_iguazu',
+      timeLimit: 50,
+      width: 4200,
+      spawn: { x: 80, y: 390 },
+      flagX: 3960,
+      flagY: GROUND_Y - 68,
+      hints: [
+        { x: 120, y: 390, text: '¡50s SIN ENEMIGOS! Sube por la bruma y cruza la meta antes de que llegue a 00 🌈' }
+      ],
+      solids: [
+        { x: 0, y: GROUND_Y, w: 4200, h: 100, style: 'moss_bridge' },
+        // Cascadas nivel 1 (y = 376)
+        { x: 230, y: 376, w: 220, h: 18, oneWay: true, style: 'branch' },
+        { x: 740, y: 376, w: 240, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 1280, y: 376, w: 240, h: 18, oneWay: true, style: 'wood' },
+        { x: 1840, y: 376, w: 260, h: 18, oneWay: true, style: 'branch' },
+        { x: 2400, y: 376, w: 240, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 2960, y: 376, w: 250, h: 18, oneWay: true, style: 'wood' },
+        { x: 3480, y: 376, w: 220, h: 18, oneWay: true, style: 'branch' },
+        // Cascadas nivel 2 (y = 282)
+        { x: 460, y: 282, w: 250, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 1000, y: 282, w: 250, h: 18, oneWay: true, style: 'branch' },
+        { x: 1560, y: 282, w: 260, h: 18, oneWay: true, style: 'wood' },
+        { x: 2120, y: 282, w: 260, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 2680, y: 282, w: 250, h: 18, oneWay: true, style: 'branch' },
+        { x: 3220, y: 282, w: 240, h: 18, oneWay: true, style: 'wood' },
+        // Puentes del dosel nivel 3 (y = 186)
+        { x: 680, y: 186, w: 300, h: 18, oneWay: true, style: 'branch' },
+        { x: 1240, y: 186, w: 320, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 1820, y: 186, w: 320, h: 18, oneWay: true, style: 'branch' },
+        { x: 2420, y: 186, w: 320, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 3000, y: 186, w: 300, h: 18, oneWay: true, style: 'branch' },
+        // Coronas del Arcoíris (y = 104)
+        { x: 1520, y: 104, w: 240, h: 18, oneWay: true, style: 'moss_bridge' },
+        { x: 2740, y: 104, w: 240, h: 18, oneWay: true, style: 'moss_bridge' }
+      ],
+      movingPlatforms: [
+        { sx: 960, sy: 186, w: 110, h: 18, mode: 'oscillate', angleDeg: 0, dist: 155, phase: 0, speed: 152, style: 'moss_bridge' },
+        { sx: 2140, sy: 186, w: 110, h: 18, mode: 'oscillate', angleDeg: 0, dist: 160, phase: 1.4, speed: 158, style: 'moss_bridge' }
+      ],
+      bouncyDrums: [
+        { x: 160, y: GROUND_Y, w: 72, h: 46, bounceVy: -775, style: 'circus' },
+        { x: 660, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 1200, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 1760, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 2320, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 2880, y: GROUND_Y, w: 72, h: 46, bounceVy: -780, style: 'circus' },
+        { x: 3380, y: GROUND_Y, w: 72, h: 46, bounceVy: -775, style: 'circus' },
+        // Bombos elevados entre cascadas
+        { x: 820, y: 376, w: 68, h: 42, bounceVy: -735, style: 'circus' },
+        { x: 1370, y: 376, w: 68, h: 42, bounceVy: -735, style: 'circus' },
+        { x: 2490, y: 376, w: 68, h: 42, bounceVy: -735, style: 'circus' },
+        { x: 1650, y: 282, w: 68, h: 42, bounceVy: -725, style: 'circus' },
+        { x: 2780, y: 282, w: 68, h: 42, bounceVy: -725, style: 'circus' }
+      ],
+      subwayVents: [
+        { x: 520, y: GROUND_Y, w: 66, height: 340, period: 0, phase: 0, kind: 'vent' },
+        { x: 1090, y: GROUND_Y, w: 66, height: 340, period: 0, phase: 0, kind: 'vent' },
+        { x: 2000, y: GROUND_Y, w: 66, height: 340, period: 0, phase: 0, kind: 'vent' },
+        { x: 2600, y: GROUND_Y, w: 66, height: 340, period: 0, phase: 0, kind: 'vent' },
+        { x: 3160, y: GROUND_Y, w: 66, height: 340, period: 0, phase: 0, kind: 'vent' }
+      ],
+      collectibles: [
+        // Power-ups & 1-UP rewards
+        { type: 'angel_wings', x: 326, y: 334 },
+        { type: 'electric_shield', x: 1380, y: 144 },
+        { type: 'plant', x: 2236, y: 240 },
+        { type: 'empanada', x: 1956, y: 334 },
+        { type: 'pizza', x: 3076, y: 334 },
+        { type: '1up_bone', x: 1626, y: 62 },
+        { type: '1up_bone', x: 2846, y: 62 },
+        { type: 'extra_life_heart', x: 3576, y: 334 },
+        // Carriles de monedas en suelo (y = 420)
+        { type: 'coin', x: 250, y: 420 }, { type: 'coin', x: 290, y: 420 }, { type: 'coin', x: 330, y: 420 }, { type: 'coin', x: 370, y: 420 }, { type: 'coin', x: 410, y: 420 },
+        { type: 'coin', x: 760, y: 420 }, { type: 'coin', x: 800, y: 420 }, { type: 'coin', x: 840, y: 420 }, { type: 'coin', x: 880, y: 420 }, { type: 'coin', x: 920, y: 420 },
+        { type: 'coin', x: 1300, y: 420 }, { type: 'coin', x: 1340, y: 420 }, { type: 'coin', x: 1380, y: 420 }, { type: 'coin', x: 1420, y: 420 }, { type: 'coin', x: 1460, y: 420 },
+        { type: 'coin', x: 1860, y: 420 }, { type: 'coin', x: 1900, y: 420 }, { type: 'coin', x: 1940, y: 420 }, { type: 'coin', x: 1980, y: 420 },
+        { type: 'coin', x: 2420, y: 420 }, { type: 'coin', x: 2460, y: 420 }, { type: 'coin', x: 2500, y: 420 }, { type: 'coin', x: 2540, y: 420 },
+        { type: 'coin', x: 2980, y: 420 }, { type: 'coin', x: 3020, y: 420 }, { type: 'coin', x: 3060, y: 420 }, { type: 'coin', x: 3100, y: 420 },
+        { type: 'coin', x: 3500, y: 420 }, { type: 'coin', x: 3540, y: 420 }, { type: 'coin', x: 3580, y: 420 }, { type: 'coin', x: 3620, y: 420 },
+        { type: 'coin', x: 3720, y: 420 }, { type: 'coin', x: 3760, y: 420 }, { type: 'coin', x: 3800, y: 420 }, { type: 'coin', x: 3840, y: 420 }, { type: 'coin', x: 3880, y: 420 },
+        // Carriles Nivel 1 (y = 336)
+        { type: 'coin', x: 246, y: 336 }, { type: 'coin', x: 286, y: 336 }, { type: 'coin', x: 366, y: 336 }, { type: 'coin', x: 406, y: 336 },
+        { type: 'coin', x: 750, y: 336 }, { type: 'coin', x: 786, y: 336 }, { type: 'coin', x: 906, y: 336 }, { type: 'coin', x: 946, y: 336 },
+        { type: 'coin', x: 1300, y: 336 }, { type: 'coin', x: 1340, y: 336 }, { type: 'coin', x: 1456, y: 336 }, { type: 'coin', x: 1496, y: 336 },
+        { type: 'coin', x: 1860, y: 336 }, { type: 'coin', x: 1900, y: 336 }, { type: 'coin', x: 2006, y: 336 }, { type: 'coin', x: 2046, y: 336 },
+        { type: 'coin', x: 2420, y: 336 }, { type: 'coin', x: 2460, y: 336 }, { type: 'coin', x: 2576, y: 336 }, { type: 'coin', x: 2616, y: 336 },
+        { type: 'coin', x: 2980, y: 336 }, { type: 'coin', x: 3020, y: 336 }, { type: 'coin', x: 3126, y: 336 }, { type: 'coin', x: 3166, y: 336 },
+        // Carriles Nivel 2 (y = 242)
+        { type: 'coin', x: 480, y: 242 }, { type: 'coin', x: 520, y: 242 }, { type: 'coin', x: 560, y: 242 }, { type: 'coin', x: 600, y: 242 }, { type: 'coin', x: 640, y: 242 }, { type: 'coin', x: 680, y: 242 },
+        { type: 'coin', x: 1020, y: 242 }, { type: 'coin', x: 1060, y: 242 }, { type: 'coin', x: 1100, y: 242 }, { type: 'coin', x: 1140, y: 242 }, { type: 'coin', x: 1180, y: 242 }, { type: 'coin', x: 1220, y: 242 },
+        { type: 'coin', x: 1580, y: 242 }, { type: 'coin', x: 1620, y: 242 }, { type: 'coin', x: 1736, y: 242 }, { type: 'coin', x: 1776, y: 242 },
+        { type: 'coin', x: 2140, y: 242 }, { type: 'coin', x: 2180, y: 242 }, { type: 'coin', x: 2296, y: 242 }, { type: 'coin', x: 2336, y: 242 },
+        { type: 'coin', x: 2700, y: 242 }, { type: 'coin', x: 2740, y: 242 }, { type: 'coin', x: 2866, y: 242 }, { type: 'coin', x: 2906, y: 242 },
+        { type: 'coin', x: 3240, y: 242 }, { type: 'coin', x: 3280, y: 242 }, { type: 'coin', x: 3320, y: 242 }, { type: 'coin', x: 3360, y: 242 }, { type: 'coin', x: 3400, y: 242 },
+        // Puentes del dosel Nivel 3 (y = 146)
+        { type: 'coin', x: 700, y: 146 }, { type: 'coin', x: 740, y: 146 }, { type: 'coin', x: 780, y: 146 }, { type: 'coin', x: 820, y: 146 }, { type: 'coin', x: 860, y: 146 }, { type: 'coin', x: 900, y: 146 }, { type: 'coin', x: 940, y: 146 },
+        { type: 'coin', x: 1260, y: 146 }, { type: 'coin', x: 1300, y: 146 }, { type: 'coin', x: 1340, y: 146 }, { type: 'coin', x: 1446, y: 146 }, { type: 'coin', x: 1486, y: 146 }, { type: 'coin', x: 1526, y: 146 },
+        { type: 'coin', x: 1840, y: 146 }, { type: 'coin', x: 1880, y: 146 }, { type: 'coin', x: 1920, y: 146 }, { type: 'coin', x: 1960, y: 146 }, { type: 'coin', x: 2000, y: 146 }, { type: 'coin', x: 2040, y: 146 }, { type: 'coin', x: 2080, y: 146 },
+        { type: 'coin', x: 2440, y: 146 }, { type: 'coin', x: 2480, y: 146 }, { type: 'coin', x: 2520, y: 146 }, { type: 'coin', x: 2560, y: 146 }, { type: 'coin', x: 2600, y: 146 }, { type: 'coin', x: 2640, y: 146 }, { type: 'coin', x: 2680, y: 146 },
+        { type: 'coin', x: 3020, y: 146 }, { type: 'coin', x: 3060, y: 146 }, { type: 'coin', x: 3100, y: 146 }, { type: 'coin', x: 3140, y: 146 }, { type: 'coin', x: 3180, y: 146 }, { type: 'coin', x: 3220, y: 146 },
+        // Columnas verticales en bombos y brumas de Iguazú
+        { type: 'coin', x: 183, y: 356 }, { type: 'coin', x: 183, y: 316 }, { type: 'coin', x: 183, y: 276 },
+        { type: 'coin', x: 540, y: 356 }, { type: 'coin', x: 540, y: 316 }, { type: 'coin', x: 540, y: 212 },
+        { type: 'coin', x: 683, y: 356 }, { type: 'coin', x: 683, y: 316 }, { type: 'coin', x: 683, y: 210 },
+        { type: 'coin', x: 1110, y: 356 }, { type: 'coin', x: 1110, y: 316 }, { type: 'coin', x: 1110, y: 212 },
+        { type: 'coin', x: 1223, y: 356 }, { type: 'coin', x: 1223, y: 316 }, { type: 'coin', x: 1223, y: 210 },
+        { type: 'coin', x: 1671, y: 202 }, { type: 'coin', x: 1671, y: 162 },
+        { type: 'coin', x: 1783, y: 356 }, { type: 'coin', x: 1783, y: 316 }, { type: 'coin', x: 1783, y: 210 },
+        { type: 'coin', x: 2020, y: 308 }, { type: 'coin', x: 2020, y: 236 },
+        { type: 'coin', x: 2343, y: 356 }, { type: 'coin', x: 2343, y: 316 }, { type: 'coin', x: 2343, y: 210 },
+        { type: 'coin', x: 2620, y: 308 }, { type: 'coin', x: 2620, y: 236 },
+        { type: 'coin', x: 2801, y: 202 }, { type: 'coin', x: 2801, y: 162 },
+        { type: 'coin', x: 2903, y: 356 }, { type: 'coin', x: 2903, y: 316 }, { type: 'coin', x: 2903, y: 210 },
+        { type: 'coin', x: 3180, y: 308 }, { type: 'coin', x: 3180, y: 236 },
+        { type: 'coin', x: 3428, y: 356 }, { type: 'coin', x: 3428, y: 316 }, { type: 'coin', x: 3428, y: 212 },
+        // Monedas en Coronas del Arcoíris (y = 64)
+        { type: 'coin', x: 1540, y: 64 }, { type: 'coin', x: 1580, y: 64 }, { type: 'coin', x: 1680, y: 64 }, { type: 'coin', x: 1720, y: 64 },
+        { type: 'coin', x: 2760, y: 64 }, { type: 'coin', x: 2800, y: 64 }, { type: 'coin', x: 2900, y: 64 }, { type: 'coin', x: 2940, y: 64 }
+      ]
+    }
+  };
+
+  // ==========================================================================
   // RENDERIZADOR HD DE 5 CAPAS PARALLAX E ILUMINACIÓN VOLUMÉTRICA
   // ==========================================================================
   class BackgroundRenderer {
@@ -6137,7 +6560,11 @@
 
     static drawParallax(ctx, theme, cameraX, width, height, time, levelWidth = null) {
       BackgroundRenderer._activeTheme = theme;
-      if (typeof theme === 'string' && theme.indexOf('ch_') === 0) {
+      if (theme === 'bonus_ibiza') {
+        this.drawBonusIbiza(ctx, cameraX, width, height, time, levelWidth);
+      } else if (theme === 'bonus_iguazu') {
+        this.drawBonusIguazu(ctx, cameraX, width, height, time, levelWidth);
+      } else if (typeof theme === 'string' && theme.indexOf('ch_') === 0) {
         this.drawChileTheme(ctx, theme, cameraX, width, height, time, levelWidth);
       } else if (theme === 'ushuaia_centro') {
         this.drawUshuaiaCentro(ctx, cameraX, width, height, time, levelWidth);
@@ -6201,6 +6628,8 @@
         this.drawMadridPalacio(ctx, cameraX, width, height, time);
       } else if (typeof theme === 'string' && theme.indexOf('madrid') === 0) {
         this.drawMadridSol(ctx, cameraX, width, height, time);
+      } else if (theme === 'barceloneta_menu') {
+        BackgroundRenderer.drawBarcelonetaMenuStatic(ctx, width, height);
       } else if (theme === 'barceloneta') {
         this.drawBarceloneta(ctx, cameraX, width, height, time, levelWidth);
       } else if (theme === 'gotic') {
@@ -6210,6 +6639,469 @@
       } else {
         this.drawSagradaFamilia(ctx, cameraX, width, height, time, levelWidth);
       }
+    }
+
+    static drawBarcelonetaMenuStatic(ctx, w = 960, h = 540) {
+      ctx.save();
+
+      // 1. Cielo estático de atardecer en la Barceloneta (añil -> malva -> coral -> ámbar horizonte)
+      const sky = ctx.createLinearGradient(0, 0, 0, 328);
+      sky.addColorStop(0.0, '#1c3a67');
+      sky.addColorStop(0.24, '#4d4879');
+      sky.addColorStop(0.50, '#ae5a6c');
+      sky.addColorStop(0.75, '#e77d50');
+      sky.addColorStop(0.92, '#faa84d');
+      sky.addColorStop(1.0, '#fdd972');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, w, h);
+
+      // Resplandor solar cálido centrado en el horizonte marítimo
+      const sunHalo = ctx.createRadialGradient(w * 0.5, 316, 12, w * 0.5, 316, 290);
+      sunHalo.addColorStop(0.0, 'rgba(255, 243, 186, 0.72)');
+      sunHalo.addColorStop(0.32, 'rgba(253, 194, 108, 0.36)');
+      sunHalo.addColorStop(0.72, 'rgba(249, 115, 22, 0.10)');
+      sunHalo.addColorStop(1.0, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = sunHalo;
+      ctx.fillRect(0, 20, w, 340);
+
+      // Helper estilizado de nubes cálidas de atardecer con brillo inferior cohesivo
+      const drawSunsetCloud = (puffs, bodyCol, rimCol, alpha = 0.9) => {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        for (let i = 0; i < puffs.length; i++) {
+          const p = puffs[i];
+          ctx.moveTo(p[0] + p[2], p[1]);
+          ctx.arc(p[0], p[1], p[2], 0, Math.PI * 2);
+        }
+        ctx.fillStyle = bodyCol;
+        ctx.fill();
+        if (rimCol) {
+          ctx.save();
+          ctx.clip();
+          ctx.fillStyle = rimCol;
+          ctx.beginPath();
+          for (let i = 0; i < puffs.length; i++) {
+            const p = puffs[i];
+            const ry = p[1] + p[2] * 0.48;
+            ctx.moveTo(p[0] + p[2] * 1.05, ry);
+            ctx.ellipse(p[0], ry, p[2] * 1.05, Math.max(6, p[2] * 0.62), 0, 0, Math.PI * 2);
+          }
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+      };
+
+      // Nubes superiores izquierda y derecha + bandas cálidas sobre el horizonte
+      drawSunsetCloud([[44, 58, 34], [92, 46, 40], [148, 56, 36], [198, 72, 26], [28, 92, 28], [84, 88, 32]], '#4b4874', '#e9896b', 0.9);
+      drawSunsetCloud([[52, 168, 24], [92, 160, 30], [136, 170, 22], [28, 186, 20]], '#634d76', '#f29568', 0.82);
+      drawSunsetCloud([[152, 228, 18], [186, 222, 24], [224, 232, 16]], '#d96e5d', '#fbba6e', 0.78);
+      drawSunsetCloud([[758, 52, 34], [814, 42, 42], [872, 54, 38], [928, 46, 34], [842, 82, 32], [902, 84, 30]], '#484873', '#eb8a6b', 0.9);
+      drawSunsetCloud([[790, 152, 24], [834, 146, 28], [880, 154, 24], [922, 160, 22]], '#9f576a', '#f69e66', 0.84);
+      drawSunsetCloud([[782, 234, 22], [824, 228, 26], [866, 238, 18]], '#ea8353', '#fcd277', 0.78);
+
+      // 2. Silueta del espigón / rompeolas portuario al fondo (izquierda-centro) y costa derecha
+      ctx.save();
+      ctx.fillStyle = '#29293d';
+      ctx.fillRect(0, 310, 386, 14);
+      ctx.fillRect(190, 298, 128, 26);
+      ctx.fillRect(14, 294, 26, 20);
+      // Grúa lejana portuaria a la izquierda
+      ctx.strokeStyle = '#29293d';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(22, 296);
+      ctx.lineTo(22, 274);
+      ctx.lineTo(38, 264);
+      ctx.stroke();
+      ctx.fillStyle = '#332e44';
+      ctx.fillRect(755, 314, w - 755, 10);
+      ctx.restore();
+
+      // 3. Mar Mediterráneo al atardecer con reflejo cálido y olas estilizadas con espuma
+      const seaY = 322;
+      const seaGrad = ctx.createLinearGradient(0, seaY, 0, 412);
+      seaGrad.addColorStop(0.0, '#1e4e79');
+      seaGrad.addColorStop(0.42, '#286a94');
+      seaGrad.addColorStop(1.0, '#3a84aa');
+      ctx.fillStyle = seaGrad;
+      ctx.fillRect(0, seaY, w, 92);
+
+      // Reflejo solar dorado en el agua
+      const reflGrad = ctx.createLinearGradient(0, seaY, 0, 385);
+      reflGrad.addColorStop(0.0, 'rgba(253, 198, 114, 0.34)');
+      reflGrad.addColorStop(1.0, 'rgba(253, 198, 114, 0)');
+      ctx.fillStyle = reflGrad;
+      ctx.fillRect(300, seaY, 360, 58);
+
+      // Playa de arena dorada cálida continua hasta debajo de la balaustrada (y=492)
+      const sandGrad = ctx.createLinearGradient(0, 340, 0, 492);
+      sandGrad.addColorStop(0.0, '#df9969');
+      sandGrad.addColorStop(0.45, '#c5794f');
+      sandGrad.addColorStop(1.0, '#8e513c');
+      ctx.fillStyle = sandGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, 404);
+      ctx.quadraticCurveTo(210, 368, 430, 354);
+      ctx.lineTo(w, 336);
+      ctx.lineTo(w, 492);
+      ctx.lineTo(0, 492);
+      ctx.closePath();
+      ctx.fill();
+
+      // Arena húmeda junto a la orilla
+      ctx.fillStyle = 'rgba(104, 58, 52, 0.38)';
+      ctx.beginPath();
+      ctx.moveTo(0, 398);
+      ctx.quadraticCurveTo(195, 362, 410, 349);
+      ctx.lineTo(395, 364);
+      ctx.quadraticCurveTo(195, 380, 0, 414);
+      ctx.closePath();
+      ctx.fill();
+
+      // Olas con rizos de espuma blanca en la izquierda y orilla
+      const drawSurfWave = (x0, y0, len, amp, foamW) => {
+        ctx.save();
+        ctx.strokeStyle = '#153a5c';
+        ctx.lineWidth = foamW + 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.bezierCurveTo(x0 + len * 0.28, y0 - amp, x0 + len * 0.65, y0 + amp * 0.7, x0 + len, y0 - amp * 0.3);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#7dd3fc';
+        ctx.lineWidth = foamW + 1;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0 - 1.5);
+        ctx.bezierCurveTo(x0 + len * 0.28, y0 - amp - 1.5, x0 + len * 0.65, y0 + amp * 0.7 - 1.5, x0 + len, y0 - amp * 0.3 - 1.5);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#f0f9ff';
+        ctx.lineWidth = Math.max(2, foamW * 0.56);
+        ctx.beginPath();
+        ctx.moveTo(x0 + 4, y0 - 2.5);
+        ctx.bezierCurveTo(x0 + len * 0.28, y0 - amp - 2.5, x0 + len * 0.64, y0 + amp * 0.65 - 2.5, x0 + len - 4, y0 - amp * 0.3 - 2.5);
+        ctx.stroke();
+        ctx.restore();
+      };
+      drawSurfWave(8, 356, 178, 12, 5.5);
+      drawSurfWave(46, 378, 224, 15, 6.2);
+      drawSurfWave(-10, 400, 210, 11, 5.2);
+      drawSurfWave(704, 344, 140, 7, 3.6);
+
+      // Sombrillas de playa estilizadas (izquierda y derecha)
+      const drawParasol = (px, py, radius, colA, colB) => {
+        ctx.save();
+        ctx.strokeStyle = '#33252a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.lineTo(px, py + 24);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(30, 27, 46, 0.3)';
+        ctx.beginPath();
+        ctx.ellipse(px + 2, py + 24, radius * 0.7, 3.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(px, py, radius, Math.PI, 0);
+        ctx.closePath();
+        ctx.fillStyle = colA;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(px, py - radius);
+        ctx.lineTo(px - radius * 0.42, py);
+        ctx.lineTo(px + radius * 0.42, py);
+        ctx.closePath();
+        ctx.fillStyle = colB;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px, py, radius, Math.PI, 0);
+        ctx.closePath();
+        ctx.strokeStyle = '#1e1b2e';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.restore();
+      };
+      drawParasol(228, 356, 20, '#3b82f6', '#f8fafc');
+      drawParasol(786, 346, 16, '#1d4ed8', '#fef3c7');
+      drawParasol(844, 354, 17, '#0f766e', '#e2e8f0');
+
+      // 4. CHIRINGUITO "La Guingueta" EN LA ARENA DERECHA (visible a la derecha de los botones)
+      {
+        const cx = 656;
+        const cy = 434;
+        ctx.save();
+        // Plataforma base oscura
+        ctx.fillStyle = '#241517';
+        ctx.fillRect(cx - 4, cy - 10, 118, 12);
+
+        // Cuerpo coral-terracota con brillo lateral
+        const boothG = ctx.createLinearGradient(cx, cy - 72, cx + 108, cy - 10);
+        boothG.addColorStop(0.0, '#c63b22');
+        boothG.addColorStop(0.55, '#db4f2c');
+        boothG.addColorStop(1.0, '#ea6c34');
+        ctx.fillStyle = boothG;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 66);
+        ctx.lineTo(cx + 108, cy - 75);
+        ctx.lineTo(cx + 108, cy - 10);
+        ctx.lineTo(cx, cy - 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#231317';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Tejadillo inclinado blanco/marino con rotulado "La Guingueta"
+        ctx.fillStyle = '#47211d';
+        ctx.beginPath();
+        ctx.moveTo(cx - 3, cy - 66);
+        ctx.lineTo(cx + 111, cy - 76);
+        ctx.lineTo(cx + 111, cy - 58);
+        ctx.lineTo(cx - 3, cy - 49);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#1b1116';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
+        ctx.fillStyle = '#fff7ed';
+        ctx.font = 'italic bold 10px "Segoe UI", system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('La Guingueta', cx + 56, cy - 58);
+
+        // Ventanal de barra cálido iluminado
+        const winGlow = ctx.createRadialGradient(cx + 38, cy - 32, 4, cx + 38, cy - 32, 48);
+        winGlow.addColorStop(0, 'rgba(253, 224, 71, 0.35)');
+        winGlow.addColorStop(1, 'rgba(253, 224, 71, 0)');
+        ctx.fillStyle = winGlow;
+        ctx.fillRect(cx - 8, cy - 58, 92, 60);
+
+        ctx.fillStyle = '#261414';
+        ctx.fillRect(cx + 12, cy - 46, 52, 26);
+        const barGrad = ctx.createLinearGradient(cx + 14, cy - 44, cx + 14, cy - 22);
+        barGrad.addColorStop(0, '#fef08a');
+        barGrad.addColorStop(1, '#f59e0b');
+        ctx.fillStyle = barGrad;
+        ctx.fillRect(cx + 14, cy - 44, 48, 22);
+        // Dos pequeños taburetes
+        ctx.fillStyle = '#2c1718';
+        ctx.fillRect(cx + 18, cy - 18, 9, 8);
+        ctx.fillRect(cx + 42, cy - 18, 9, 8);
+
+        // Dos tablas de surf crema y ocre apoyadas al lado derecho
+        const drawBoard = (bx, by, rot, fillCol, lineCol) => {
+          ctx.save();
+          ctx.translate(bx, by);
+          ctx.rotate(rot);
+          ctx.beginPath();
+          ctx.ellipse(0, -24, 6.8, 24, 0, 0, Math.PI * 2);
+          ctx.fillStyle = fillCol;
+          ctx.fill();
+          ctx.strokeStyle = '#231317';
+          ctx.lineWidth = 1.6;
+          ctx.stroke();
+          ctx.fillStyle = lineCol;
+          ctx.fillRect(-1.3, -45, 2.6, 42);
+          ctx.restore();
+        };
+        drawBoard(cx + 79, cy - 5, -0.05, '#e6c596', '#b45309');
+        drawBoard(cx + 95, cy - 6, 0.04, '#f3d9a8', '#d97706');
+        ctx.restore();
+      }
+
+      // 5. PASEO MARÍTIMO DE PIEDRA Y BALAUSTRADA (izquierda y derecha flanqueando el centro)
+      {
+        const promY = 486;
+        const deckGrad = ctx.createLinearGradient(0, promY - 6, 0, h);
+        deckGrad.addColorStop(0.0, '#5a475e');
+        deckGrad.addColorStop(0.5, '#43354b');
+        deckGrad.addColorStop(1.0, '#2a2235');
+        ctx.fillStyle = deckGrad;
+        ctx.fillRect(0, promY - 4, w, h - promY + 4);
+
+        // Junta de losas horizontales y líneas en perspectiva en el suelo del paseo
+        ctx.strokeStyle = 'rgba(20, 15, 30, 0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, promY);
+        ctx.lineTo(w, promY);
+        ctx.moveTo(0, promY + 26);
+        ctx.lineTo(w, promY + 26);
+        ctx.stroke();
+        for (let px = 20; px < w; px += 46) {
+          const slope = (px - w * 0.5) * 0.14;
+          ctx.beginPath();
+          ctx.moveTo(px, promY);
+          ctx.lineTo(px + slope, h);
+          ctx.stroke();
+        }
+
+        const drawBalustradeSection = (xStart, xEnd, endPostOnRight) => {
+          const spanW = xEnd - xStart;
+          ctx.save();
+          // Plinto inferior
+          ctx.fillStyle = '#5c4654';
+          ctx.fillRect(xStart, 472, spanW, 16);
+          ctx.fillStyle = '#8b6d72';
+          ctx.fillRect(xStart, 470, spanW, 4);
+          ctx.strokeStyle = '#1e1628';
+          ctx.lineWidth = 1.6;
+          ctx.strokeRect(xStart, 470, spanW, 18);
+
+          // Barandilla superior
+          ctx.fillStyle = '#6c5261';
+          ctx.fillRect(xStart, 431, spanW, 10);
+          ctx.fillStyle = '#b48f88';
+          ctx.fillRect(xStart, 428, spanW, 5);
+          ctx.strokeStyle = '#1e1628';
+          ctx.strokeRect(xStart, 428, spanW, 13);
+
+          // Balaustres torneados
+          for (let bx = xStart + 18; bx < xEnd - 18; bx += 22) {
+            ctx.fillStyle = '#483444';
+            ctx.beginPath();
+            ctx.roundRect(bx - 4, 441, 10, 29, 3);
+            ctx.fill();
+            ctx.fillStyle = '#977474';
+            ctx.beginPath();
+            ctx.roundRect(bx - 5, 441, 6, 29, 3);
+            ctx.fill();
+            ctx.strokeStyle = '#1d1526';
+            ctx.lineWidth = 1.3;
+            ctx.beginPath();
+            ctx.roundRect(bx - 5, 441, 10, 29, 3);
+            ctx.stroke();
+          }
+
+          // Pilares extremos cuadrados de piedra
+          const drawPillar = (px) => {
+            ctx.fillStyle = '#5b4453';
+            ctx.fillRect(px, 424, 24, 64);
+            ctx.fillStyle = '#9e7c7a';
+            ctx.fillRect(px, 424, 8, 64);
+            ctx.fillStyle = '#b8948d';
+            ctx.fillRect(px - 2, 422, 28, 7);
+            ctx.strokeStyle = '#1c1425';
+            ctx.lineWidth = 1.6;
+            ctx.strokeRect(px, 424, 24, 64);
+            ctx.strokeRect(px - 2, 422, 28, 7);
+          };
+          drawPillar(endPostOnRight ? xEnd - 24 : xStart);
+          if (spanW > 180) drawPillar(endPostOnRight ? xStart + 92 : xEnd - 116);
+          ctx.restore();
+        };
+
+        drawBalustradeSection(-4, 296, true);
+        drawBalustradeSection(776, w + 4, false);
+      }
+
+      // 6. PALMERAS COSTERAS ALTAS A LA DERECHA (troncos curvados + copas recortadas contra el cielo)
+      const drawMenuPalm = (bx, by, topX, topY, trunkW, crownScale) => {
+        ctx.save();
+        // Tronco curvo segmentado con luz cálida en el borde izquierdo
+        const mx = (bx + topX) * 0.5 + 16;
+        const my = (by + topY) * 0.5;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#181827';
+        ctx.lineWidth = trunkW + 3;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(mx, my, topX, topY);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#3b3347';
+        ctx.lineWidth = trunkW;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.quadraticCurveTo(mx, my, topX, topY);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#7e554d';
+        ctx.lineWidth = Math.max(2.5, trunkW * 0.34);
+        ctx.beginPath();
+        ctx.moveTo(bx - trunkW * 0.24, by);
+        ctx.quadraticCurveTo(mx - trunkW * 0.24, my, topX - trunkW * 0.18, topY);
+        ctx.stroke();
+
+        // Abanico de hojas de palmera en verde oscuro/oliva con bordes nítidos
+        const fronds = [-2.55, -2.15, -1.65, -1.05, -0.55, -0.1, 0.35, 0.85, 2.75];
+        for (let f = 0; f < fronds.length; f++) {
+          const ang = fronds[f];
+          const len = (72 + (f % 3) * 14) * crownScale;
+          const tipX = topX + Math.cos(ang) * len;
+          const tipY = topY + Math.sin(ang) * len + 18 * crownScale;
+          const ctrlX = topX + Math.cos(ang) * len * 0.58;
+          const ctrlY = topY + Math.sin(ang) * len * 0.58 - 14 * crownScale;
+
+          ctx.fillStyle = f % 2 === 0 ? '#18362e' : '#264d3b';
+          ctx.strokeStyle = '#11221e';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(topX, topY);
+          ctx.quadraticCurveTo(ctrlX - Math.sin(ang) * 16 * crownScale, ctrlY + Math.cos(ang) * 16 * crownScale, tipX, tipY);
+          ctx.quadraticCurveTo(ctrlX + Math.sin(ang) * 7 * crownScale, ctrlY - Math.cos(ang) * 7 * crownScale, topX, topY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+      drawMenuPalm(826, 434, 848, 178, 11, 0.92);
+      drawMenuPalm(934, 444, 906, 112, 14, 1.18);
+
+      // 7. FOLLAJE TROPICAL EN PRIMER PLANO (esquina inferior izquierda e inferior derecha)
+      const drawCornerLeaves = (originX, originY, flipX) => {
+        ctx.save();
+        ctx.translate(originX, originY);
+        ctx.scale(flipX ? -1 : 1, 1);
+        const blades = [
+          { ang: -1.42, len: 88, col: '#193b2e', w: 18 },
+          { ang: -1.06, len: 108, col: '#25523c', w: 20 },
+          { ang: -0.72, len: 120, col: '#2f6848', w: 22 },
+          { ang: -0.40, len: 104, col: '#1b3e30', w: 19 },
+          { ang: -0.14, len: 84, col: '#3a7950', w: 16 }
+        ];
+        for (let i = 0; i < blades.length; i++) {
+          const b = blades[i];
+          const tx = Math.cos(b.ang) * b.len;
+          const ty = Math.sin(b.ang) * b.len;
+          const nx = -Math.sin(b.ang) * b.w * 0.5;
+          const ny = Math.cos(b.ang) * b.w * 0.5;
+          ctx.fillStyle = b.col;
+          ctx.strokeStyle = '#0e1e18';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.quadraticCurveTo(tx * 0.45 + nx, ty * 0.45 + ny, tx, ty);
+          ctx.quadraticCurveTo(tx * 0.52 - nx, ty * 0.52 - ny, 0, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.strokeStyle = 'rgba(250, 204, 21, 0.25)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(8, -4);
+          ctx.lineTo(tx * 0.78, ty * 0.78);
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+      drawCornerLeaves(14, h + 6, false);
+      drawCornerLeaves(w - 14, h + 6, true);
+
+      // Viñeta sutil para contrastar el título superior dorado sin oscurecer la playa
+      const topScrim = ctx.createLinearGradient(0, 0, 0, 118);
+      topScrim.addColorStop(0.0, 'rgba(9, 13, 24, 0.34)');
+      topScrim.addColorStop(1.0, 'rgba(9, 13, 24, 0)');
+      ctx.fillStyle = topScrim;
+      ctx.fillRect(0, 0, w, 118);
+
+      ctx.restore();
     }
 
     static drawVolumetricClouds(ctx, cameraX, time, yBase, fillStyle) {
@@ -8099,10 +8991,10 @@
         ctx.restore();
       };
 
-      // CAPA 2 (0.14): CONJUNTO MONUMENTAL PALACIO REAL + CATEDRAL DE LA ALMUDENA
-      // Mantiene el hito principal visible y majestuoso en todo el recorrido (width 3600)
-      const p2 = -(cameraX * 0.14);
-      const ax = 665 + p2; // Centro heroico del conjunto (visible de cameraX=0 a cameraX=2640)
+      // CAPA 2 (0.085): CONJUNTO MONUMENTAL PALACIO REAL + CATEDRAL DE LA ALMUDENA
+      // Mantiene el hito principal visible y majestuoso en todo el recorrido ampliado (width 5460)
+      const p2 = -(cameraX * 0.085);
+      const ax = 665 + p2; // Centro heroico del conjunto a lo largo de los 5460px
 
       ctx.save();
 
@@ -11541,83 +12433,123 @@
     }
 
     /**
-     * Basílica monumental de la Sagrada Família + Torres Caladas + Estrella + Torre de Jesús con Cruz de 4 Brazos + Estanque de Plaça de Gaudí.
+     * Basílica monumental de la Sagrada Família (fiel a sagarda familia iglesia.jfif):
+     * 4 torres fusiformes caladas + pináculos geométricos + andamios de obra sutiles + ala izquierda con rosetones y frontones
+     * + arcos parabólicos/hiperbólicos + Estrella + Torre de Jesús con Cruz de 4 Brazos + Estanque de Plaça de Gaudí.
      */
     static drawSagradaSilhouette(ctx, centerX, groundLineY, scale = 1.0, time = 0) {
       ctx.save();
       ctx.translate(centerX, groundLineY);
       ctx.scale(scale, scale);
 
-      const terraceY = -44; // Explanada y escalinata elevada sobre el estanque de Plaça de Gaudí
+      const baseTerraceY = -30; // Basamento al ras del parque sobre groundLineY = 442
 
-      // A. Torres campanario caladas + Torre de la Estrella + Gran Torre de Jesucristo (cruz de cuatro brazos)
-      const drawCaladaTower = (tx, baseY, bw, h, opts = {}) => {
-        const stoneGrad = ctx.createLinearGradient(tx - bw, baseY - h, tx + bw, baseY);
-        stoneGrad.addColorStop(0, '#fef3c7');
-        stoneGrad.addColorStop(0.42, '#eab308');
-        stoneGrad.addColorStop(1, '#92400e');
-
+      // Función auxiliar: dibuja un arco parabólico / hiperbólico gaudiniano
+      const traceParabolicArch = (ax, baseY, halfW, archH) => {
         ctx.beginPath();
-        ctx.moveTo(tx - bw * 0.52, baseY);
-        ctx.lineTo(tx - bw * 0.36, baseY - h * 0.74);
-        ctx.quadraticCurveTo(tx - bw * 0.16, baseY - h, tx, baseY - h - 6);
-        ctx.quadraticCurveTo(tx + bw * 0.16, baseY - h, tx + bw * 0.36, baseY - h * 0.74);
-        ctx.lineTo(tx + bw * 0.52, baseY);
+        ctx.moveTo(ax - halfW, baseY);
+        ctx.quadraticCurveTo(ax - halfW * 0.62, baseY - archH * 0.92, ax, baseY - archH);
+        ctx.quadraticCurveTo(ax + halfW * 0.62, baseY - archH * 0.92, ax + halfW, baseY);
         ctx.closePath();
-        global.SpriteBank.fillAndStroke(ctx, stoneGrad, '#78350f', 1.6);
+      };
 
-        // Ventanucos calados verticales dorados/oscuros simulando la celosía de piedra
-        ctx.fillStyle = 'rgba(69, 26, 3, 0.52)';
-        const rows = Math.max(7, Math.floor(h / 18));
+      // Función auxiliar: torres fusiformes caladas fieles a sagarda familia iglesia.jfif
+      const drawCaladaSpire = (tx, baseY, baseW, h, opts = {}) => {
+        const halfBase = baseW * 0.5;
+        const tipHalf = Math.max(4.5, baseW * 0.14);
+        const stoneGrad = ctx.createLinearGradient(tx - halfBase, baseY - h, tx + halfBase, baseY);
+        stoneGrad.addColorStop(0, opts.pale ? '#f6ebd4' : '#fdf4df');
+        stoneGrad.addColorStop(0.38, opts.pale ? '#dfc79b' : '#dfbe89');
+        stoneGrad.addColorStop(0.75, opts.pale ? '#be9f70' : '#b78b54');
+        stoneGrad.addColorStop(1, opts.pale ? '#94734a' : '#7b542f');
+
+        // Silueta parabólica esbelta de la torre
+        ctx.beginPath();
+        ctx.moveTo(tx - halfBase, baseY);
+        ctx.quadraticCurveTo(tx - halfBase * 0.72, baseY - h * 0.48, tx - tipHalf, baseY - h);
+        ctx.lineTo(tx, baseY - h - 7);
+        ctx.lineTo(tx + tipHalf, baseY - h);
+        ctx.quadraticCurveTo(tx + halfBase * 0.72, baseY - h * 0.48, tx + halfBase, baseY);
+        ctx.closePath();
+        global.SpriteBank.fillAndStroke(ctx, stoneGrad, opts.pale ? '#785835' : '#57391d', 1.25);
+
+        // Sombra lateral derecha para dar volumen cilíndrico-parabólico
+        ctx.fillStyle = opts.pale ? 'rgba(92, 62, 32, 0.22)' : 'rgba(67, 42, 19, 0.34)';
+        ctx.beginPath();
+        ctx.moveTo(tx + 1, baseY);
+        ctx.lineTo(tx, baseY - h - 6);
+        ctx.lineTo(tx + tipHalf, baseY - h);
+        ctx.quadraticCurveTo(tx + halfBase * 0.72, baseY - h * 0.48, tx + halfBase, baseY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Luz cálida solar en la arista izquierda
+        ctx.strokeStyle = 'rgba(255, 250, 235, 0.72)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(tx - halfBase + 1.5, baseY - 2);
+        ctx.quadraticCurveTo(tx - halfBase * 0.7 + 1, baseY - h * 0.48, tx - tipHalf + 0.5, baseY - h);
+        ctx.stroke();
+
+        // Celosía calada con costillas verticales y hileras densas de ventanucos oscuros
+        const rows = Math.max(10, Math.floor(h / 10));
         for (let r = 1; r < rows; r++) {
           const frac = r / rows;
-          const ry = baseY - frac * (h - 24);
-          const rw = Math.max(3, bw * (1 - frac * 0.58) * 0.28);
-          ctx.fillRect(tx - rw - 1.5, ry, rw * 0.85, 8);
-          ctx.fillRect(tx + 1.5, ry, rw * 0.85, 8);
+          const ry = baseY - frac * (h - 14);
+          const curHalf = halfBase * (1 - frac * 0.72);
+          const slotW = Math.max(1.8, curHalf * 0.26);
+          const slotH = 5.4;
+
+          ctx.fillStyle = opts.pale ? 'rgba(68, 45, 24, 0.44)' : 'rgba(38, 22, 9, 0.76)';
+          ctx.fillRect(tx - curHalf * 0.68, ry, slotW, slotH);
+          ctx.fillRect(tx - slotW * 0.5, ry, slotW, slotH);
+          ctx.fillRect(tx + curHalf * 0.68 - slotW, ry, slotW, slotH);
+
+          // Anillo horizontal sutil cada 3 niveles
+          if (r % 3 === 0) {
+            ctx.fillStyle = 'rgba(254, 243, 199, 0.42)';
+            ctx.fillRect(tx - curHalf * 0.92, ry - 1.5, curHalf * 1.84, 1.4);
+          }
         }
 
-        // Pináculo blanco / estrella / cruz monumental según torre
-        const topY = baseY - h - 6;
+        // Remate de cúspide según torre: Cruz de Jesucristo, Estrella de María o pináculos geométricos tricuspídeos
+        const topY = baseY - h - 7;
         if (opts.crown === 'jesus_cross') {
-          // Cruz monumental blanca y dorada de 4 brazos
           ctx.save();
-          ctx.translate(tx, topY - 18);
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#78350f';
-          ctx.lineWidth = 1.6;
-          ctx.fillRect(-3.5, -15, 7, 30);
-          ctx.strokeRect(-3.5, -15, 7, 30);
-          ctx.fillRect(-14, -3.5, 28, 7);
-          ctx.strokeRect(-14, -3.5, 28, 7);
-          // Destello solar cálido en el centro de la cruz
-          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 24);
-          glow.addColorStop(0, 'rgba(255, 251, 235, 0.88)');
+          ctx.translate(tx, topY - 15);
+          ctx.fillStyle = '#fffbeb';
+          ctx.strokeStyle = '#6b4723';
+          ctx.lineWidth = 1.3;
+          ctx.fillRect(-3, -13, 6, 26);
+          ctx.strokeRect(-3, -13, 6, 26);
+          ctx.fillRect(-12, -3, 24, 6);
+          ctx.strokeRect(-12, -3, 24, 6);
+          const glow = ctx.createRadialGradient(0, 0, 1, 0, 0, 20);
+          glow.addColorStop(0, 'rgba(255, 251, 235, 0.78)');
           glow.addColorStop(1, 'rgba(254, 240, 138, 0)');
           ctx.fillStyle = glow;
           ctx.beginPath();
-          ctx.arc(0, 0, 24, 0, Math.PI * 2);
+          ctx.arc(0, 0, 20, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         } else if (opts.crown === 'star') {
-          // Torre de María con la estrella luminosa de 12 puntas
           ctx.save();
-          ctx.translate(tx, topY - 11);
-          const sGlow = ctx.createRadialGradient(0, 0, 1, 0, 0, 18);
+          ctx.translate(tx, topY - 10);
+          const sGlow = ctx.createRadialGradient(0, 0, 1, 0, 0, 15);
           sGlow.addColorStop(0, '#ffffff');
-          sGlow.addColorStop(0.45, 'rgba(254, 249, 195, 0.72)');
+          sGlow.addColorStop(0.45, 'rgba(254, 249, 195, 0.68)');
           sGlow.addColorStop(1, 'rgba(254, 249, 195, 0)');
           ctx.fillStyle = sGlow;
           ctx.beginPath();
-          ctx.arc(0, 0, 18, 0, Math.PI * 2);
+          ctx.arc(0, 0, 15, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = '#fef9c3';
-          ctx.strokeStyle = '#92400e';
-          ctx.lineWidth = 1.0;
+          ctx.strokeStyle = '#78532a';
+          ctx.lineWidth = 0.9;
           ctx.beginPath();
           for (let p = 0; p < 16; p++) {
             const ang = (Math.PI * 2 * p) / 16;
-            const r = p % 2 === 0 ? 10 : 4;
+            const r = p % 2 === 0 ? 8.5 : 3.4;
             if (p === 0) ctx.moveTo(Math.cos(ang) * r, Math.sin(ang) * r);
             else ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
           }
@@ -11626,139 +12558,334 @@
           ctx.stroke();
           ctx.restore();
         } else {
-          // Pináculos blancos y dorados modernistas
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#92400e';
-          ctx.lineWidth = 1.2;
+          // Pináculos geométricos poliedros modernistas fieles a los de las 4 torres de la foto
+          ctx.fillStyle = '#e7d5b8';
+          ctx.strokeStyle = '#57391d';
+          ctx.lineWidth = 1.0;
+          ctx.fillRect(tx - 4.5, topY - 4, 9, 5);
+          ctx.strokeRect(tx - 4.5, topY - 4, 9, 5);
+          // Corona de bolas policromas doradas/crema/terracota + crucecita superior
+          ctx.fillStyle = '#fef08a';
           ctx.beginPath();
-          ctx.arc(tx, topY - 3, 5.2, 0, Math.PI * 2);
+          ctx.arc(tx, topY - 9, 5.4, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
-          ctx.fillStyle = '#fde047';
+          ctx.fillStyle = '#ea580c';
           ctx.beginPath();
-          ctx.arc(tx, topY - 9, 3.0, 0, Math.PI * 2);
+          ctx.arc(tx - 3.6, topY - 8, 2.1, 0, Math.PI * 2);
+          ctx.arc(tx + 3.6, topY - 8, 2.1, 0, Math.PI * 2);
           ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(tx - 1, topY - 17, 2, 6);
+          ctx.fillRect(tx - 3, topY - 15, 6, 1.8);
         }
       };
 
-      // Torres secundarias detrás (Estrella + Evangelistas)
-      drawCaladaTower(-95, terraceY - 115, 28, 165, { crown: 'star' });
-      drawCaladaTower(95, terraceY - 110, 26, 150);
+      // Función auxiliar: dibuja andamio metálico sutil de obra (como el centro-fondo y lateral derecho de la foto)
+      const drawScaffoldLattice = (sx, sy, sw, sh, alpha = 0.54) => {
+        ctx.save();
+        ctx.strokeStyle = `rgba(51, 65, 85, ${alpha})`;
+        ctx.lineWidth = 1.1;
+        ctx.strokeRect(sx, sy, sw, sh);
+        // Montantes verticales
+        for (let vx = sx + 6; vx < sx + sw; vx += 6) {
+          ctx.beginPath();
+          ctx.moveTo(vx, sy);
+          ctx.lineTo(vx, sy + sh);
+          ctx.stroke();
+        }
+        // Pasarelas horizontales y cruces de San Andrés
+        const stepH = 12;
+        for (let hy = sy + stepH; hy < sy + sh; hy += stepH) {
+          ctx.fillStyle = `rgba(71, 85, 105, ${alpha * 0.85})`;
+          ctx.fillRect(sx - 1.5, hy, sw + 3, 1.6);
+          ctx.beginPath();
+          ctx.moveTo(sx, hy - stepH);
+          ctx.lineTo(sx + sw, hy);
+          ctx.moveTo(sx + sw, hy - stepH);
+          ctx.lineTo(sx, hy);
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
 
-      // Gran Torre de Jesucristo central con la Cruz Monumental de cuatro brazos (cabe entera en 540px)
-      drawCaladaTower(0, terraceY - 125, 48, 195, { crown: 'jesus_cross' });
+      // A. TORRES POSTERIORES + NÚCLEO CENTRAL CON ANDAMIOS Y GRÚA DE OBRA
+      // Torre de María atrás izquierda (estrella), Gran Torre de Jesucristo al fondo centro y Evangelistas atrás derecha
+      drawCaladaSpire(-116, baseTerraceY - 122, 24, 140, { crown: 'star', pale: true });
+      drawCaladaSpire(0, baseTerraceY - 144, 36, 186, { crown: 'jesus_cross', pale: true });
+      drawCaladaSpire(108, baseTerraceY - 114, 22, 130, { pale: true });
 
-      // 4 Torres campanario principales caladas de la fachada
-      drawCaladaTower(-128, terraceY - 62, 30, 178);
-      drawCaladaTower(-58, terraceY - 68, 34, 205);
-      drawCaladaTower(58, terraceY - 68, 34, 205);
-      drawCaladaTower(128, terraceY - 62, 30, 178);
+      // Torre central de construcción / cimborrio entre las 2 torres centrales interiores (tal como en sagarda familia iglesia.jfif)
+      drawScaffoldLattice(-9, baseTerraceY - 266, 18, 122, 0.58);
+      ctx.fillStyle = 'rgba(100, 116, 139, 0.58)';
+      ctx.fillRect(-2, baseTerraceY - 284, 4, 20);
+      ctx.fillRect(-15, baseTerraceY - 280, 30, 2.2);
 
-      // Alas laterales de fachadas esculpidas con gabletes
-      drawCaladaTower(-182, terraceY - 38, 28, 125);
-      drawCaladaTower(182, terraceY - 38, 28, 125);
+      // B. ALA IZQUIERDA ESCALONADA DE LA NAVE (4 Frontones triangulares, Rosetones calados y Arcos parabólicos)
+      const leftWingX = -246;
+      const leftWingW = 148;
+      const leftWingH = 112;
+      const wingGrad = ctx.createLinearGradient(leftWingX, baseTerraceY - leftWingH, leftWingX + leftWingW, baseTerraceY);
+      wingGrad.addColorStop(0, '#fdf6e4');
+      wingGrad.addColorStop(0.55, '#e8d4ae');
+      wingGrad.addColorStop(1, '#c39e6d');
+      ctx.fillStyle = wingGrad;
+      ctx.strokeStyle = '#6b4723';
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(leftWingX, baseTerraceY - leftWingH, leftWingW, leftWingH);
+      ctx.strokeRect(leftWingX, baseTerraceY - leftWingH, leftWingW, leftWingH);
 
-      // B. Cuerpo principal de piedra dorada esculpida, portales en arco y frontones calados
-      const bodyGrad = ctx.createLinearGradient(-225, terraceY - 125, 225, terraceY);
-      bodyGrad.addColorStop(0, '#fde68a');
-      bodyGrad.addColorStop(0.55, '#d97706');
-      bodyGrad.addColorStop(1, '#92400e');
-      ctx.beginPath();
-      ctx.roundRect(-220, terraceY - 115, 440, 115, 6);
-      global.SpriteBank.fillAndStroke(ctx, bodyGrad, '#78350f', 2.0);
+      // Andamio de obra sutil en el remate superior izquierdo de la nave (como se ve en la esquina izq. de la foto)
+      drawScaffoldLattice(leftWingX + 12, baseTerraceY - leftWingH - 36, 38, 36, 0.44);
 
-      // Frontones triangulares con pináculos laterales de la fachada
-      const gables = [-150, -90, 0, 90, 150];
-      for (let gi = 0; gi < gables.length; gi++) {
-        const gx = gables[gi];
-        const gw = gx === 0 ? 54 : 32;
-        const gh = gx === 0 ? 84 : 52;
+      // 4 gabletes triangulares con rosetones circulares y arcos parabólicos debajo (izquierda)
+      for (let wi = 0; wi < 4; wi++) {
+        const gx = leftWingX + 20 + wi * 34;
+        const gBaseY = baseTerraceY - leftWingH + 14;
+        // Frontón agudo con relieve de crestería
         ctx.beginPath();
-        ctx.moveTo(gx - gw, terraceY);
-        ctx.lineTo(gx, terraceY - gh - 42);
-        ctx.lineTo(gx + gw, terraceY);
+        ctx.moveTo(gx - 16, gBaseY);
+        ctx.lineTo(gx, gBaseY - 46);
+        ctx.lineTo(gx + 16, gBaseY);
         ctx.closePath();
-        global.SpriteBank.fillAndStroke(ctx, '#f59e0b', '#78350f', 1.8);
-      }
-
-      // Portales escultóricos principales y rosetón central dorado
-      for (const px of [-96, 0, 96]) {
-        const pw = px === 0 ? 28 : 18;
-        const ph = px === 0 ? 60 : 42;
-        ctx.fillStyle = '#292524';
+        global.SpriteBank.fillAndStroke(ctx, '#f8eedb', '#6b4723', 1.3);
+        ctx.fillStyle = '#b78b54';
         ctx.beginPath();
-        ctx.arc(px, terraceY - ph + 16, pw, Math.PI, 0);
-        ctx.lineTo(px + pw, terraceY);
-        ctx.lineTo(px - pw, terraceY);
+        ctx.moveTo(gx, gBaseY - 44);
+        ctx.lineTo(gx + 14, gBaseY);
+        ctx.lineTo(gx, gBaseY);
         ctx.closePath();
         ctx.fill();
+        // Pináculo fino del gablete
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(gx, gBaseY - 49, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Rosetón circular bajo cada frontón
+        const roseY = gBaseY + 14;
+        ctx.fillStyle = '#3b2412';
+        ctx.strokeStyle = '#f6ebd4';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(gx, roseY, 10.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // Tracería interior del rosetón
+        ctx.strokeStyle = 'rgba(248, 238, 219, 0.85)';
+        ctx.lineWidth = 0.9;
+        for (let rAng = 0; rAng < 4; rAng++) {
+          const a = (rAng * Math.PI) / 4;
+          ctx.beginPath();
+          ctx.moveTo(gx - Math.cos(a) * 9.5, roseY - Math.sin(a) * 9.5);
+          ctx.lineTo(gx + Math.cos(a) * 9.5, roseY + Math.sin(a) * 9.5);
+          ctx.stroke();
+        }
+        ctx.fillStyle = '#fde68a';
+        ctx.beginPath();
+        ctx.arc(gx, roseY, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Galería inferior de arcos parabólicos en el ala izquierda
+        traceParabolicArch(gx, baseTerraceY, 11, 52);
+        ctx.fillStyle = '#332011';
+        ctx.fill();
+        ctx.strokeStyle = '#d4b483';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
       }
+
+      // C. FLANCO DERECHO DE LA FACHADA CON CONTRAFUERTES Y ANDAMIOS SUTILES
+      const rightWingX = 96;
+      const rightWingW = 126;
+      const rightWingH = 122;
+      const rWingGrad = ctx.createLinearGradient(rightWingX, baseTerraceY - rightWingH, rightWingX + rightWingW, baseTerraceY);
+      rWingGrad.addColorStop(0, '#dfc08d');
+      rWingGrad.addColorStop(0.55, '#b68952');
+      rWingGrad.addColorStop(1, '#7c552f');
+      ctx.fillStyle = rWingGrad;
+      ctx.strokeStyle = '#57391d';
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(rightWingX, baseTerraceY - rightWingH, rightWingW, rightWingH);
+      ctx.strokeRect(rightWingX, baseTerraceY - rightWingH, rightWingW, rightWingH);
+
+      for (let ri = 0; ri < 3; ri++) {
+        const rx = rightWingX + 24 + ri * 34;
+        traceParabolicArch(rx, baseTerraceY - 6, 9, 54);
+        ctx.fillStyle = '#24160b';
+        ctx.fill();
+      }
+      // Andamios sutiles en el costado derecho de la fachada/torre derecha (fiel a sagarda familia iglesia.jfif)
+      drawScaffoldLattice(98, baseTerraceY - 216, 46, 128, 0.5);
+
+      // D. CUERPO PRINCIPAL CENTRAL Y ARCOS PARABÓLICOS/HIPERBÓLICOS ESCULPIDOS
+      const mainHalfW = 108;
+      const mainH = 150;
+      const bodyGrad = ctx.createLinearGradient(-mainHalfW, baseTerraceY - mainH, mainHalfW, baseTerraceY);
+      bodyGrad.addColorStop(0, '#fcf0d5');
+      bodyGrad.addColorStop(0.35, '#e2c28d');
+      bodyGrad.addColorStop(0.75, '#b98b52');
+      bodyGrad.addColorStop(1, '#7a522c');
+      ctx.fillStyle = bodyGrad;
+      ctx.strokeStyle = '#57391d';
+      ctx.lineWidth = 1.6;
+      ctx.fillRect(-mainHalfW, baseTerraceY - mainH, mainHalfW * 2, mainH);
+      ctx.strokeRect(-mainHalfW, baseTerraceY - mainH, mainHalfW * 2, mainH);
+
+      // Relieves y estrías verticales esculpidas de las fachadas de Gaudí
+      for (let rx = -mainHalfW + 8; rx <= mainHalfW - 8; rx += 9) {
+        ctx.fillStyle = rx % 18 === 0 ? 'rgba(255, 250, 235, 0.32)' : 'rgba(67, 42, 19, 0.22)';
+        ctx.fillRect(rx, baseTerraceY - mainH + 8, 2.2, mainH - 12);
+      }
+
+      // 3 arcos parabólicos / hiperbólicos empinados de la fachada principal (central monumental + 2 laterales)
+      const portals = [
+        { x: -64, hw: 18, h: 92 },
+        { x: 0, hw: 32, h: 126 },
+        { x: 64, hw: 18, h: 92 }
+      ];
+      for (let pi = 0; pi < portals.length; pi++) {
+        const pt = portals[pi];
+        // Frontón triangular escarpado coronando el arco parabólico
+        ctx.beginPath();
+        ctx.moveTo(pt.x - pt.hw - 7, baseTerraceY - pt.h * 0.42);
+        ctx.lineTo(pt.x, baseTerraceY - pt.h - 32);
+        ctx.lineTo(pt.x + pt.hw + 7, baseTerraceY - pt.h * 0.42);
+        ctx.closePath();
+        global.SpriteBank.fillAndStroke(ctx, '#eed9b4', '#57391d', 1.4);
+
+        // Oquedad profunda del arco parabólico
+        traceParabolicArch(pt.x, baseTerraceY, pt.hw, pt.h);
+        ctx.fillStyle = '#221409';
+        ctx.fill();
+        ctx.strokeStyle = '#f6ebd4';
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
+        // Tracería / rosetoncito parabólico interno bajo la clave
+        traceParabolicArch(pt.x, baseTerraceY, pt.hw * 0.72, pt.h * 0.78);
+        ctx.strokeStyle = 'rgba(226, 194, 141, 0.55)';
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      }
+
+      // Columnillas inclinadas en V hiperbólicas flanqueando el pórtico central
+      ctx.strokeStyle = '#f6ebd4';
+      ctx.lineWidth = 2.2;
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(side * 42, baseTerraceY);
+        ctx.lineTo(side * 34, baseTerraceY - 122);
+        ctx.stroke();
+      }
+
+      // Ciprés verde con cruz en el gablete central (exacto sobre el pórtico entre las 2 torres interiores)
       ctx.beginPath();
-      ctx.arc(0, terraceY - 82, 17, 0, Math.PI * 2);
-      global.SpriteBank.fillAndStroke(ctx, '#fef08a', '#78350f', 1.8);
+      ctx.moveTo(0, baseTerraceY - 216);
+      ctx.quadraticCurveTo(-9, baseTerraceY - 186, -7, baseTerraceY - 160);
+      ctx.lineTo(7, baseTerraceY - 160);
+      ctx.quadraticCurveTo(9, baseTerraceY - 186, 0, baseTerraceY - 216);
+      ctx.closePath();
+      global.SpriteBank.fillAndStroke(ctx, '#3f6212', '#1a2e05', 1.2);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(-1.5, baseTerraceY - 224, 3, 9);
+      ctx.fillRect(-4, baseTerraceY - 221, 8, 2.5);
 
-      // C. Explanada, escalinata central y vegetación frondosa lateral de Plaça de Gaudí (sagrada familia 1)
-      ctx.fillStyle = '#e7d5b8';
-      ctx.fillRect(-310, terraceY, 620, 16);
-      ctx.fillStyle = '#d6c3a5';
-      for (let st = 0; st < 4; st++) {
-        ctx.fillRect(-62 - st * 4, terraceY + st * 4, 124 + st * 8, 4);
+      // E. 4 TORRES CAMPANARIO PRINCIPALES ESBELTAS EN PRIMER PLANO (Par interior más alto, par exterior ligeramente menor)
+      drawCaladaSpire(-78, baseTerraceY - 120, 26, 170);
+      drawCaladaSpire(-30, baseTerraceY - 126, 28, 192);
+      drawCaladaSpire(30, baseTerraceY - 126, 28, 192);
+      drawCaladaSpire(78, baseTerraceY - 120, 26, 170);
+
+      // F. ZÓCALO / EXPLANADA Y RIBERA AJARDINADA AL RAS DE groundLineY = 442 (0 elementos flotantes)
+      const zocaloGrad = ctx.createLinearGradient(0, baseTerraceY, 0, 0);
+      zocaloGrad.addColorStop(0, '#e7d5b8');
+      zocaloGrad.addColorStop(1, '#b69c77');
+      ctx.fillStyle = zocaloGrad;
+      ctx.fillRect(-340, baseTerraceY, 680, -baseTerraceY);
+      ctx.fillStyle = '#3f6212';
+      ctx.fillRect(-338, baseTerraceY - 4, 152, 8);
+      ctx.fillRect(20, baseTerraceY - 5, 310, 9);
+      ctx.fillStyle = '#a8906e';
+      ctx.fillRect(-340, -6, 680, 6);
+
+      // Vegetación mediterránea y pinos frondosos del parque frontal (izquierda y gran macizo derecho como en sagarda familia iglesia.jfif)
+      const treeClusters = [
+        { x: -308, y: -22, r: 30, col: '#14532d', hi: '#4d7c0f' },
+        { x: -270, y: -30, r: 34, col: '#166534', hi: '#65a30d' },
+        { x: -232, y: -24, r: 26, col: '#15803d', hi: '#84cc16' },
+        { x: 32, y: -24, r: 28, col: '#365314', hi: '#65a30d' },
+        { x: 76, y: -28, r: 31, col: '#3f6212', hi: '#84cc16' },
+        { x: 132, y: -24, r: 26, col: '#166534', hi: '#65a30d' },
+        { x: 186, y: -42, r: 44, col: '#14532d', hi: '#4d7c0f' },
+        { x: 232, y: -32, r: 36, col: '#3f6212', hi: '#84cc16' },
+        { x: 274, y: -22, r: 29, col: '#15803d', hi: '#65a30d' }
+      ];
+      for (let ti = 0; ti < treeClusters.length; ti++) {
+        const t = treeClusters[ti];
+        // Tronco anclado hasta groundLineY (y = 0)
+        ctx.fillStyle = '#452715';
+        ctx.fillRect(t.x - 3, t.y, 6, -t.y);
+        // Copa orgánica frondosa en luz cálida arriba
+        ctx.fillStyle = t.col;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+        ctx.arc(t.x - t.r * 0.45, t.y + 8, t.r * 0.72, 0, Math.PI * 2);
+        ctx.arc(t.x + t.r * 0.48, t.y + 7, t.r * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = t.hi;
+        ctx.beginPath();
+        ctx.arc(t.x - t.r * 0.18, t.y - t.r * 0.28, t.r * 0.62, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      // Árboles frondosos flanqueando izquierda y derecha antes de groundLineY
-      const parkTrees = [-350, -295, -248, 248, 295, 350];
-      for (let ti = 0; ti < parkTrees.length; ti++) {
-        const tx = parkTrees[ti];
-        const rad = 28 + (ti % 2) * 8;
-        ctx.fillStyle = '#14532d';
-        ctx.beginPath();
-        ctx.arc(tx, -34, rad + 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#16a34a';
-        ctx.beginPath();
-        ctx.arc(tx - 6, -42, rad * 0.85, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#4ade80';
-        ctx.beginPath();
-        ctx.arc(tx - 10, -48, rad * 0.45, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      // G. ESTANQUE DE AGUA DE LA PLAÇA DE GAUDÍ en primer plano apoyado en groundLineY (y = 0)
+      const pondLeft = -238;
+      const pondTop = -24;
+      const pondW = 476;
+      const pondH = 24;
 
-      // D. ESTANQUE DE AGUA DE LA PLAÇA DE GAUDÍ reflejando suavemente las torres doradas (por encima de groundLineY)
-      const pondLeft = -210;
-      const pondTop = -28;
-      const pondW = 420;
-      const pondH = 27;
-
-      // Borde de piedra del estanque
-      ctx.fillStyle = '#a8967d';
+      // Brocal de piedra del estanque perfectamente apoyado en y = 0
+      ctx.fillStyle = '#9b876a';
       ctx.beginPath();
-      ctx.roundRect(pondLeft - 5, pondTop - 3, pondW + 10, pondH + 5, 10);
+      ctx.roundRect(pondLeft - 6, pondTop - 2, pondW + 12, pondH + 2, 6);
       ctx.fill();
 
-      // Espejo de agua azul/oliva dorado
+      // Espejo de agua verde-oliva / azul dorado idéntico a la foto real
       const pondGrad = ctx.createLinearGradient(0, pondTop, 0, pondTop + pondH);
-      pondGrad.addColorStop(0, '#0369a1');
-      pondGrad.addColorStop(0.55, '#0e7490');
-      pondGrad.addColorStop(1, '#115e59');
+      pondGrad.addColorStop(0, '#1e3f35');
+      pondGrad.addColorStop(0.5, '#2b5342');
+      pondGrad.addColorStop(1, '#3b593f');
       ctx.fillStyle = pondGrad;
       ctx.beginPath();
-      ctx.roundRect(pondLeft, pondTop, pondW, pondH, 8);
+      ctx.roundRect(pondLeft, pondTop, pondW, pondH, 5);
       ctx.fill();
 
-      // Reflejo dorado suavemente ondulado de las torres de la Sagrada Família en el agua
+      // Reflejo dorado y verde suavemente ondulado de las 4 torres, rosetones y árboles en el estanque
       ctx.save();
       ctx.beginPath();
-      ctx.roundRect(pondLeft + 2, pondTop + 1, pondW - 4, pondH - 2, 7);
+      ctx.roundRect(pondLeft + 2, pondTop + 1, pondW - 4, pondH - 2, 4);
       ctx.clip();
-      const spireRefs = [-128, -58, 0, 58, 128];
+
+      // Reflejo masa piedra izquierda (ala de rosetones)
+      for (let sl = 0; sl < pondH - 2; sl += 2.5) {
+        const wOff = Math.sin(time * 2.4 + sl * 0.7) * 2.6;
+        ctx.fillStyle = 'rgba(232, 212, 174, 0.34)';
+        ctx.fillRect(-230 + wOff, pondTop + 1 + sl, 132, 1.8);
+        ctx.fillStyle = 'rgba(22, 101, 52, 0.36)';
+        ctx.fillRect(140 + wOff * 0.8, pondTop + 1 + sl, 96, 1.8);
+      }
+
+      // Reflejos verticales de las 4 torres + torre central
+      const spireRefs = [-78, -30, 0, 30, 78];
       for (let ri = 0; ri < spireRefs.length; ri++) {
         const rx = spireRefs[ri];
-        const rLen = rx === 0 ? 24 : 18;
-        for (let sl = 0; sl < rLen; sl += 3) {
-          const waveX = Math.sin(time * 2.8 + sl * 0.65 + ri) * 3.2;
-          ctx.fillStyle = 'rgba(253, 224, 71, 0.42)';
-          ctx.fillRect(rx - 10 + sl * 0.35 + waveX, pondTop + 2 + sl, Math.max(4, 20 - sl * 0.7), 2);
+        const rLen = rx === 0 ? 22 : 20;
+        for (let sl = 0; sl < rLen; sl += 2.5) {
+          const waveX = Math.sin(time * 2.7 + sl * 0.75 + ri) * 2.8;
+          const halfSpan = Math.max(3, 12 - sl * 0.38);
+          ctx.fillStyle = 'rgba(253, 230, 138, 0.48)';
+          ctx.fillRect(rx - halfSpan + waveX, pondTop + 1 + sl, halfSpan * 2, 1.8);
         }
       }
       ctx.restore();
@@ -33685,6 +34812,353 @@
       }
       ctx.restore();
     }
+
+    // ========================================================================
+    // BONUS FRENÉTICO ESPAÑA: ATARDECER EN IBIZA (Es Vedrà, palmeras, mar espejo)
+    // ========================================================================
+    static drawBonusIbiza(ctx, cameraX, w, h, time, levelWidth = null) {
+      const cam = Math.max(0, cameraX || 0);
+      const t = Number.isFinite(time) ? time : 0;
+      const groundLineY = 448;
+      const horizonY = 266;
+      void levelWidth;
+
+      ctx.save();
+
+      // 1. Cielo dorado-magenta de atardecer mediterráneo
+      const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+      sky.addColorStop(0.0, '#1e1b4b');
+      sky.addColorStop(0.28, '#6b21a8');
+      sky.addColorStop(0.58, '#db2777');
+      sky.addColorStop(0.84, '#f97316');
+      sky.addColorStop(1.0, '#fde047');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, w, horizonY + 4);
+
+      // Sol dorado gigante descendiendo sobre el horizonte ibicenco
+      const sunX = w * 0.62 - (cam * 0.025) % 180;
+      const sunY = horizonY - 26;
+      const sunHalo = ctx.createRadialGradient(sunX, sunY, 12, sunX, sunY, 175);
+      sunHalo.addColorStop(0.0, 'rgba(255, 251, 235, 0.98)');
+      sunHalo.addColorStop(0.24, 'rgba(254, 240, 138, 0.78)');
+      sunHalo.addColorStop(0.55, 'rgba(249, 115, 22, 0.36)');
+      sunHalo.addColorStop(1.0, 'rgba(219, 39, 119, 0)');
+      ctx.fillStyle = sunHalo;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 175, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#fef9c3';
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 44, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Nubes cálidas teñidas de magenta y ámbar
+      this.drawVolumetricClouds(ctx, cam * 0.6, t, 56, 'rgba(253, 186, 116, 0.42)');
+
+      // 2. Silueta icónica de Es Vedrà y peñones baleares lejanos (paralaje 0.08)
+      const pIslet = -(cam * 0.08);
+      for (let rep = 0; rep < 3; rep++) {
+        const vx = 510 + rep * 980 + (pIslet % 980);
+        // Es Vedrà (peñón piramidal imponente)
+        const rockGrad = ctx.createLinearGradient(vx - 110, horizonY - 148, vx + 110, horizonY);
+        rockGrad.addColorStop(0, '#4c1d95');
+        rockGrad.addColorStop(0.65, '#311042');
+        rockGrad.addColorStop(1, '#1e1b4b');
+        ctx.fillStyle = rockGrad;
+        ctx.beginPath();
+        ctx.moveTo(vx - 118, horizonY);
+        ctx.lineTo(vx - 74, horizonY - 62);
+        ctx.lineTo(vx - 40, horizonY - 78);
+        ctx.lineTo(vx - 8, horizonY - 146);
+        ctx.lineTo(vx + 16, horizonY - 134);
+        ctx.lineTo(vx + 56, horizonY - 72);
+        ctx.lineTo(vx + 96, horizonY - 26);
+        ctx.lineTo(vx + 116, horizonY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Peñón menor Es Vedranell al lado
+        ctx.fillStyle = '#3b0764';
+        ctx.beginPath();
+        ctx.moveTo(vx - 190, horizonY);
+        ctx.lineTo(vx - 155, horizonY - 46);
+        ctx.lineTo(vx - 128, horizonY - 38);
+        ctx.lineTo(vx - 102, horizonY);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // 3. Mar Mediterráneo espejo reflejando el atardecer dorado-magenta
+      const seaGrad = ctx.createLinearGradient(0, horizonY, 0, groundLineY);
+      seaGrad.addColorStop(0.0, '#db2777');
+      seaGrad.addColorStop(0.28, '#9333ea');
+      seaGrad.addColorStop(0.66, '#3730a3');
+      seaGrad.addColorStop(1.0, '#1e1b4b');
+      ctx.fillStyle = seaGrad;
+      ctx.fillRect(0, horizonY, w, groundLineY - horizonY);
+
+      // Sendero de reflejos dorados del sol sobre el agua calma
+      for (let r = 0; r < 14; r++) {
+        const ry = horizonY + 8 + r * 11.5;
+        const rw = 98 - r * 3.5 + Math.sin(t * 3.2 + r * 0.9) * 14;
+        const rx = sunX - rw * 0.5 + Math.sin(t * 1.9 + r) * 5;
+        const alpha = Math.max(0.14, 0.72 - r * 0.04);
+        ctx.fillStyle = r % 2 === 0
+          ? `rgba(254, 240, 138, ${alpha.toFixed(2)})`
+          : `rgba(251, 146, 60, ${(alpha * 0.85).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.roundRect(rx, ry, Math.max(18, rw), 3.4, 1.7);
+        ctx.fill();
+      }
+
+      // Destellos rosados/dorados laterales en el mar espejo
+      for (let sp = 0; sp < 30; sp++) {
+        const sx = ((sp * 61 - cam * 0.14) % w + w) % w;
+        const sy = horizonY + 18 + (sp % 6) * 24;
+        const lum = 0.16 + 0.24 * Math.abs(Math.sin(t * 2.6 + sp));
+        ctx.fillStyle = `rgba(253, 186, 116, ${lum.toFixed(2)})`;
+        ctx.fillRect(sx, sy, 14 + (sp % 4) * 5, 2);
+      }
+
+      // 4. Paseo costero cálido de Ibiza + palmeras recortadas sobre el horizonte (clip <= groundLineY)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, w, groundLineY + 1);
+      ctx.clip();
+
+      // Dunas / promontorio costero suave detrás del paseo
+      ctx.fillStyle = '#3b0764';
+      ctx.beginPath();
+      ctx.moveTo(0, groundLineY);
+      for (let x = 0; x <= w + 60; x += 60) {
+        const hill = 414 + Math.sin((x + cam * 0.22) * 0.008) * 14;
+        ctx.lineTo(x, hill);
+      }
+      ctx.lineTo(w, groundLineY);
+      ctx.closePath();
+      ctx.fill();
+
+      // Palmeras cálidas iluminadas con contraluz dorado
+      const palmStep = 230;
+      const pPalm = -(cam * 0.34);
+      const startPi = Math.floor((-pPalm - 120) / palmStep);
+      const endPi = Math.ceil((-pPalm + w + 120) / palmStep);
+      for (let pi = startPi; pi <= endPi; pi++) {
+        const px = pi * palmStep + pPalm;
+        const treeH = 128 + ((Math.abs(pi) * 29) % 44);
+        const lean = (pi % 2 === 0 ? 1 : -1) * 16;
+        const sway = Math.sin(t * 1.8 + pi) * 4;
+        const topX = px + lean + sway;
+        const topY = groundLineY - treeH;
+
+        ctx.strokeStyle = '#1f102e';
+        ctx.lineWidth = 7.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(px, groundLineY);
+        ctx.quadraticCurveTo(px + lean * 0.4, groundLineY - treeH * 0.55, topX, topY);
+        ctx.stroke();
+
+        // Contraluz dorado en el tronco
+        ctx.strokeStyle = 'rgba(251, 146, 60, 0.48)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.moveTo(px + 2, groundLineY);
+        ctx.quadraticCurveTo(px + lean * 0.4 + 2, groundLineY - treeH * 0.55, topX + 2, topY);
+        ctx.stroke();
+
+        // Penacho de frondas de palmera
+        for (let f = 0; f < 7; f++) {
+          const ang = -Math.PI * 0.95 + (f / 6) * Math.PI * 1.9;
+          const flen = 34 + (f % 2) * 8;
+          const fx = topX + Math.cos(ang) * flen;
+          const fy = topY + Math.sin(ang) * flen * 0.55 + 10;
+          ctx.strokeStyle = '#1e1b4b';
+          ctx.lineWidth = 4.2;
+          ctx.beginPath();
+          ctx.moveTo(topX, topY);
+          ctx.quadraticCurveTo(topX + Math.cos(ang) * flen * 0.55, topY + Math.sin(ang) * flen * 0.2 - 8, fx, fy);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      // 5. Franja de arena dorada de atardecer hasta GROUND_Y (448..460)
+      const sandEdge = ctx.createLinearGradient(0, groundLineY, 0, GROUND_Y + 4);
+      sandEdge.addColorStop(0, '#fb923c');
+      sandEdge.addColorStop(1, '#d97706');
+      ctx.fillStyle = sandEdge;
+      ctx.fillRect(0, groundLineY, w, GROUND_Y - groundLineY + 2);
+
+      ctx.restore();
+    }
+
+    // ========================================================================
+    // BONUS FRENÉTICO ARGENTINA: CATARATAS DEL IGUAZÚ (Cascadas, arcoíris, bruma)
+    // ========================================================================
+    static drawBonusIguazu(ctx, cameraX, w, h, time, levelWidth = null) {
+      const cam = Math.max(0, cameraX || 0);
+      const t = Number.isFinite(time) ? time : 0;
+      const groundLineY = 448;
+      void levelWidth;
+
+      ctx.save();
+
+      // 1. Cielo dorado-esmeralda tropical bañado en rocío solar
+      const sky = ctx.createLinearGradient(0, 0, 0, groundLineY);
+      sky.addColorStop(0.0, '#0f766e');
+      sky.addColorStop(0.32, '#10b981');
+      sky.addColorStop(0.68, '#a3e635');
+      sky.addColorStop(1.0, '#fef08a');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, w, groundLineY + 2);
+
+      // Resplandor solar dorado entre las copas de la selva misionera
+      const sunX = w * 0.72 - (cam * 0.025) % 160;
+      const sunGlow = ctx.createRadialGradient(sunX, 74, 10, sunX, 74, 210);
+      sunGlow.addColorStop(0.0, 'rgba(254, 249, 195, 0.96)');
+      sunGlow.addColorStop(0.35, 'rgba(253, 224, 71, 0.44)');
+      sunGlow.addColorStop(1.0, 'rgba(16, 185, 129, 0)');
+      ctx.fillStyle = sunGlow;
+      ctx.beginPath();
+      ctx.arc(sunX, 74, 210, 0, Math.PI * 2);
+      ctx.fill();
+
+      this.drawVolumetricClouds(ctx, cam * 0.65, t, 46, 'rgba(255, 255, 255, 0.68)');
+
+      // 2. Selva lejana y meseta de basalto de la Garganta del Diablo (clip <= groundLineY)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, w, groundLineY + 1);
+      ctx.clip();
+
+      // Dosel lejano de selva verde esmeralda
+      const pCanopy = -(cam * 0.10);
+      ctx.fillStyle = '#065f46';
+      ctx.beginPath();
+      ctx.moveTo(0, groundLineY);
+      for (let x = -40; x <= w + 60; x += 48) {
+        const y = 216 + Math.sin((x - pCanopy) * 0.015) * 18 + Math.cos((x - pCanopy) * 0.037) * 9;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w + 60, groundLineY);
+      ctx.closePath();
+      ctx.fill();
+
+      // Farallones de basalto rojo-oscuro con saltos de agua en cascada (paralaje 0.18)
+      const cliffStep = 480;
+      const pCliff = -(cam * 0.18);
+      const startCi = Math.floor((-pCliff - 160) / cliffStep);
+      const endCi = Math.ceil((-pCliff + w + 160) / cliffStep);
+      for (let ci = startCi; ci <= endCi; ci++) {
+        const cx = ci * cliffStep + pCliff;
+        const cliffTop = 192 + (Math.abs(ci) % 2) * 18;
+
+        // Roca basáltica escalonada
+        const cliffGrad = ctx.createLinearGradient(cx, cliffTop, cx, groundLineY);
+        cliffGrad.addColorStop(0, '#57534e');
+        cliffGrad.addColorStop(0.5, '#44403c');
+        cliffGrad.addColorStop(1, '#292524');
+        ctx.fillStyle = cliffGrad;
+        ctx.beginPath();
+        ctx.moveTo(cx - 20, groundLineY);
+        ctx.lineTo(cx + 10, cliffTop + 14);
+        ctx.lineTo(cx + 210, cliffTop);
+        ctx.lineTo(cx + 420, cliffTop + 18);
+        ctx.lineTo(cx + 455, groundLineY);
+        ctx.closePath();
+        ctx.fill();
+
+        // Dos cortinas de cascada cayendo con vetas animadas
+        const falls = [
+          { fx: cx + 48, fw: 108, top: cliffTop + 10 },
+          { fx: cx + 258, fw: 124, top: cliffTop + 14 }
+        ];
+        falls.forEach((fl, fi) => {
+          const waterGrad = ctx.createLinearGradient(fl.fx, fl.top, fl.fx, groundLineY);
+          waterGrad.addColorStop(0.0, '#e0f2fe');
+          waterGrad.addColorStop(0.32, '#38bdf8');
+          waterGrad.addColorStop(0.76, '#bae6fd');
+          waterGrad.addColorStop(1.0, '#f0f9ff');
+          ctx.fillStyle = waterGrad;
+          ctx.fillRect(fl.fx, fl.top, fl.fw, groundLineY - fl.top);
+
+          // Vetas blancas verticales de caudal cayendo
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.72)';
+          for (let s = 0; s < 7; s++) {
+            const sx = fl.fx + 10 + s * (fl.fw / 7.5);
+            const dropOff = ((t * 190 + s * 37 + fi * 53) % (groundLineY - fl.top));
+            const sy = fl.top + dropOff;
+            const sh = Math.min(34, groundLineY - sy);
+            ctx.fillRect(sx, sy, 3.2, sh);
+          }
+
+          // Penacho superior verde musgo sobre el borde de la catarata
+          ctx.fillStyle = '#15803d';
+          ctx.beginPath();
+          ctx.ellipse(fl.fx + fl.fw * 0.5, fl.top, fl.fw * 0.58, 9, 0, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // 3. Arcoíris vibrante cruzando el rocío de la Garganta del Diablo
+      const bowX = w * 0.48 - (cam * 0.06) % 240;
+      const bowY = groundLineY - 24;
+      const bowColors = [
+        'rgba(244, 63, 94, 0.34)',
+        'rgba(249, 115, 22, 0.34)',
+        'rgba(250, 204, 21, 0.36)',
+        'rgba(74, 222, 128, 0.34)',
+        'rgba(56, 189, 248, 0.34)',
+        'rgba(168, 85, 247, 0.32)'
+      ];
+      bowColors.forEach((col, bi) => {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.arc(bowX, bowY, 215 - bi * 7, Math.PI * 1.06, Math.PI * 1.94);
+        ctx.stroke();
+      });
+
+      // 4. Nubes de bruma ascendente desde el salto de agua
+      for (let m = 0; m < 18; m++) {
+        const mx = ((m * 74 - cam * 0.25) % (w + 120) + (w + 120)) % (w + 120) - 60;
+        const rise = ((t * 28 + m * 19) % 44);
+        const my = groundLineY - 10 - rise;
+        const alpha = Math.max(0.08, 0.52 * (1 - rise / 44));
+        ctx.fillStyle = `rgba(240, 253, 250, ${alpha.toFixed(2)})`;
+        ctx.beginPath();
+        ctx.arc(mx, my, 24 + (m % 3) * 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 5. Fronda selvática en primer plano (helechos y palmeras misioneras)
+      const fernStep = 190;
+      const pFern = -(cam * 0.36);
+      const startFi = Math.floor((-pFern - 80) / fernStep);
+      const endFi = Math.ceil((-pFern + w + 80) / fernStep);
+      for (let fi = startFi; fi <= endFi; fi++) {
+        const fx = fi * fernStep + pFern;
+        ctx.fillStyle = fi % 2 === 0 ? '#14532d' : '#166534';
+        for (let b = -2; b <= 2; b++) {
+          ctx.beginPath();
+          ctx.ellipse(fx + b * 11, groundLineY - 12 - (2 - Math.abs(b)) * 7, 16, 7, b * 0.35, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      // 6. Orilla húmeda esmeralda y tierra colorada de Misiones (448..460)
+      const bankGrad = ctx.createLinearGradient(0, groundLineY, 0, GROUND_Y + 4);
+      bankGrad.addColorStop(0, '#22c55e');
+      bankGrad.addColorStop(0.55, '#15803d');
+      bankGrad.addColorStop(1, '#78350f');
+      ctx.fillStyle = bankGrad;
+      ctx.fillRect(0, groundLineY, w, GROUND_Y - groundLineY + 2);
+
+      ctx.restore();
+    }
   }
 
   global.LEVELS = LEVELS;
@@ -33702,6 +35176,9 @@
   global.LOCKED_COUNTRIES = LOCKED_COUNTRIES;
   global.isCountryLocked = isCountryLocked;
   global.CITY_DEFS = CITY_DEFS;
+  global.RELIC_DEFS = RELIC_DEFS;
+  global.RELIC_LIST = RELIC_LIST;
+  global.SECRET_LEVELS = SECRET_LEVELS;
   global.getCityZoneCount = getCityZoneCount;
   global.BackgroundRenderer = BackgroundRenderer;
 })(window);

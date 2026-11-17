@@ -759,10 +759,630 @@
     }
 
     // ========================================================================
+    // RELIQUIAS COLECCIONABLES DE CIUDADES (8 Reliquias HD + Modo Ghost)
+    // ========================================================================
+    drawRelicHD(ctx, relicKey, x, y, timer = 0, ghost = false) {
+      if (!ctx) return;
+      const t = Number.isFinite(timer) ? timer : 0;
+      const rawKey = String(relicKey || 'barcelona').toLowerCase().trim();
+      const stripped = rawKey.indexOf('relic_') === 0 ? rawKey.slice(6) : rawKey;
+      const aliasMap = {
+        mallorca: 'palma',
+        canary_islands: 'canarias',
+        buenos_aires: 'buenosaires',
+        bsas: 'buenosaires'
+      };
+      const city = aliasMap[stripped] || stripped;
+
+      const cx = x + 13;
+      const cy = y + 13;
+      const col = (normal, silver) => (ghost ? silver : normal);
+      const ink = ghost ? '#475569' : '#0f172a';
+      const goldInk = ghost ? '#475569' : '#78350f';
+
+      const drawSparkStar = (sx, sy, size, fillCol, strokeCol) => {
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.fillStyle = fillCol;
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size * 0.28, -size * 0.28);
+        ctx.lineTo(size, 0);
+        ctx.lineTo(size * 0.28, size * 0.28);
+        ctx.lineTo(0, size);
+        ctx.lineTo(-size * 0.28, size * 0.28);
+        ctx.lineTo(-size, 0);
+        ctx.lineTo(-size * 0.28, -size * 0.28);
+        ctx.closePath();
+        ctx.fill();
+        if (strokeCol) {
+          ctx.strokeStyle = strokeCol;
+          ctx.lineWidth = 0.7;
+          ctx.stroke();
+        }
+        ctx.restore();
+      };
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (ghost) {
+        ctx.globalAlpha = 0.32;
+      } else {
+        const pulse = 1 + Math.sin(t * 2.5) * 0.04;
+        ctx.scale(pulse, pulse);
+      }
+
+      // 1. Aureola celestial/dorada (o aura plateada punteada en modo ghost)
+      if (ghost) {
+        const gAura = ctx.createRadialGradient(0, 0, 2, 0, 0, 18);
+        gAura.addColorStop(0, 'rgba(226, 232, 240, 0.55)');
+        gAura.addColorStop(1, 'rgba(148, 163, 184, 0)');
+        ctx.fillStyle = gAura;
+        ctx.beginPath();
+        ctx.arc(0, 0, 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.setLineDash([3.5, 3]);
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, 15.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        const glow = 0.82 + 0.18 * Math.sin(t * 3.1);
+        const aura = ctx.createRadialGradient(0, 0, 2, 0, 0, 21);
+        aura.addColorStop(0, `rgba(254, 249, 195, ${0.92 * glow})`);
+        aura.addColorStop(0.5, `rgba(250, 204, 21, ${0.46 * glow})`);
+        aura.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = aura;
+        ctx.beginPath();
+        ctx.arc(0, 0, 21, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.rotate(t * 0.45);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.52)';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 15.2, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let r = 0; r < 8; r++) {
+          const ang = (r * Math.PI) / 4;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ang) * 14.2, Math.sin(ang) * 14.2);
+          ctx.lineTo(Math.cos(ang) * 16.8, Math.sin(ang) * 16.8);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // 2. Ilustración vectorial única por ciudad (~32x32)
+      if (city === 'barcelona') {
+        // Salamandra / Dragón Trencadís de Gaudí (cian / oro / cobalto)
+        // Patitas delanteras y traseras
+        SpriteBank.drawCapsule(ctx, -6, 4, -8.5, 9.5, 1.8, col('#1d4ed8', '#64748b'), ink, 1.3);
+        SpriteBank.drawCapsule(ctx, 4.5, 3, 7, 9, 1.8, col('#0284c7', '#94a3b8'), ink, 1.3);
+
+        // Cuerpo ondulado + cola curvada + cabeza expresiva
+        const bodyGrad = ctx.createLinearGradient(-12, -8, 12, 8);
+        bodyGrad.addColorStop(0, col('#1d4ed8', '#64748b'));
+        bodyGrad.addColorStop(0.55, col('#06b6d4', '#94a3b8'));
+        bodyGrad.addColorStop(1, col('#38bdf8', '#cbd5e1'));
+        ctx.beginPath();
+        ctx.moveTo(-12, 8);
+        ctx.quadraticCurveTo(-11, 0, -5, -4);
+        ctx.quadraticCurveTo(0.5, -8.5, 5.5, -4.5);
+        ctx.quadraticCurveTo(9, -8.5, 12.2, -5.5);
+        ctx.quadraticCurveTo(13.5, -2.5, 10, -0.5);
+        ctx.quadraticCurveTo(6.5, 1.5, 4.5, 5);
+        ctx.quadraticCurveTo(-1, 2.5, -5.5, 7);
+        ctx.quadraticCurveTo(-9.5, 11, -12, 8);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, bodyGrad, ink, 1.7);
+
+        // Crestas dorsales doradas
+        [
+          { cx: -3.5, cy: -5.5 },
+          { cx: 0.5, cy: -6.8 },
+          { cx: 4.2, cy: -5.5 }
+        ].forEach((cr) => {
+          ctx.beginPath();
+          ctx.moveTo(cr.cx - 1.6, cr.cy + 1.4);
+          ctx.lineTo(cr.cx, cr.cy - 2.4);
+          ctx.lineTo(cr.cx + 1.8, cr.cy + 1.2);
+          ctx.closePath();
+          SpriteBank.fillAndStroke(ctx, col('#facc15', '#cbd5e1'), ink, 1.0);
+        });
+
+        // Teselas trencadís (mosaico con juntas blancas)
+        const tiles = [
+          { pts: [[-6.5, 3.5], [-4.5, 0.2], [-2.2, 2.6]], c: col('#facc15', '#e2e8f0') },
+          { pts: [[-3.5, -2.5], [0.2, -4.6], [0.8, -1.2]], c: col('#22d3ee', '#cbd5e1') },
+          { pts: [[-1.5, 0.2], [2.4, -0.8], [1.6, 2.8]], c: col('#f97316', '#94a3b8') },
+          { pts: [[2.5, -3.5], [5.8, -2.8], [4.5, 0.4]], c: col('#facc15', '#e2e8f0') },
+          { pts: [[-9.5, 6.2], [-7.2, 3.2], [-6.2, 6.0]], c: col('#38bdf8', '#cbd5e1') }
+        ];
+        tiles.forEach((tl) => {
+          ctx.beginPath();
+          ctx.moveTo(tl.pts[0][0], tl.pts[0][1]);
+          ctx.lineTo(tl.pts[1][0], tl.pts[1][1]);
+          ctx.lineTo(tl.pts[2][0], tl.pts[2][1]);
+          ctx.closePath();
+          ctx.fillStyle = tl.c;
+          ctx.fill();
+          ctx.strokeStyle = col('#f8fafc', '#e2e8f0');
+          ctx.lineWidth = 0.75;
+          ctx.stroke();
+        });
+
+        // Ojo brillante
+        ctx.fillStyle = col('#fef08a', '#f8fafc');
+        ctx.beginPath();
+        ctx.arc(9.4, -4.4, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = ink;
+        ctx.beginPath();
+        ctx.arc(9.7, -4.4, 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (city === 'madrid') {
+        // Corona Real Española (oro, terciopelo carmesí, rubí/esmeraldas y filigrana)
+        // Gorro interior de terciopelo
+        const velvetGrad = ctx.createRadialGradient(0, -3, 1, 0, 0, 10);
+        velvetGrad.addColorStop(0, col('#dc2626', '#94a3b8'));
+        velvetGrad.addColorStop(1, col('#7f1d1d', '#475569'));
+        ctx.beginPath();
+        ctx.ellipse(0, -0.5, 9.2, 6.8, 0, Math.PI, 0);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, velvetGrad, ink, 1.5);
+
+        // Arcos imperiales perlados + orbe/cruz superior
+        const goldGrad = ctx.createLinearGradient(-11, -10, 11, 10);
+        goldGrad.addColorStop(0, col('#fef9c3', '#f1f5f9'));
+        goldGrad.addColorStop(0.5, col('#fbbf24', '#cbd5e1'));
+        goldGrad.addColorStop(1, col('#b45309', '#64748b'));
+
+        ctx.strokeStyle = col('#f59e0b', '#94a3b8');
+        ctx.lineWidth = 2.0;
+        [-8.5, -4.2, 0, 4.2, 8.5].forEach((ax) => {
+          ctx.beginPath();
+          ctx.moveTo(ax, 3);
+          ctx.quadraticCurveTo(ax * 0.55, -8.8, 0, -8.8);
+          ctx.stroke();
+        });
+
+        // Orbe y cruceta superior
+        ctx.beginPath();
+        ctx.arc(0, -9.8, 2.2, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, goldGrad, goldInk, 1.2);
+        ctx.strokeStyle = col('#fef08a', '#f1f5f9');
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(0, -14.2);
+        ctx.lineTo(0, -10.8);
+        ctx.moveTo(-2.1, -12.8);
+        ctx.lineTo(2.1, -12.8);
+        ctx.stroke();
+
+        // Florones dorados superiores
+        [-8.5, -4.2, 0, 4.2, 8.5].forEach((fx, idx) => {
+          const fy = idx === 2 ? -2.2 : -0.8;
+          ctx.beginPath();
+          ctx.arc(fx, fy, idx === 2 ? 2.1 : 1.6, 0, Math.PI * 2);
+          SpriteBank.fillAndStroke(ctx, goldGrad, goldInk, 1.0);
+        });
+
+        // Base de la corona con filigrana borbónica
+        ctx.beginPath();
+        ctx.moveTo(-10.5, 2.5);
+        ctx.quadraticCurveTo(0, 0.2, 10.5, 2.5);
+        ctx.lineTo(9.4, 9.2);
+        ctx.quadraticCurveTo(0, 11.4, -9.4, 9.2);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, goldGrad, goldInk, 1.7);
+
+        ctx.strokeStyle = col('#fef9c3', '#f8fafc');
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(-7.8, 4.2);
+        ctx.quadraticCurveTo(-4, 7.2, 0, 4.2);
+        ctx.quadraticCurveTo(4, 7.2, 7.8, 4.2);
+        ctx.stroke();
+
+        // Joyas (rubí central, esmeraldas y zafiros)
+        const gems = [
+          { gx: 0, gy: 6.2, rx: 2.3, ry: 1.8, fill: col('#ef4444', '#94a3b8') },
+          { gx: -5.2, gy: 5.9, rx: 1.5, ry: 1.3, fill: col('#10b981', '#cbd5e1') },
+          { gx: 5.2, gy: 5.9, rx: 1.5, ry: 1.3, fill: col('#10b981', '#cbd5e1') },
+          { gx: -8.3, gy: 5.4, rx: 1.0, ry: 1.0, fill: col('#38bdf8', '#e2e8f0') },
+          { gx: 8.3, gy: 5.4, rx: 1.0, ry: 1.0, fill: col('#38bdf8', '#e2e8f0') }
+        ];
+        gems.forEach((gm) => {
+          ctx.beginPath();
+          ctx.ellipse(gm.gx, gm.gy, gm.rx, gm.ry, 0, 0, Math.PI * 2);
+          SpriteBank.fillAndStroke(ctx, gm.fill, ink, 0.9);
+          ctx.fillStyle = 'rgba(255,255,255,0.75)';
+          ctx.beginPath();
+          ctx.arc(gm.gx - gm.rx * 0.3, gm.gy - gm.ry * 0.3, 0.55, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      } else if (city === 'palma') {
+        // Ensaimada dorada en espiral con glaseado y azúcar glas brillante
+        const baseGrad = ctx.createRadialGradient(-2, -3, 2, 0, 0, 12.5);
+        baseGrad.addColorStop(0, col('#fde68a', '#f1f5f9'));
+        baseGrad.addColorStop(0.65, col('#d97706', '#94a3b8'));
+        baseGrad.addColorStop(1, col('#92400e', '#64748b'));
+        ctx.beginPath();
+        ctx.ellipse(0, 0.5, 12.2, 10.8, 0, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, baseGrad, goldInk, 1.7);
+
+        // Espiral de masa hojaldrada (2.7 vueltas)
+        const traceSpiral = (stepCount, maxTheta, maxR) => {
+          ctx.beginPath();
+          for (let i = 0; i <= stepCount; i++) {
+            const u = i / stepCount;
+            const th = u * maxTheta;
+            const r = u * maxR;
+            const px = Math.cos(th) * r * 1.08;
+            const py = Math.sin(th) * r * 0.92;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+        };
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        traceSpiral(64, Math.PI * 5.2, 9.6);
+        ctx.strokeStyle = col('#78350f', '#475569');
+        ctx.lineWidth = 5.4;
+        ctx.stroke();
+
+        traceSpiral(64, Math.PI * 5.2, 9.6);
+        ctx.strokeStyle = col('#f59e0b', '#cbd5e1');
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+
+        traceSpiral(64, Math.PI * 5.2, 9.6);
+        ctx.strokeStyle = col('#fef3c7', '#f8fafc');
+        ctx.lineWidth = 1.25;
+        ctx.stroke();
+
+        // Espolvoreado de azúcar glas y cristales brillantes
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.62)';
+        [
+          [-3.2, -3.5, 2.8, 1.4],
+          [3.6, -1.8, 2.4, 1.3],
+          [-1.5, 4.2, 3.0, 1.5],
+          [4.2, 3.5, 2.0, 1.1]
+        ].forEach(([sx, sy, rx, ry]) => {
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, rx, ry, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+        });
+        [[-5, -5, 2.0], [5.5, -4, 1.8], [0.5, 5.8, 2.1], [-6, 2.5, 1.6]].forEach(([cxp, cyp, sz]) => {
+          drawSparkStar(cxp, cyp, sz, '#ffffff', null);
+        });
+      } else if (city === 'canarias') {
+        // Prisma cristalino volcánico del Teide (obsidiana + núcleo de magma carmesí)
+        // Base de basalto
+        ctx.beginPath();
+        ctx.moveTo(-10.5, 11);
+        ctx.lineTo(-8, 6);
+        ctx.lineTo(0, 4.5);
+        ctx.lineTo(8.5, 6.2);
+        ctx.lineTo(10.8, 11);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, col('#334155', '#64748b'), ink, 1.5);
+
+        // Cristales laterales de obsidiana
+        const sideShard = (pts) => {
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+          SpriteBank.fillAndStroke(ctx, col('#1e293b', '#64748b'), ink, 1.4);
+        };
+        sideShard([[-8.5, 8], [-11, -3], [-6.8, -5.5], [-3.8, 6]]);
+        sideShard([[4, 6.5], [7.2, -4.5], [10.8, -1.8], [8.5, 8]]);
+
+        // Prisma central alto del Teide
+        const obsGrad = ctx.createLinearGradient(-5, -13, 6, 9);
+        obsGrad.addColorStop(0, col('#475569', '#94a3b8'));
+        obsGrad.addColorStop(0.55, col('#1e293b', '#64748b'));
+        obsGrad.addColorStop(1, col('#0f172a', '#475569'));
+        ctx.beginPath();
+        ctx.moveTo(0, -13.5);
+        ctx.lineTo(5.8, -4.5);
+        ctx.lineTo(4.6, 8.2);
+        ctx.lineTo(0, 9.8);
+        ctx.lineTo(-4.6, 8.2);
+        ctx.lineTo(-5.8, -4.5);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, obsGrad, ink, 1.7);
+
+        // Núcleo incandescente de magma interno
+        const magmaGrad = ctx.createRadialGradient(0, 2.5, 0.5, 0, 1, 7.5);
+        magmaGrad.addColorStop(0, col('#fef08a', '#f8fafc'));
+        magmaGrad.addColorStop(0.45, col('#f97316', '#cbd5e1'));
+        magmaGrad.addColorStop(1, col('#dc2626', '#64748b'));
+        ctx.beginPath();
+        ctx.moveTo(0, -8.5);
+        ctx.lineTo(2.9, -1.5);
+        ctx.lineTo(2.0, 6.5);
+        ctx.lineTo(0, 7.6);
+        ctx.lineTo(-2.0, 6.5);
+        ctx.lineTo(-2.9, -1.5);
+        ctx.closePath();
+        ctx.fillStyle = magmaGrad;
+        ctx.fill();
+
+        // Aristas facetadas de brillo
+        ctx.strokeStyle = col('rgba(254, 215, 170, 0.85)', 'rgba(241, 245, 249, 0.75)');
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(0, -13.2);
+        ctx.lineTo(0, 9.4);
+        ctx.moveTo(-5.4, -4.5);
+        ctx.lineTo(0, -2.5);
+        ctx.lineTo(5.4, -4.5);
+        ctx.stroke();
+      } else if (city === 'buenosaires') {
+        // Obelisco Porteño Dorado con rayos del Sol de Mayo
+        ctx.save();
+        ctx.translate(0, -6);
+        for (let r = 0; r < 12; r++) {
+          const ang = (r * Math.PI) / 6 + (ghost ? 0 : t * 0.35);
+          const len = r % 2 === 0 ? 12.2 : 9.4;
+          ctx.strokeStyle = col(r % 2 === 0 ? '#fde047' : '#f59e0b', '#cbd5e1');
+          ctx.lineWidth = r % 2 === 0 ? 1.8 : 1.2;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ang) * 3.5, Math.sin(ang) * 3.5);
+          ctx.lineTo(Math.cos(ang) * len, Math.sin(ang) * len);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Pedestal escalonado
+        ctx.beginPath();
+        ctx.roundRect(-7, 9, 14, 3.2, 1);
+        SpriteBank.fillAndStroke(ctx, col('#d97706', '#64748b'), goldInk, 1.4);
+        ctx.beginPath();
+        ctx.roundRect(-5.2, 6.5, 10.4, 2.8, 0.8);
+        SpriteBank.fillAndStroke(ctx, col('#fbbf24', '#94a3b8'), goldInk, 1.3);
+
+        // Cara izquierda iluminada del Obelisco
+        const obLeft = ctx.createLinearGradient(-4, -12, 0, 7);
+        obLeft.addColorStop(0, col('#fef9c3', '#f8fafc'));
+        obLeft.addColorStop(1, col('#facc15', '#cbd5e1'));
+        ctx.beginPath();
+        ctx.moveTo(0, -13.8);
+        ctx.lineTo(-2.4, -9.2);
+        ctx.lineTo(-4.2, 6.6);
+        ctx.lineTo(0, 6.6);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, obLeft, goldInk, 1.4);
+
+        // Cara derecha sombreada del Obelisco
+        const obRight = ctx.createLinearGradient(0, -12, 4, 7);
+        obRight.addColorStop(0, col('#f59e0b', '#94a3b8'));
+        obRight.addColorStop(1, col('#b45309', '#64748b'));
+        ctx.beginPath();
+        ctx.moveTo(0, -13.8);
+        ctx.lineTo(2.4, -9.2);
+        ctx.lineTo(4.2, 6.6);
+        ctx.lineTo(0, 6.6);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, obRight, goldInk, 1.4);
+
+        // Ventanita icónica del mirador superior
+        ctx.fillStyle = ink;
+        ctx.beginPath();
+        ctx.roundRect(-1.1, -8.5, 2.2, 1.6, 0.6);
+        ctx.fill();
+      } else if (city === 'rosario') {
+        // Mate calabaza con virola de plata, bombilla dorada y vapor de yerba
+        // Bombilla diagonal dorada
+        SpriteBank.drawCapsule(ctx, 1, -1.5, 9.8, -11.8, 1.45, col('#fde047', '#cbd5e1'), goldInk, 1.2);
+        ctx.beginPath();
+        ctx.ellipse(6.5, -7.8, 2.1, 1.2, 0.78, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, col('#f59e0b', '#94a3b8'), goldInk, 1.0);
+
+        // Cuerpo de calabaza
+        const gourdGrad = ctx.createRadialGradient(-3.5, 2, 1.5, -1, 4.5, 10.5);
+        gourdGrad.addColorStop(0, col('#b45309', '#94a3b8'));
+        gourdGrad.addColorStop(0.65, col('#78350f', '#64748b'));
+        gourdGrad.addColorStop(1, col('#451a03', '#475569'));
+        ctx.beginPath();
+        ctx.ellipse(-1, 5.2, 8.6, 7.6, 0, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, gourdGrad, ink, 1.7);
+
+        // Virola de plata labrada
+        const silverGrad = ctx.createLinearGradient(-8, -3, 6, 0);
+        silverGrad.addColorStop(0, col('#f8fafc', '#f1f5f9'));
+        silverGrad.addColorStop(0.55, col('#cbd5e1', '#cbd5e1'));
+        silverGrad.addColorStop(1, col('#94a3b8', '#94a3b8'));
+        ctx.beginPath();
+        ctx.roundRect(-7.6, -3.2, 13.2, 3.6, 1.6);
+        SpriteBank.fillAndStroke(ctx, silverGrad, ink, 1.4);
+
+        // Montañita de yerba mate verde
+        ctx.beginPath();
+        ctx.ellipse(-1, -3.4, 5.4, 2.1, 0, Math.PI, 0);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, col('#22c55e', '#94a3b8'), col('#14532d', '#475569'), 1.2);
+
+        // Espiral de vapor aromático + hojita de yerba
+        ctx.strokeStyle = col('rgba(255, 255, 255, 0.85)', 'rgba(226, 232, 240, 0.7)');
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-4, -5.8);
+        ctx.quadraticCurveTo(-6.8, -8.5, -3.5, -10.8);
+        ctx.quadraticCurveTo(-0.8, -12.6, -3.8, -14.5);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.ellipse(-7.5, -9.2, 2.4, 1.2, -0.5, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, col('#4ade80', '#cbd5e1'), col('#166534', '#475569'), 0.9);
+      } else if (city === 'cordoba') {
+        // Frasco / Cáliz Místico de las Sierras (Fernet Místico púrpura-ámbar) con estrellas
+        // Cuello y tapón dorado
+        ctx.beginPath();
+        ctx.roundRect(-3, -10.5, 6, 4.5, 1.2);
+        SpriteBank.fillAndStroke(ctx, col('#a855f7', '#94a3b8'), ink, 1.3);
+        ctx.beginPath();
+        ctx.roundRect(-3.8, -12.8, 7.6, 2.8, 1.2);
+        SpriteBank.fillAndStroke(ctx, col('#fbbf24', '#cbd5e1'), goldInk, 1.3);
+
+        // Cuerpo de vidrio biselado
+        const glassGrad = ctx.createLinearGradient(-8, -6, 8, 12);
+        glassGrad.addColorStop(0, col('#c084fc', '#cbd5e1'));
+        glassGrad.addColorStop(0.45, col('#7e22ce', '#94a3b8'));
+        glassGrad.addColorStop(0.65, col('#b45309', '#64748b'));
+        glassGrad.addColorStop(1, col('#451a03', '#475569'));
+        ctx.beginPath();
+        ctx.moveTo(-3.2, -6.2);
+        ctx.lineTo(3.2, -6.2);
+        ctx.bezierCurveTo(8.5, -3.8, 9.6, 3.5, 7.2, 9.6);
+        ctx.quadraticCurveTo(0, 12.6, -7.2, 9.6);
+        ctx.bezierCurveTo(-9.6, 3.5, -8.5, -3.8, -3.2, -6.2);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, glassGrad, ink, 1.7);
+
+        // Nivel de elixir ámbar + brillo cristalino
+        ctx.fillStyle = col('rgba(251, 191, 36, 0.35)', 'rgba(226, 232, 240, 0.25)');
+        ctx.beginPath();
+        ctx.ellipse(0, 1.8, 6.2, 1.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
+        ctx.lineWidth = 1.6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-5.2, -1.2);
+        ctx.quadraticCurveTo(-6.2, 3.5, -4.4, 7.8);
+        ctx.stroke();
+
+        // Estrellitas místicas del Uritorco
+        drawSparkStar(-9.5, -6.8, 2.8, col('#fde047', '#e2e8f0'), null);
+        drawSparkStar(9.6, -5.2, 2.5, col('#e9d5ff', '#f1f5f9'), null);
+        drawSparkStar(8.5, 6.5, 2.2, col('#fde047', '#cbd5e1'), null);
+      } else {
+        // Ushuaia: Brújula Austral del Fin del Mundo (turquesa y latón)
+        // Argolla superior de latón
+        ctx.strokeStyle = col('#fbbf24', '#cbd5e1');
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(0, -13.2, 2.4, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Bisel circular de latón
+        const brassGrad = ctx.createLinearGradient(-12, -12, 12, 12);
+        brassGrad.addColorStop(0, col('#fef08a', '#f1f5f9'));
+        brassGrad.addColorStop(0.5, col('#d97706', '#94a3b8'));
+        brassGrad.addColorStop(1, col('#92400e', '#64748b'));
+        ctx.beginPath();
+        ctx.arc(0, 0.5, 11.8, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, brassGrad, goldInk, 1.6);
+
+        // Esfera turquesa antártica
+        const dialGrad = ctx.createRadialGradient(-2, -2, 1, 0, 0.5, 9.6);
+        dialGrad.addColorStop(0, col('#22d3ee', '#cbd5e1'));
+        dialGrad.addColorStop(0.65, col('#0e7490', '#64748b'));
+        dialGrad.addColorStop(1, col('#083344', '#475569'));
+        ctx.beginPath();
+        ctx.arc(0, 0.5, 9.4, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, dialGrad, ink, 1.3);
+
+        // Puntas diagonales menores (doradas)
+        [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4].forEach((ang) => {
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ang) * 6.2, 0.5 + Math.sin(ang) * 6.2);
+          ctx.lineTo(Math.cos(ang + 0.35) * 2.0, 0.5 + Math.sin(ang + 0.35) * 2.0);
+          ctx.lineTo(0, 0.5);
+          ctx.lineTo(Math.cos(ang - 0.35) * 2.0, 0.5 + Math.sin(ang - 0.35) * 2.0);
+          ctx.closePath();
+          ctx.fillStyle = col('#fde047', '#cbd5e1');
+          ctx.fill();
+        });
+
+        // Rosa de los vientos de 4 puntas principales (N/S/E/O)
+        [
+          { dx: 0, dy: -8.2, c1: col('#ef4444', '#e2e8f0'), c2: col('#991b1b', '#94a3b8') },
+          { dx: 0, dy: 8.2, c1: col('#f8fafc', '#f1f5f9'), c2: col('#94a3b8', '#64748b') },
+          { dx: 8.2, dy: 0, c1: col('#ecfeff', '#f1f5f9'), c2: col('#67e8f9', '#94a3b8') },
+          { dx: -8.2, dy: 0, c1: col('#ecfeff', '#f1f5f9'), c2: col('#67e8f9', '#94a3b8') }
+        ].forEach((pt) => {
+          const px = -pt.dy * 0.24;
+          const py = pt.dx * 0.24;
+          ctx.beginPath();
+          ctx.moveTo(0, 0.5);
+          ctx.lineTo(pt.dx, 0.5 + pt.dy);
+          ctx.lineTo(px, 0.5 + py);
+          ctx.closePath();
+          ctx.fillStyle = pt.c1;
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.moveTo(0, 0.5);
+          ctx.lineTo(pt.dx, 0.5 + pt.dy);
+          ctx.lineTo(-px, 0.5 - py);
+          ctx.closePath();
+          ctx.fillStyle = pt.c2;
+          ctx.fill();
+        });
+
+        // Pivote central dorado
+        ctx.beginPath();
+        ctx.arc(0, 0.5, 1.9, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, col('#fef08a', '#f8fafc'), goldInk, 1.0);
+      }
+
+      // 3. Destellos o insignia de verificación en modo ghost
+      if (ghost) {
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(9.2, 9.2, 5.2, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, '#334155', '#e2e8f0', 1.3);
+        ctx.strokeStyle = '#4ade80';
+        ctx.lineWidth = 1.8;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(6.7, 9.2);
+        ctx.lineTo(8.5, 11.1);
+        ctx.lineTo(11.9, 7.4);
+        ctx.stroke();
+      } else {
+        const sparkles = [
+          { sx: -12.5, sy: -10.5, phase: 0.0, size: 3.6, col: '#fef9c3' },
+          { sx: 12.8, sy: -9.5, phase: 2.1, size: 3.2, col: '#fde047' },
+          { sx: 11.5, sy: 10.8, phase: 4.0, size: 2.9, col: '#ffffff' }
+        ];
+        sparkles.forEach((sp) => {
+          const s = (0.35 + 0.65 * Math.abs(Math.sin(t * 2.4 + sp.phase))) * sp.size;
+          drawSparkStar(sp.sx, sp.sy, s, sp.col, '#92400e');
+        });
+      }
+
+      ctx.restore();
+    }
+
+    // ========================================================================
     // COLECCIONABLES Y POWER-UPS HD (Moneda, Hamburguesa, Batido,
     // Power-up Eléctrico y Alas de Ángel)
     // ========================================================================
-    drawCollectibleHD(ctx, type, x, y, timer) {
+    drawCollectibleHD(ctx, type, x, y, timer = 0, data = null) {
+      if (!ctx) return;
+      if (type === 'relic' || String(type).indexOf('relic_') === 0) {
+        const relicKey = (data && (data.cityKey || data.relicId)) || type;
+        const isGhost = Boolean(data && data.ghost);
+        const relicFn = (this && typeof this.drawRelicHD === 'function')
+          ? this.drawRelicHD
+          : SpriteBank.prototype.drawRelicHD;
+        return relicFn.call(this, ctx, relicKey, x, y, timer, isGhost);
+      }
+
       const cx = x + 13;
       const cy = y + 13;
       ctx.save();
@@ -5148,6 +5768,155 @@
       ctx.restore();
     }
 
+    /**
+     * Bomba estilo Worms lanzada desde el Biplano de La Tina (~20x20):
+     * acabados metálicos con ribete dorado, aletas traseras, mecha chispeante
+     * y variante opcional de hueso dorado explosivo ('bone' / 'golden_bone').
+     */
+    drawBiplaneBombHD(ctx, x, y, angle = 0, timer = 0, variant = 'bomb') {
+      if (!ctx) return;
+      const t = Number.isFinite(timer) ? timer : 0;
+      const rot = Number.isFinite(angle) ? angle : 0;
+      const isBonePayload = variant === 'bone' || variant === 'golden_bone';
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+
+      // Halo sutil de alto contraste para destacar sobre cualquier cielo
+      const aura = ctx.createRadialGradient(0, 0, 2, 0, 0, 15.5);
+      aura.addColorStop(0, 'rgba(254, 240, 138, 0.50)');
+      aura.addColorStop(0.6, 'rgba(249, 115, 22, 0.24)');
+      aura.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = aura;
+      ctx.beginPath();
+      ctx.arc(0, 0, 15.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Aletas estabilizadoras traseras (-X) en rojo Worms con ribete dorado
+      ctx.beginPath();
+      ctx.moveTo(-4, -3.5);
+      ctx.lineTo(-10.5, -8.5);
+      ctx.lineTo(-8.2, -2);
+      ctx.lineTo(-8.2, 2);
+      ctx.lineTo(-10.5, 8.5);
+      ctx.lineTo(-4, 3.5);
+      ctx.closePath();
+      SpriteBank.fillAndStroke(ctx, '#dc2626', '#090d16', 1.6);
+
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(-9.2, -7.2);
+      ctx.lineTo(-5.2, -4.0);
+      ctx.moveTo(-9.2, 7.2);
+      ctx.lineTo(-5.2, 4.0);
+      ctx.stroke();
+
+      if (isBonePayload) {
+        // Carga explosiva de Huesito Dorado con cinta detonadora
+        const boneGrad = ctx.createLinearGradient(-8, -6, 9, 6);
+        boneGrad.addColorStop(0, '#fef9c3');
+        boneGrad.addColorStop(0.5, '#facc15');
+        boneGrad.addColorStop(1, '#d97706');
+        ctx.beginPath();
+        ctx.moveTo(-4.8, -2.8);
+        ctx.arc(-6.8, -3.1, 3.1, 0.25, Math.PI * 1.55, true);
+        ctx.arc(-6.8, 3.1, 3.1, Math.PI * 0.45, -0.25, true);
+        ctx.lineTo(5.6, 2.8);
+        ctx.arc(7.6, 3.1, 3.1, Math.PI + 0.25, Math.PI * 0.45, true);
+        ctx.arc(7.6, -3.1, 3.1, -Math.PI * 0.45, Math.PI - 0.25, true);
+        ctx.closePath();
+        SpriteBank.fillAndStroke(ctx, boneGrad, '#090d16', 1.8);
+
+        // Cinturón explosivo rojo + collar dorado
+        ctx.beginPath();
+        ctx.roundRect(-2.0, -4.2, 4.6, 8.4, 1.4);
+        SpriteBank.fillAndStroke(ctx, '#ef4444', '#090d16', 1.3);
+        ctx.fillStyle = '#fde047';
+        ctx.fillRect(-0.5, -3.2, 1.6, 6.4);
+      } else {
+        // Carcasa metálica pesada estilo Worms (cuerpo ovalado + ribete dorado)
+        const metalGrad = ctx.createRadialGradient(-1, -3, 1, 1.5, 0, 10.5);
+        metalGrad.addColorStop(0, '#94a3b8');
+        metalGrad.addColorStop(0.45, '#334155');
+        metalGrad.addColorStop(1, '#0f172a');
+        ctx.beginPath();
+        ctx.ellipse(1.5, 0, 8.8, 7.4, 0, 0, Math.PI * 2);
+        SpriteBank.fillAndStroke(ctx, metalGrad, '#090d16', 1.9);
+
+        // Collar y franja dorada de munición especial
+        const trimGrad = ctx.createLinearGradient(-2, -7.2, -2, 7.2);
+        trimGrad.addColorStop(0, '#fef08a');
+        trimGrad.addColorStop(0.5, '#f59e0b');
+        trimGrad.addColorStop(1, '#b45309');
+        ctx.beginPath();
+        ctx.roundRect(-2.4, -7.1, 3.6, 14.2, 1.5);
+        SpriteBank.fillAndStroke(ctx, trimGrad, '#090d16', 1.3);
+
+        // Brillo especular metálico en la ojiva
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+        ctx.beginPath();
+        ctx.ellipse(4.6, -3.2, 2.7, 1.3, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Pequeño emblema dorado de huella/hueso
+        ctx.fillStyle = '#fde047';
+        ctx.beginPath();
+        ctx.arc(5.4, 2.2, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Boquilla de mecha y cuerda encendida con chispas animadas
+      const nozzleX = isBonePayload ? -1.4 : -4.6;
+      const nozzleY = isBonePayload ? -5.8 : -7.8;
+      const fuseX0 = nozzleX + 1.4;
+      const fuseY0 = nozzleY;
+      const spX = isBonePayload ? -6.2 : -8.8;
+      const spY = isBonePayload ? -9.6 : -10.4;
+
+      ctx.beginPath();
+      ctx.roundRect(nozzleX, nozzleY, 3.4, 2.6, 1.0);
+      SpriteBank.fillAndStroke(ctx, '#f59e0b', '#090d16', 1.1);
+
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 1.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fuseX0, fuseY0);
+      ctx.quadraticCurveTo(fuseX0 - 2.6, fuseY0 - 3.6, spX, spY);
+      ctx.stroke();
+
+      // Punta chispeante animada
+      const sparkPulse = 0.75 + 0.35 * Math.sin(t * 28);
+      ctx.save();
+      ctx.translate(spX, spY);
+      ctx.rotate(t * 14);
+      ctx.fillStyle = '#f97316';
+      for (let s = 0; s < 4; s++) {
+        const ang = (s * Math.PI) / 2;
+        const r = 4.6 * sparkPulse;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(ang - 0.25) * r * 0.45, Math.sin(ang - 0.25) * r * 0.45);
+        ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r);
+        ctx.lineTo(Math.cos(ang + 0.25) * r * 0.45, Math.sin(ang + 0.25) * r * 0.45);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.1 * sparkPulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, 1.0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      ctx.restore();
+    }
+
     // ------------------------------------------------------------------------
     // BUENOS AIRES: FAUNA URBANA Y MECÁNICAS DE ZONA (HD)
     // ------------------------------------------------------------------------
@@ -6287,7 +7056,135 @@
       ctx.restore();
     }
 
+    drawCircusTrampolineHD(ctx, d, cameraX, time) {
+      const x = d.x - cameraX;
+      if (x + d.w < -40 || x > 1000) return;
+      ctx.save();
+      const cx = x + d.w * 0.5;
+      const baseY = d.y + d.h;
+      const squash = d.squash || 0;
+      ctx.translate(cx, baseY);
+      ctx.scale(1 + squash * 0.11, 1 - squash * 0.24);
+
+      const hw = d.w * 0.5;
+      const bodyH = d.h - 10;
+
+      // Sombra en la base
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.34)';
+      ctx.beginPath();
+      ctx.ellipse(0, 1, hw + 3, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Patas metálicas doradas de soporte
+      ctx.fillStyle = '#f59e0b';
+      ctx.strokeStyle = '#451a03';
+      ctx.lineWidth = 1.6;
+      [-hw + 6, hw - 12].forEach((lx) => {
+        ctx.beginPath();
+        ctx.roundRect(lx, -7, 6, 7, 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      // Tambor / faldón estilo circo en franjas alternadas rojo carmesí y blanco marfil
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(-hw + 2, -bodyH, d.w - 4, bodyH - 2, 7);
+      ctx.clip();
+
+      const stripes = 6;
+      const stripeW = (d.w - 4) / stripes;
+      for (let s = 0; s < stripes; s++) {
+        ctx.fillStyle = s % 2 === 0 ? '#dc2626' : '#f8fafc';
+        ctx.fillRect(-hw + 2 + s * stripeW, -bodyH, stripeW + 0.6, bodyH - 2);
+      }
+
+      // Sombreado cilíndrico 3D para volumen
+      const shadeGrad = ctx.createLinearGradient(-hw, 0, hw, 0);
+      shadeGrad.addColorStop(0, 'rgba(69, 10, 10, 0.38)');
+      shadeGrad.addColorStop(0.28, 'rgba(255, 255, 255, 0.18)');
+      shadeGrad.addColorStop(0.75, 'rgba(2, 6, 23, 0.12)');
+      shadeGrad.addColorStop(1, 'rgba(69, 10, 10, 0.44)');
+      ctx.fillStyle = shadeGrad;
+      ctx.fillRect(-hw + 2, -bodyH, d.w - 4, bodyH - 2);
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.roundRect(-hw + 2, -bodyH, d.w - 4, bodyH - 2, 7);
+      ctx.strokeStyle = '#450a0a';
+      ctx.lineWidth = 2.4;
+      ctx.stroke();
+
+      // Aros dorados superior e inferior con remaches brillantes
+      const goldGrad = ctx.createLinearGradient(-hw, 0, hw, 0);
+      goldGrad.addColorStop(0, '#b45309');
+      goldGrad.addColorStop(0.35, '#fde047');
+      goldGrad.addColorStop(0.65, '#fbbf24');
+      goldGrad.addColorStop(1, '#92400e');
+      ctx.fillStyle = goldGrad;
+      ctx.fillRect(-hw + 2, -bodyH + 1, d.w - 4, 5.5);
+      ctx.fillRect(-hw + 2, -8, d.w - 4, 5.5);
+      ctx.strokeStyle = '#451a03';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(-hw + 2, -bodyH + 1, d.w - 4, 5.5);
+      ctx.strokeRect(-hw + 2, -8, d.w - 4, 5.5);
+
+      for (let rx = -hw + 9; rx <= hw - 9; rx += 13) {
+        ctx.fillStyle = '#fef9c3';
+        ctx.beginPath();
+        ctx.arc(rx, -bodyH + 3.8, 1.3, 0, Math.PI * 2);
+        ctx.arc(rx, -5.2, 1.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Estrella dorada central estilo circo
+      const starY = -bodyH * 0.5 - 1;
+      ctx.fillStyle = '#fde047';
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rad = i % 2 === 0 ? 7.2 : 3.2;
+        const px = Math.cos(ang) * rad;
+        const py = starY + Math.sin(ang) * rad;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Lona superior acolchada rojo/dorado con diana blanca central
+      const thump = squash > 0 ? squash * 3 : Math.sin(time * 4.5) * 0.6;
+      ctx.beginPath();
+      ctx.ellipse(0, -bodyH, hw + 1, 7.6 + thump * 0.4, 0, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, '#ef4444', '#450a0a', 2.2);
+
+      ctx.beginPath();
+      ctx.ellipse(0, -bodyH, hw - 7, 5.0, 0, 0, Math.PI * 2);
+      SpriteBank.fillAndStroke(ctx, '#f8fafc', '#fbbf24', 1.8);
+
+      ctx.beginPath();
+      ctx.ellipse(0, -bodyH, hw - 17, 2.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#fde047';
+      ctx.fill();
+
+      if (squash > 0.25) {
+        ctx.strokeStyle = 'rgba(253, 224, 71, ' + (squash * 0.85).toFixed(2) + ')';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.ellipse(0, -bodyH, hw + 7 + (1 - squash) * 14, 11 + (1 - squash) * 6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     drawBouncyDrumHD(ctx, d, cameraX, time) {
+      if (d && d.style === 'circus') {
+        this.drawCircusTrampolineHD(ctx, d, cameraX, time);
+        return;
+      }
       const x = d.x - cameraX;
       if (x + d.w < -40 || x > 1000) return;
       ctx.save();
@@ -9646,6 +10543,297 @@
 
       ctx.restore();
     }
+
+    drawRelic3DViewerHD(ctx, relicKey, cx, cy, size = 168, yaw = 0, pitch = 0.16, timer = 0) {
+      if (!ctx) return;
+      const keyMap = {
+        dragon_gaudi: 'barcelona',
+        corona_real: 'madrid',
+        ensaimada_dorada: 'palma',
+        cristal_volcanico: 'canarias',
+        obelisco_dorado: 'buenosaires',
+        mate_campeon: 'rosario',
+        fernet_mistico: 'cordoba',
+        brujula_austral: 'ushuaia'
+      };
+      const key = keyMap[relicKey] || relicKey || 'barcelona';
+      const palettes = {
+        barcelona: { core: '#38bdf8', deep: '#0369a1', accent: '#facc15', velvet: '#0c2340', tag: 'GAUDÍ · BCN' },
+        madrid: { core: '#fbbf24', deep: '#92400e', accent: '#ef4444', velvet: '#3a0d16', tag: 'CORONA · MAD' },
+        palma: { core: '#f59e0b', deep: '#78350f', accent: '#fef3c7', velvet: '#2b1808', tag: 'PALMA · PMI' },
+        canarias: { core: '#f97316', deep: '#7c2d12', accent: '#fde047', velvet: '#2a0e05', tag: 'TEIDE · CAN' },
+        buenosaires: { core: '#eab308', deep: '#713f12', accent: '#60a5fa', velvet: '#0f2544', tag: 'PORTEÑO · BA' },
+        rosario: { core: '#34d399', deep: '#065f46', accent: '#facc15', velvet: '#08291d', tag: 'PARANÁ · ROS' },
+        cordoba: { core: '#a78bfa', deep: '#4c1d95', accent: '#fbbf24', velvet: '#1f103b', tag: 'SIERRAS · CBA' },
+        ushuaia: { core: '#60a5fa', deep: '#1e3a8a', accent: '#f8fafc', velvet: '#081b38', tag: 'AUSTRAL · USH' }
+      };
+      const pal = palettes[key] || palettes.barcelona;
+
+      const TWO_PI = Math.PI * 2;
+      let ny = yaw % TWO_PI;
+      if (ny > Math.PI) ny -= TWO_PI;
+      if (ny <= -Math.PI) ny += TWO_PI;
+      const clampedPitch = Math.max(-0.55, Math.min(0.55, pitch));
+      const cosY = Math.cos(ny);
+      const sinY = Math.sin(ny);
+      const cosP = Math.cos(clampedPitch);
+      const sinP = Math.sin(clampedPitch);
+
+      const R = size * 0.44;
+      const halfDepth = size * 0.115;
+      const floatY = Math.sin(timer * 2.2) * 3.5;
+      const px = cx;
+      const py = cy + floatY;
+
+      const traceOctagon = (radius, chamfer = 0.24) => {
+        ctx.beginPath();
+        for (let i = 0; i < 8; i++) {
+          const ang = (i * Math.PI) / 4 + Math.PI / 8;
+          const rMul = i % 2 === 0 ? 1 : 1 - chamfer * 0.04;
+          const vx = Math.cos(ang) * radius * rMul;
+          const vy = Math.sin(ang) * radius * rMul;
+          if (i === 0) ctx.moveTo(vx, vy);
+          else ctx.lineTo(vx, vy);
+        }
+        ctx.closePath();
+      };
+
+      const projectSlice = (zVal, flipBack = false) => {
+        const ax = flipBack ? -cosY : cosY;
+        const bx = (flipBack ? -sinY : sinY) * sinP;
+        const e = zVal * sinY;
+        const f = -zVal * cosY * sinP;
+        ctx.transform(ax, bx, 0, cosP, px + e, py + f);
+      };
+
+      ctx.save();
+
+      // Ground spotlight & soft volumetric aura
+      const auraGrad = ctx.createRadialGradient(px, py, R * 0.2, px, py, size * 0.92);
+      auraGrad.addColorStop(0, pal.core + '44');
+      auraGrad.addColorStop(0.5, pal.deep + '1e');
+      auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = auraGrad;
+      ctx.beginPath();
+      ctx.arc(px, py, size * 0.92, 0, TWO_PI);
+      ctx.fill();
+
+      const shadowY = cy + size * 0.62;
+      const shadowRx = Math.max(size * 0.16, size * (0.36 * Math.abs(cosY) + 0.14));
+      const shadowRy = Math.max(7, size * 0.065);
+      const shGrad = ctx.createRadialGradient(px + sinY * 8, shadowY, 2, px + sinY * 8, shadowY, shadowRx);
+      shGrad.addColorStop(0, 'rgba(0,0,0,0.68)');
+      shGrad.addColorStop(0.65, 'rgba(0,0,0,0.28)');
+      shGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = shGrad;
+      ctx.beginPath();
+      ctx.ellipse(px + sinY * 8, shadowY, shadowRx, shadowRy, 0, 0, TWO_PI);
+      ctx.fill();
+
+      // Volumetric 3D slab extrusion (painter-ordered back-to-front along rotated Z)
+      const sliceCount = 18;
+      const frontIsCloser = cosY >= 0;
+      const safeCos = Math.abs(cosY);
+
+      for (let idx = 0; idx <= sliceCount; idx++) {
+        const tRaw = idx / sliceCount;
+        const z = frontIsCloser
+          ? -halfDepth + tRaw * (halfDepth * 2)
+          : halfDepth - tRaw * (halfDepth * 2);
+
+        const isOuterCap = idx === 0 || idx === sliceCount;
+        const tEdge = (z + halfDepth) / (halfDepth * 2);
+        const shadeWave = 0.5 + 0.5 * Math.sin(tEdge * Math.PI * 3 + sinY * 1.4);
+
+        ctx.save();
+        if (safeCos < 0.028) {
+          // Edge-on fallback thickness slice so the rim always reads solidly
+          const xOff = px + z * sinY;
+          const yOff = py - z * cosY * sinP;
+          const edgeH = R * cosP * 0.96;
+          ctx.fillStyle = idx % 3 === 0 ? '#fde68a' : shadeWave > 0.55 ? '#d97706' : '#78350f';
+          ctx.fillRect(xOff - 1.6, yOff - edgeH, 3.2, edgeH * 2);
+          ctx.restore();
+          continue;
+        }
+
+        projectSlice(z, false);
+
+        // Subtle beveled rim flare toward middle of medallion thickness
+        const bevelFactor = 1 - Math.pow(Math.abs(tEdge - 0.5) * 2, 2.2) * 0.035;
+        const sliceR = R * bevelFactor;
+        traceOctagon(sliceR);
+
+        if (isOuterCap) {
+          const rimGrad = ctx.createLinearGradient(-sliceR, -sliceR, sliceR, sliceR);
+          rimGrad.addColorStop(0, '#fef08a');
+          rimGrad.addColorStop(0.45, '#f59e0b');
+          rimGrad.addColorStop(1, '#92400e');
+          ctx.fillStyle = rimGrad;
+          ctx.fill();
+          ctx.lineWidth = 2.2 / Math.max(0.25, safeCos);
+          ctx.strokeStyle = '#451a03';
+          ctx.stroke();
+        } else {
+          // Knurled bronze/gold extruded side walls
+          const isRib = idx % 3 === 0;
+          ctx.fillStyle = isRib ? '#f59e0b' : shadeWave > 0.5 ? '#b45309' : '#582506';
+          ctx.fill();
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(254, 240, 138, 0.16)';
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      const relicFn =
+        this && typeof this.drawRelicHD === 'function'
+          ? this.drawRelicHD
+          : SpriteBank.prototype.drawRelicHD;
+
+      // Render Front Sculpted Face + 3D Extruded Relief Layers when facing camera
+      if (cosY >= 0.025) {
+        ctx.save();
+        projectSlice(halfDepth, false);
+
+        // Recessed inner velvet & beveled metallic collar
+        traceOctagon(R * 0.87);
+        const bezelGrad = ctx.createLinearGradient(-R, -R, R, R);
+        bezelGrad.addColorStop(0, '#78350f');
+        bezelGrad.addColorStop(0.5, '#fbbf24');
+        bezelGrad.addColorStop(1, '#451a03');
+        ctx.fillStyle = bezelGrad;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.77, 0, TWO_PI);
+        const cushionGrad = ctx.createRadialGradient(-R * 0.2, -R * 0.22, R * 0.06, 0, 0, R * 0.78);
+        cushionGrad.addColorStop(0, pal.core + '55');
+        cushionGrad.addColorStop(0.42, pal.velvet);
+        cushionGrad.addColorStop(1, '#050814');
+        ctx.fillStyle = cushionGrad;
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = pal.accent;
+        ctx.stroke();
+
+        // Subtle star filigree inside jewel chamber
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.13)';
+        ctx.lineWidth = 1.2;
+        for (let rIdx = 0; rIdx < 8; rIdx++) {
+          const a = (rIdx * Math.PI) / 4;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * R * 0.18, Math.sin(a) * R * 0.18);
+          ctx.lineTo(Math.cos(a) * R * 0.71, Math.sin(a) * R * 0.71);
+          ctx.stroke();
+        }
+        ctx.restore();
+        ctx.restore();
+
+        // True multi-layer 3D pop-out relief of the city's Relic Sprite!
+        const reliefLayers = 6;
+        const reliefScale = (R * 1.48) / 28;
+        for (let r = 0; r < reliefLayers; r++) {
+          const zRel = halfDepth + 1.5 + r * 2.1;
+          ctx.save();
+          projectSlice(zRel, false);
+          ctx.scale(reliefScale, reliefScale);
+          if (r < reliefLayers - 1) {
+            ctx.globalAlpha = 0.24 + r * 0.08;
+            // Darker extruded relief base slightly recessed/shifted to create 3D thickness
+            ctx.filter = 'brightness(0.45) sepia(0.85) saturate(2.4)';
+            relicFn.call(this, ctx, key, -14, -14, timer, false);
+          } else {
+            ctx.globalAlpha = 1;
+            ctx.filter = 'none';
+            relicFn.call(this, ctx, key, -14, -14, timer, false);
+          }
+          ctx.restore();
+        }
+
+        // Dynamic 3D Fresnel glass/crystal sheen sweep across front dome
+        ctx.save();
+        projectSlice(halfDepth + 13, false);
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.76, 0, TWO_PI);
+        ctx.clip();
+        const specX = -sinY * R * 0.75;
+        const specGrad = ctx.createLinearGradient(specX - 24, -R, specX + 34, R);
+        specGrad.addColorStop(0, 'rgba(255,255,255,0)');
+        specGrad.addColorStop(0.45, 'rgba(255,255,255,0.22)');
+        specGrad.addColorStop(0.55, 'rgba(255,255,255,0.06)');
+        specGrad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = specGrad;
+        ctx.fillRect(-R, -R, R * 2, R * 2);
+        ctx.restore();
+      } else if (cosY <= -0.025) {
+        // Render Engraved 3D Museum Reverse Seal when user orbits behind (> 90 deg)
+        ctx.save();
+        projectSlice(-halfDepth, true);
+
+        traceOctagon(R * 0.87);
+        const backGrad = ctx.createRadialGradient(-R * 0.2, -R * 0.2, 4, 0, 0, R * 0.9);
+        backGrad.addColorStop(0, '#f59e0b');
+        backGrad.addColorStop(0.55, '#92400e');
+        backGrad.addColorStop(1, '#451a03');
+        ctx.fillStyle = backGrad;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.75, 0, TWO_PI);
+        ctx.fillStyle = pal.velvet;
+        ctx.fill();
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = '#fbbf24';
+        ctx.stroke();
+
+        // Compass rose engraved filigree + bas-relief relic silhouette
+        ctx.save();
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.36)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, R * 0.56, 0, TWO_PI);
+        ctx.stroke();
+        for (let s = 0; s < 8; s++) {
+          const ang = (s * Math.PI) / 4;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(Math.cos(ang) * R * 0.54, Math.sin(ang) * R * 0.54);
+          ctx.stroke();
+        }
+        const reliefScale = (R * 1.15) / 28;
+        ctx.scale(-reliefScale, reliefScale);
+        ctx.globalAlpha = 0.28;
+        relicFn.call(this, ctx, key, -14, -14, timer, false);
+        ctx.restore();
+
+        // City stamp engraved on reverse plaque
+        ctx.fillStyle = '#fef3c7';
+        ctx.font = 'bold 10px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(pal.tag, 0, -R * 0.42);
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 7.5px "Press Start 2P", monospace';
+        ctx.fillText('MUSEO OFICIAL 1/1', 0, R * 0.44);
+        ctx.restore();
+      }
+
+      // Orbiting museum sparkles
+      for (let sp = 0; sp < 4; sp++) {
+        const spA = timer * 1.7 + sp * (Math.PI / 2);
+        const spX = px + Math.cos(spA) * (R * 1.15);
+        const spY = py + Math.sin(spA * 1.3) * (R * 0.72);
+        const spAlpha = 0.35 + 0.45 * Math.sin(timer * 4.5 + sp * 1.7);
+        ctx.fillStyle = `rgba(254, 240, 138, ${Math.max(0.08, spAlpha).toFixed(2)})`;
+        ctx.beginPath();
+        ctx.arc(spX, spY, 2.2, 0, TWO_PI);
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
   }
 
   SpriteBank.drawPeacockHD = function (...args) {
@@ -9654,6 +10842,23 @@
   SpriteBank.drawCrazyCyclistHD = function (...args) {
     return SpriteBank.prototype.drawCrazyCyclistHD.apply(this, args);
   };
+  SpriteBank.drawRelicHD = function (...args) {
+    return SpriteBank.prototype.drawRelicHD.apply(this, args);
+  };
+  SpriteBank.drawRelic3DViewerHD = function (...args) {
+    return SpriteBank.prototype.drawRelic3DViewerHD.apply(this, args);
+  };
+  SpriteBank.drawBiplaneBombHD = function (...args) {
+    return SpriteBank.prototype.drawBiplaneBombHD.apply(this, args);
+  };
 
   global.SpriteBank = SpriteBank;
+  global.Sprites = global.Sprites || {};
+  global.Sprites.SpriteBank = SpriteBank;
+  global.Sprites.drawRelicHD = SpriteBank.drawRelicHD;
+  global.Sprites.drawRelic3DViewerHD = SpriteBank.drawRelic3DViewerHD;
+  global.Sprites.drawBiplaneBombHD = SpriteBank.drawBiplaneBombHD;
+  global.Sprites.drawCollectibleHD = function (...args) {
+    return SpriteBank.prototype.drawCollectibleHD.apply(SpriteBank.prototype, args);
+  };
 })(window);
